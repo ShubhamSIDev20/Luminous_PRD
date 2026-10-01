@@ -1,0 +1,677 @@
+@page "/scheduler"
+@attribute [Authorize]
+@attribute [StreamRendering]
+@rendermode InteractiveServer
+
+@inject ISchedulerService SchedulerService
+@inject IProgramServices ProgramService
+@inject IBatteryServices BatteryService
+@inject IDbcService DbcService
+@inject IDeviceCircuitServices DCService
+@inject CircuitManager CM
+@inject ToastService Toast
+
+@using BatteryTestingSystem.Models.DTOs
+@using BatteryTestingSystem.Components.UI.Datatable
+@using BatteryTestingSystem.Components.UI.Switch
+@using BatteryTestingSystem.Components.UI.Badge
+
+<div class="scheduler-page-header">
+<PageHeader Title="Program Scheduler" Description="Schedule automated program transfers and circuit starts.">
+    <Actions>
+        <AuthorizeView Roles="Administrator,Supervisor">
+            <Button Variant="ButtonVariant.Default" Size="ButtonSize.Small" OnClick="OpenCreateDialog">
+                <Blazicon Svg="Lucide.Plus" class="h-4 w-4 mr-2" />
+                New Schedule
+            </Button>
+        </AuthorizeView>
+    </Actions>
+</PageHeader>
+</div>
+
+<!-- ── Tabs: Schedules | Execution Logs ── -->
+<Tabs @bind-Value="activeTab" class="mt-1">
+    <TabsList>
+        <TabsTrigger Value="schedules">
+            <Blazicon Svg="Lucide.CalendarClock" class="h-4 w-4 mr-2" />
+            Schedules
+        </TabsTrigger>
+        <TabsTrigger Value="logs">
+            <Blazicon Svg="Lucide.ClipboardList" class="h-4 w-4 mr-2" />
+            Execution Logs
+        </TabsTrigger>
+    </TabsList>
+
+    <!-- ══ SCHEDULES TAB ══ -->
+    <TabsContent Value="schedules">
+        @if (isLoading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+        }
+        else
+        {
+            <DataTable TItem="ProgramScheduleDto"
+                       Title="Schedules"
+                       Subtitle="All configured program schedules"
+                       Data="@schedules"
+                       Search="true"
+                       ExcelExport="true"
+                       ExcelFileName="schedules">
+                <Columns>
+
+                    <ColumnDef TItem="ProgramScheduleDto" Key="name" Header="Name"
+                               SearchSelector="@(s => s.Name)">
+                        <CellTemplate Context="s">
+                            <span class="font-medium">@s.Name</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ProgramScheduleDto" Key="program" Header="Program"
+                               SearchSelector="@(s => s.ProgramName)">
+                        <CellTemplate Context="s">
+                            <span class="text-sm">@s.ProgramName</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ProgramScheduleDto" Key="battery" Header="Battery"
+                               SearchSelector="@(s => s.BatteryName)">
+                        <CellTemplate Context="s">
+                            <span class="text-sm">@s.BatteryName</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ProgramScheduleDto" Key="dbc" Header="DBC Ports" Align="center"
+                               SearchSelector="@(s => DbcPortsSearchText(s))">
+                        <CellTemplate Context="s">
+                            @if (!s.Port1DbcFileId.HasValue && !s.Port2DbcFileId.HasValue && !s.Port3DbcFileId.HasValue)
+                            {
+                                <span class="text-muted-foreground text-xs italic">None</span>
+                            }
+                            else
+                            {
+                                <div class="flex flex-wrap items-center justify-center gap-1">
+                                    @if (s.Port1DbcFileId.HasValue)
+                                    {
+                                        <Badge Variant="BadgeVariant.Secondary" title="@s.Port1DbcFileName">P1: @s.Port1DbcFileName</Badge>
+                                    }
+                                    @if (s.Port2DbcFileId.HasValue)
+                                    {
+                                        <Badge Variant="BadgeVariant.Secondary" title="@s.Port2DbcFileName">P2: @s.Port2DbcFileName</Badge>
+                                    }
+                                    @if (s.Port3DbcFileId.HasValue)
+                                    {
+                                        <Badge Variant="BadgeVariant.Secondary" title="@s.Port3DbcFileName">P3: @s.Port3DbcFileName</Badge>
+                                    }
+                                </div>
+                            }
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ProgramScheduleDto" Key="circuits" Header="Circuits" Align="center"
+                               SearchSelector="@(s => s.TargetCircuits.Count.ToString())">
+                        <CellTemplate Context="s">
+                            <Badge Variant="BadgeVariant.Outline">@s.TargetCircuits.Count circuit(s)</Badge>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ProgramScheduleDto" Key="scheduledat" Header="Scheduled At"
+                               SearchSelector="@(s => s.ScheduledAt.ToString("yyyy-MM-dd HH:mm"))">
+                        <CellTemplate Context="s">
+                            <span class="text-sm tabular-nums">@s.ScheduledAt.ToString("dd MMM yyyy  HH:mm")</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ProgramScheduleDto" Key="active" Header="Active" Align="center"
+                               SearchSelector="@(s => s.IsActive ? "Active" : "Inactive")">
+                        <CellTemplate Context="s">
+                            <AuthorizeView Roles="Administrator,Supervisor">
+                                <Switch Checked="@s.IsActive"
+                                        CheckedChanged="@(v => ToggleActive(s, v))" />
+                            </AuthorizeView>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ProgramScheduleDto" Key="actions" Header="Actions" Align="center">
+                        <CellTemplate Context="s">
+                            <AuthorizeView Roles="Administrator,Supervisor">
+                                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                        OnClick="@(() => ConfirmDelete(s))">
+                                    <Blazicon Svg="Lucide.Trash2" class="h-4 w-4 text-destructive" />
+                                </Button>
+                            </AuthorizeView>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                </Columns>
+            </DataTable>
+        }
+    </TabsContent>
+
+    <!-- ══ LOGS TAB ══ -->
+    <TabsContent Value="logs">
+        @if (isLogsLoading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+        }
+        else
+        {
+            <DataTable TItem="ScheduleExecutionLogDto"
+                       Title="Execution Logs"
+                       Subtitle="History of all scheduler runs"
+                       Data="@execLogs"
+                       Search="true"
+                       ExcelExport="true"
+                       ExcelFileName="scheduler-logs">
+                <Columns>
+
+                    <ColumnDef TItem="ScheduleExecutionLogDto" Key="schedule" Header="Schedule"
+                               SearchSelector="@(l => l.ScheduleName)">
+                        <CellTemplate Context="l">
+                            <span class="font-medium text-sm">@l.ScheduleName</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ScheduleExecutionLogDto" Key="circuit" Header="Circuit" Align="center"
+                               SearchSelector="@(l => $"{l.DeviceId}-{l.CircuitId}")">
+                        <CellTemplate Context="l">
+                            <span class="tabular-nums text-sm">@l.DeviceId - @l.CircuitId</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ScheduleExecutionLogDto" Key="executedat" Header="Executed At"
+                               SearchSelector="@(l => l.ExecutedAt.ToString("yyyy-MM-dd HH:mm"))">
+                        <CellTemplate Context="l">
+                            <span class="text-sm tabular-nums">@l.ExecutedAt.ToString("dd MMM yyyy  HH:mm:ss")</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ScheduleExecutionLogDto" Key="status" Header="Status" Align="center"
+                               SearchSelector="@(l => l.Status)">
+                        <CellTemplate Context="l">
+                            @StatusBadge(l.Status)
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="ScheduleExecutionLogDto" Key="reason" Header="Reason"
+                               SearchSelector="@(l => l.FailReason ?? string.Empty)">
+                        <CellTemplate Context="l">
+                            @if (!string.IsNullOrEmpty(l.FailReason))
+                            {
+                                <span class="text-xs text-muted-foreground">@l.FailReason</span>
+                            }
+                            else
+                            {
+                                <span class="text-xs text-muted-foreground italic">—</span>
+                            }
+                        </CellTemplate>
+                    </ColumnDef>
+
+                </Columns>
+            </DataTable>
+        }
+    </TabsContent>
+</Tabs>
+
+<!-- ══ CREATE SCHEDULE DIALOG ══ -->
+<Dialog @bind-Open="showCreateDialog">
+    <DialogContent Size="DialogSize.XLarge" Class="flex flex-col">
+        <DialogHeader>
+            <DialogTitle>New Schedule</DialogTitle>
+            <DialogDescription>Configure a program to auto-transfer and start at a scheduled time.</DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-3 mt-3">
+
+            <!-- Name + DateTime row -->
+            <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1">
+                    <Label>Schedule Name</Label>
+                    <Input @bind-Value="form.Name" placeholder="e.g. Night Charge Run" />
+                </div>
+                <div class="space-y-1">
+                    <Label>Scheduled Date &amp; Time</Label>
+                    <input type="datetime-local"
+                           class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                           value="@scheduledAtStr"
+                           @onchange="@(e => scheduledAtStr = e.Value?.ToString() ?? string.Empty)" />
+                </div>
+            </div>
+
+            <!-- Program + Battery + DBC row -->
+            <div class="grid grid-cols-3 gap-3">
+
+                <!-- Program -->
+                <div class="space-y-1">
+                    <Label>Program</Label>
+                    <div class="h-[110px] overflow-y-auto border rounded-lg p-1.5 bg-muted/30 space-y-0.5">
+                        @foreach (var p in availablePrograms)
+                        {
+                            <div class="@RadioItemClass(selectedProgramId, p.ProgramId.ToString())"
+                                 @onclick="@(() => selectedProgramId = p.ProgramId.ToString())">
+                                <span class="text-sm flex-1">@p.ProgramName</span>
+                                @if (selectedProgramId == p.ProgramId.ToString())
+                                {
+                                    <Blazicon Svg="Lucide.Check" class="h-3 w-3 text-primary shrink-0" />
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Battery -->
+                <div class="space-y-1">
+                    <Label>Battery</Label>
+                    <div class="h-[110px] overflow-y-auto border rounded-lg p-1.5 bg-muted/30 space-y-0.5">
+                        @foreach (var b in availableBatteries)
+                        {
+                            <div class="@RadioItemClass(selectedBatteryId, b.Id.ToString())"
+                                 @onclick="@(async () => await OnBatterySelected(b))">
+                                <span class="text-sm flex-1">@b.Name</span>
+                                @if (selectedBatteryId == b.Id.ToString())
+                                {
+                                    <Blazicon Svg="Lucide.Check" class="h-3 w-3 text-primary shrink-0" />
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- DBC Ports -->
+                <div class="space-y-1">
+                    <Label>DBC Ports <span class="text-muted-foreground text-xs">(Optional)</span></Label>
+                    <div class="h-[110px] overflow-y-auto border rounded-lg p-2 bg-muted/30 space-y-1.5">
+
+                        @* Port 1 *@
+                        <div class="space-y-0.5">
+                            <Label class="text-xs font-medium text-muted-foreground">Port 1</Label>
+                            <select class="h-7 w-full rounded border border-border bg-background text-foreground text-xs px-2"
+                                    value="@port1DbcId"
+                                    @onchange="e => port1DbcId = e.Value?.ToString() ?? string.Empty">
+                                <option value="">None</option>
+                                @foreach (var d in availableDbcFiles)
+                                {
+                                    <option value="@d.Id.ToString()" disabled="@IsDbcUsedByOtherPort(d.Id.ToString(), 0)">@d.Name</option>
+                                }
+                            </select>
+                        </div>
+
+                        @* Port 2 *@
+                        <div class="space-y-0.5">
+                            <Label class="text-xs font-medium text-muted-foreground">Port 2</Label>
+                            <select class="h-7 w-full rounded border border-border bg-background text-foreground text-xs px-2"
+                                    value="@port2DbcId"
+                                    @onchange="e => port2DbcId = e.Value?.ToString() ?? string.Empty">
+                                <option value="">None</option>
+                                @foreach (var d in availableDbcFiles)
+                                {
+                                    <option value="@d.Id.ToString()" disabled="@IsDbcUsedByOtherPort(d.Id.ToString(), 1)">@d.Name</option>
+                                }
+                            </select>
+                        </div>
+
+                        @* Port 3 *@
+                        <div class="space-y-0.5">
+                            <Label class="text-xs font-medium text-muted-foreground">Port 3</Label>
+                            <select class="h-7 w-full rounded border border-border bg-background text-foreground text-xs px-2"
+                                    value="@port3DbcId"
+                                    @onchange="e => port3DbcId = e.Value?.ToString() ?? string.Empty">
+                                <option value="">None</option>
+                                @foreach (var d in availableDbcFiles)
+                                {
+                                    <option value="@d.Id.ToString()" disabled="@IsDbcUsedByOtherPort(d.Id.ToString(), 2)">@d.Name</option>
+                                }
+                            </select>
+                        </div>
+
+                        @if (!availableDbcFiles.Any() && !string.IsNullOrEmpty(selectedBatteryId))
+                        {
+                            <p class="text-xs text-muted-foreground italic">No DBC files for this battery.</p>
+                        }
+                        @if (string.IsNullOrEmpty(selectedBatteryId))
+                        {
+                            <p class="text-xs text-muted-foreground italic">Select a battery first.</p>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Target Circuits -->
+            <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                    <Label>Target Circuits</Label>
+                    @if (selectedCircuits.Any())
+                    {
+                        <span class="text-xs text-muted-foreground">@selectedCircuits.Count selected</span>
+                    }
+                </div>
+                <div class="min-h-[40px] max-h-[90px] overflow-y-auto border rounded-lg p-1.5 bg-muted/30">
+                    @if (!availableCircuits.Any())
+                    {
+                        <p class="text-sm text-muted-foreground italic p-2">No registered circuits found.</p>
+                    }
+                    else
+                    {
+                        <div class="grid grid-cols-2 gap-1">
+                            @foreach (var c in availableCircuits)
+                            {
+                                var key = (c.DeviceID, c.CircuitID);
+                                var isSelected = selectedCircuits.Contains(key);
+                                <div class="flex items-center gap-2 px-2 py-1 rounded cursor-pointer @(isSelected ? "bg-primary/15 border border-primary/40" : "hover:bg-muted")"
+                                     @onclick="@(() => ToggleCircuitSelection(key))">
+                                    <Checkbox Checked="@isSelected"
+                                              CheckedChanged="@(v => ToggleCircuitSelection(key))" />
+                                    <span class="text-sm leading-none">
+                                        Dev @c.DeviceID – Cir @c.CircuitID
+                                        @if (!string.IsNullOrEmpty(c.DeviceName))
+                                        {
+                                            <span class="text-muted-foreground ml-1 text-xs">(@c.DeviceName)</span>
+                                        }
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <DialogFooter class="mt-4 pt-3 border-t border-border">
+            <Button Variant="ButtonVariant.Outline" OnClick="CloseCreateDialog">Cancel</Button>
+            <Button Disabled="@isSaving" OnClick="SaveSchedule">
+                @if (isSaving)
+                {
+                    <Blazicon Svg="Lucide.Loader" class="h-4 w-4 mr-2 animate-spin" />
+                    <span>Saving...</span>
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.CalendarCheck" class="h-4 w-4 mr-2" />
+                    <span>Create Schedule</span>
+                }
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+<!-- ══ CONFIRM DELETE DIALOG ══ -->
+<ConfirmDialog @ref="confirmDialog"
+               Title="Delete Schedule"
+               Message="@($"Are you sure you want to delete '{scheduleToDelete?.Name}'? This will also cancel the pending Hangfire job.")"
+               OnConfirm="DeleteSchedule" />
+
+@code {
+
+    // ── State ──
+    private string activeTab = "schedules";
+    private bool isLoading = true;
+    private bool isLogsLoading = true;
+    private bool showCreateDialog = false;
+    private bool isSaving = false;
+
+    // ── Data ──
+    private List<ProgramScheduleDto> schedules = new();
+    private List<ScheduleExecutionLogDto> execLogs = new();
+    private List<ProgramDTO> availablePrograms = new();
+    private List<BatteryDTO> availableBatteries = new();
+    private List<DbcFileRecordDto> availableDbcFiles = new();
+    private List<CircuitDto> availableCircuits = new();
+
+    // ── Form ──
+    private CreateScheduleRequest form = new();
+    private string selectedProgramId = string.Empty;
+    private string selectedBatteryId = string.Empty;
+    private string port1DbcId = string.Empty;
+    private string port2DbcId = string.Empty;
+    private string port3DbcId = string.Empty;
+    private string scheduledAtStr = string.Empty;
+    private HashSet<(int DeviceId, int CircuitId)> selectedCircuits = new();
+
+    // ── Delete ──
+    private ConfirmDialog? confirmDialog;
+    private ProgramScheduleDto? scheduleToDelete;
+
+    // ─────────────────────────────────────────────
+    // LIFECYCLE
+    // ─────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSchedulesAsync();
+        await LoadLogsAsync();
+        await LoadFormDataAsync();
+    }
+
+    private async Task LoadSchedulesAsync()
+    {
+        isLoading = true;
+        var result = await SchedulerService.GetAllSchedulesAsync();
+        if (result.Success) schedules = result.Data ?? new();
+        isLoading = false;
+    }
+
+    private async Task LoadLogsAsync()
+    {
+        isLogsLoading = true;
+        var result = await SchedulerService.GetLogsAsync();
+        if (result.Success) execLogs = result.Data ?? new();
+        isLogsLoading = false;
+    }
+
+    private async Task LoadFormDataAsync()
+    {
+        var prog = await ProgramService.GetProgramsAsync();
+        if (prog.Success) availablePrograms = prog.Data?.Where(p => p.IsVaild).ToList() ?? new();
+
+        var bat = await BatteryService.GetBatteries();
+        if (bat.Success) availableBatteries = bat.Data ?? new();
+
+        var circ = await DCService.GetCircuitsAsync();
+        if (circ.Success)
+            availableCircuits = circ.Data?.Where(c => c.IsRegistered).ToList() ?? new();
+    }
+
+    // ─────────────────────────────────────────────
+    // CREATE DIALOG
+    // ─────────────────────────────────────────────
+    private async Task OpenCreateDialog()
+    {
+        form = new CreateScheduleRequest();
+        selectedProgramId = string.Empty;
+        selectedBatteryId = string.Empty;
+        port1DbcId = string.Empty;
+        port2DbcId = string.Empty;
+        port3DbcId = string.Empty;
+        selectedCircuits.Clear();
+        scheduledAtStr = DateTime.Now.AddHours(1).ToString("yyyy-MM-ddTHH:mm");
+        availableDbcFiles = new();
+        showCreateDialog = true;
+    }
+
+    private void CloseCreateDialog() => showCreateDialog = false;
+
+    private async Task OnBatterySelected(BatteryDTO battery)
+    {
+        selectedBatteryId = battery.Id.ToString();
+
+        var dbc = await DbcService.GetByBatteryIdAsync(battery.Id);
+        availableDbcFiles = dbc.Success ? dbc.Data ?? new() : new();
+
+        // Pre-fill from the battery's current Dashboard-assigned ports (Components/UI/Dashboard/TransferDialog.razor
+        // writes these via IBatteryServices.UpdatePortAssignmentsAsync) — schedule-level selection can still be
+        // overridden below and is stored independently on the schedule, not written back to the battery.
+        port1DbcId = battery.Port1DbcId?.ToString() ?? string.Empty;
+        port2DbcId = battery.Port2DbcId?.ToString() ?? string.Empty;
+        port3DbcId = battery.Port3DbcId?.ToString() ?? string.Empty;
+    }
+
+    // Returns true if dbcId is already selected by a different port (index-based, mirrors TransferDialog.IsDbcUsedByOtherPort)
+    private bool IsDbcUsedByOtherPort(string dbcId, int ownPortIndex)
+    {
+        if (string.IsNullOrEmpty(dbcId)) return false;
+        var all = new[] { port1DbcId, port2DbcId, port3DbcId };
+        for (int i = 0; i < 3; i++)
+            if (i != ownPortIndex && all[i] == dbcId) return true;
+        return false;
+    }
+
+    private static string DbcPortsSearchText(ProgramScheduleDto s) =>
+        string.Join(" ", new[] { s.Port1DbcFileName, s.Port2DbcFileName, s.Port3DbcFileName }
+            .Where(n => !string.IsNullOrEmpty(n)));
+
+    private void ToggleCircuitSelection((int DeviceId, int CircuitId) key)
+    {
+        if (selectedCircuits.Contains(key))
+            selectedCircuits.Remove(key);
+        else
+            selectedCircuits.Add(key);
+    }
+
+    private async Task SaveSchedule()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name))
+        {
+            Toast.Warning("Schedule name is required.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(selectedProgramId))
+        {
+            Toast.Warning("Please select a program.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(selectedBatteryId))
+        {
+            Toast.Warning("Please select a battery.");
+            return;
+        }
+        if (!selectedCircuits.Any())
+        {
+            Toast.Warning("Please select at least one circuit.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(scheduledAtStr) || !DateTime.TryParse(scheduledAtStr, out var scheduledAt))
+        {
+            Toast.Warning("Please enter a valid date and time.");
+            return;
+        }
+        if (scheduledAt <= DateTime.Now)
+        {
+            Toast.Warning("Scheduled time must be in the future.");
+            return;
+        }
+
+        isSaving = true;
+
+        var request = new CreateScheduleRequest
+        {
+            Name = form.Name,
+            ProgramId = long.Parse(selectedProgramId),
+            BatteryId = long.Parse(selectedBatteryId),
+            Port1DbcFileId = string.IsNullOrEmpty(port1DbcId) ? null : long.Parse(port1DbcId),
+            Port2DbcFileId = string.IsNullOrEmpty(port2DbcId) ? null : long.Parse(port2DbcId),
+            Port3DbcFileId = string.IsNullOrEmpty(port3DbcId) ? null : long.Parse(port3DbcId),
+            ScheduledAt = scheduledAt,
+            TargetCircuits = selectedCircuits
+                .Select(k => new ScheduleCircuitTarget { DeviceId = k.DeviceId, CircuitId = k.CircuitId })
+                .ToList()
+        };
+
+        var result = await SchedulerService.CreateScheduleAsync(request);
+
+        isSaving = false;
+
+        if (result.Success)
+        {
+            Toast.Success("Schedule created!", $"'{request.Name}' will run at {scheduledAt:dd MMM HH:mm}.");
+            showCreateDialog = false;
+            await LoadSchedulesAsync();
+        }
+        else
+        {
+            Toast.Error("Failed to create schedule.", result.Message);
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // TOGGLE ACTIVE
+    // ─────────────────────────────────────────────
+    private async Task ToggleActive(ProgramScheduleDto schedule, bool value)
+    {
+        var result = await SchedulerService.ToggleActiveAsync(schedule.Id, value);
+        if (result.Success)
+        {
+            schedule.IsActive = value;
+            Toast.Success($"Schedule '{schedule.Name}' {(value ? "activated" : "deactivated")}.");
+            StateHasChanged();
+        }
+        else
+        {
+            Toast.Error("Toggle failed.", result.Message);
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // DELETE
+    // ─────────────────────────────────────────────
+    private void ConfirmDelete(ProgramScheduleDto schedule)
+    {
+        scheduleToDelete = schedule;
+        confirmDialog?.Open();
+    }
+
+    private async Task DeleteSchedule()
+    {
+        if (scheduleToDelete == null) return;
+        var result = await SchedulerService.DeleteScheduleAsync(scheduleToDelete.Id);
+        if (result.Success)
+        {
+            Toast.Success($"Schedule '{scheduleToDelete.Name}' deleted.");
+            scheduleToDelete = null;
+            await LoadSchedulesAsync();
+        }
+        else
+        {
+            Toast.Error("Delete failed.", result.Message);
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // HELPERS
+    // ─────────────────────────────────────────────
+    private string RadioItemClass(string current, string value) =>
+        current == value
+            ? "flex items-center gap-2 p-2 rounded-md cursor-pointer bg-primary/20 border border-primary/50"
+            : "flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-muted";
+
+    private RenderFragment StatusBadge(string status) => builder =>
+    {
+        var (variant, icon, label) = status switch
+        {
+            "Success"                => (BadgeVariant.Default,     Lucide.Check,        "Success"),
+            "Failed"                 => (BadgeVariant.Destructive,  Lucide.X,            "Failed"),
+            "Skipped_Offline"        => (BadgeVariant.Secondary,    Lucide.WifiOff,      "Offline"),
+            "Skipped_AlreadyRunning" => (BadgeVariant.Outline,      Lucide.CircleAlert,  "Running"),
+            _                        => (BadgeVariant.Outline,      Lucide.Info,         status)
+        };
+
+        builder.OpenComponent<Badge>(0);
+        builder.AddAttribute(1, "Variant", variant);
+        builder.AddAttribute(2, "ChildContent", (RenderFragment)(inner =>
+        {
+            inner.OpenComponent<Blazicon>(0);
+            inner.AddAttribute(1, "Svg", icon);
+            inner.AddAttribute(2, "class", "h-3 w-3 mr-1");
+            inner.CloseComponent();
+            inner.AddContent(3, label);
+        }));
+        builder.CloseComponent();
+    };
+}
+
+<style>
+    .scheduler-page-header > div {
+        margin-bottom: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+</style>

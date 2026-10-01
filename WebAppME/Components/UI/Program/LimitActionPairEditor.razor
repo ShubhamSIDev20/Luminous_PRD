@@ -1,0 +1,359 @@
+﻿@namespace BatteryTestingSystem.Components.UI
+
+@if (Disabled)
+{
+    <span class="text-muted-foreground/50 text-xs italic"></span>
+}
+else
+{
+    <div class="space-y-1">
+        @foreach (var (limit, index) in Limits.Select((l, i) => (l, i)))
+        {
+            var action = index < Actions.Count ? Actions[index] : "";
+            var limitValidation = ValidationHelper.ValidateLimit(limit, OperatorCode, GlobalVariables);
+            var actionValidation = ValidationHelper.ValidateAction(action, AllLabels, AllStepNumbers);
+
+            <div draggable="true"
+            @ondragstart="@(() => HandleDragStart(index))"
+            @ondragover="HandleDragOver"
+            @ondragover:preventDefault
+            @ondrop="@(() => HandleDrop(index))"
+            @ondragenter="@(() => HandleDragEnter(index))"
+            @ondragleave="HandleDragLeave"
+            class="flex items-center gap-1 p-1 rounded bg-secondary/30 border border-border/50 animate-scale-in group @(dragOverIndex == index ? "border-primary border-2" : "") cursor-move">
+
+                <!-- Drag Handle -->
+                <div class="p-1 text-muted-foreground/50 hover:text-foreground transition-colors cursor-grab active:cursor-grabbing">
+                    <Blazicon Svg="Lucide.GripVertical" class="w-3 h-3" />
+                </div>
+
+                <div class="flex-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-mono @(limitValidation.IsValid ? "bg-primary/10 text-foreground" : "bg-red-500/20 text-red-500")" title="@limitValidation.Error">
+                    @if (editingLimitIndex == index)
+                    {
+                        <input type="text"
+                        @ref="limitInputRef"
+                        @bind="editLimitValue" 
+                        @onkeydown="@((e) => HandleLimitKeyDown(e, index))" 
+                        @onblur="@(() => ConfirmLimitEdit(index))"
+                        @onclick:stopPropagation="true" class="flex-1 bg-warning/30 outline-none text-xs" title="unsaved!" />
+                    }
+                    else
+                    {
+                        <span @ondblclick="@(() => StartEditingLimit(index, limit))" class="cursor-pointer flex-1">@limit</span>
+                        <button @onclick="@(() => StartEditingLimit(index, limit))" class="p-0.5 rounded hover:bg-foreground/10 transition-colors opacity-0 group-hover:opacity-100">
+                            <Blazicon Svg="Lucide.Pencil" class="w-2.5 h-2.5" />
+                        </button>
+                    }
+                </div>
+
+                <span class="text-muted-foreground/50">→</span>
+
+                <div class="flex-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-mono @(actionValidation.IsValid ? "bg-primary/10 text-foreground" : "bg-red-500/20 text-red-500")" title="@actionValidation.Error">
+                    @if (editingActionIndex == index)
+                    {
+                        <input type="text"
+                        @ref="actionInputRef"
+                        @bind="editActionValue"
+                        @onkeydown="@((e) => HandleActionKeyDown(e, index))"
+                        @onblur="@(() => ConfirmActionEdit(index))"
+                        @onclick:stopPropagation="true" 
+                        class="flex-1 bg-warning/30 outline-none text-xs" title="unsaved!" />
+                    }
+                    else
+                    {
+                        @if (string.IsNullOrWhiteSpace(action))
+                        {
+                            <span @ondblclick="@(() => StartEditingAction(index, action))" class="cursor-pointer flex-1 text-muted-foreground/50 italic"></span>
+                        }
+                        else
+                        {
+                            <span @ondblclick="@(() => StartEditingAction(index, action))" class="cursor-pointer flex-1">@action</span>
+                        }
+                        <button @onclick="@(() => StartEditingAction(index, action))" class="p-0.5 rounded hover:bg-foreground/10 transition-colors opacity-0 group-hover:opacity-100">
+                            <Blazicon Svg="Lucide.Pencil" class="w-2.5 h-2.5" />
+                        </button>
+                    }
+                </div>
+
+                <button @onclick="@(() => OnRemovePair.InvokeAsync(index))" class="p-0.5 rounded hover:bg-red-500/20 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                    <Blazicon Svg="Lucide.X" class="w-3 h-3" />
+                </button>
+
+                @if (index == Limits.Count - 1)
+                {
+                    @if (!(OperatorCode == OperatorConstants.PAU && Limits.Count >= 1))
+                    {
+                        <div class="flex items-center gap-1">
+                            <button @onclick="ShowAddInputs" class="p-1 rounded hover:bg-primary/20 text-primary transition-colors">
+                                <Blazicon Svg="Lucide.Plus" class="w-3 h-3" />
+                            </button>
+                        </div>
+                    }
+                }
+
+            </div>
+        }
+
+        @if (showAddInputs || Limits.Count == 0)
+        {
+            <div @onfocusout="inputHide"
+            class="flex items-center gap-1 p-1 rounded bg-secondary/30 border border-primary/50 animate-scale-in" title="unsaved!">
+                <div class="p-1 text-muted-foreground/30">
+                    <Blazicon Svg="Lucide.GripVertical" class="w-3 h-3" />
+                </div>
+
+                <input type="text"
+                @ref="limitNewInputRef"
+                @bind="newLimitValue"
+                @onkeydown="HandleNewLimitKeyDown"
+                placeholder="@(OperatorCode == OperatorConstants.PAU ? "" : "")"
+                class="flex-1 min-w-[60px] bg-warning/30 px-1.5 py-0.5 rounded outline-none text-xs font-mono placeholder:text-muted-foreground/40" />
+
+                <span class="text-muted-foreground/50">→</span>
+
+                <input type="text"
+                @bind="newActionValue"
+                @onkeydown="HandleNewActionKeyDown"
+                placeholder=""
+                list="action-suggestions"
+                class="flex-1 min-w-[60px] bg-warning/30 px-1.5 py-0.5 rounded outline-none text-xs font-mono placeholder:text-muted-foreground/40" />
+
+                <datalist id="action-suggestions">
+                    <option value=""></option>
+                    <option value="INT"></option>
+                    <option value="STO"></option>
+                    <option value="ERR <int>"></option>
+                    <option value="MSG <int>"></option>
+                    <option value="GOTO <string>"></option>
+                </datalist>
+
+                <button @onclick="ConfirmAddPair" class="p-0.5 rounded hover:bg-green-500/20 text-green-500 transition-colors">
+                    <Blazicon Svg="Lucide.Check" class="w-3 h-3" />
+                </button>
+
+                <button @onclick="CancelAddPair" class="p-0.5 rounded hover:bg-red-500/20 text-red-500 transition-colors">
+                    <Blazicon Svg="Lucide.X" class="w-3 h-3" />
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<string> Limits { get; set; } = new();
+    [Parameter] public List<string> Actions { get; set; } = new();
+    [Parameter] public byte OperatorCode { get; set; }
+    [Parameter] public EventCallback<(string, string)> OnAddPair { get; set; }
+    [Parameter] public EventCallback<(int, string)> OnUpdateLimit { get; set; }
+    [Parameter] public EventCallback<(int, string)> OnUpdateAction { get; set; }
+    [Parameter] public EventCallback<int> OnRemovePair { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public List<GlobalVariable> GlobalVariables { get; set; } = new();
+    [Parameter] public HashSet<string> AllLabels { get; set; } = new();
+    [Parameter] public HashSet<int> AllStepNumbers { get; set; } = new();
+
+    private int? editingLimitIndex = null;
+    private int? editingActionIndex = null;
+    private string editLimitValue = string.Empty;
+    private string editActionValue = string.Empty;
+    private int? draggedIndex = null;
+    private int? dragOverIndex = null;
+    private bool showAddInputs = false;
+    private string newLimitValue = string.Empty;
+    private string newActionValue = string.Empty;
+    private ElementReference limitNewInputRef;
+    private ElementReference limitInputRef;
+    private ElementReference actionInputRef;
+    private bool actionInputFocused = false;
+    private bool limitInputFocused = false;
+    private bool limitNewInputFocused = false;
+
+
+    private void ShowAddInputs()
+    {
+        showAddInputs = true;
+        limitNewInputFocused = true;
+        newLimitValue = string.Empty;
+        newActionValue = string.Empty;
+    }
+
+    private void CancelAddPair()
+    {
+        showAddInputs = false;
+        newLimitValue = string.Empty;
+        newActionValue = string.Empty;
+    }
+
+    private void ConfirmAddPair()
+    {
+        if (!string.IsNullOrWhiteSpace(newLimitValue))
+        {
+            newLimitValue = OperatorConstants.AutoSpace(newLimitValue);
+
+            var validation = ValidationHelper.ValidateLimit(newLimitValue.Trim(), OperatorCode, GlobalVariables);
+            var correctedLimit = validation.Corrected ?? newLimitValue.Trim();
+            OnAddPair.InvokeAsync((correctedLimit, newActionValue.Trim()));
+            showAddInputs = false;
+            newLimitValue = string.Empty;
+            newActionValue = string.Empty;
+        }
+    }
+
+    private async Task StartEditingLimit(int index, string value)
+    {
+        editingLimitIndex = index;
+        editLimitValue = value;
+        limitInputFocused = true;
+    }
+
+    private async Task StartEditingAction(int index, string value)
+    {
+        editingActionIndex = index;
+        editActionValue = value;
+        actionInputFocused = true;
+    }
+
+    private void ConfirmLimitEdit(int index)
+    {
+        if (!string.IsNullOrWhiteSpace(editLimitValue))
+        {
+            editLimitValue = OperatorConstants.AutoSpace(editLimitValue);
+
+            var validation = ValidationHelper.ValidateLimit(editLimitValue.Trim(), OperatorCode, GlobalVariables);
+            var corrected = validation.Corrected ?? editLimitValue.Trim();
+            OnUpdateLimit.InvokeAsync((index, corrected));
+        }
+        else if (editingLimitIndex != null && editingLimitIndex.HasValue && string.IsNullOrWhiteSpace(editLimitValue))
+        {
+            bool isActionEmpty = index < Actions.Count && (Actions[index] == null || string.IsNullOrWhiteSpace(Actions[index]));
+
+            if (editingLimitIndex.HasValue && isActionEmpty)
+                OnRemovePair.InvokeAsync(editingLimitIndex.Value);
+        }
+        editingLimitIndex = null;
+        editLimitValue = string.Empty;
+    }
+
+    private void ConfirmActionEdit(int index)
+    {
+        var value = editActionValue.Trim();
+
+        var upper = value.ToUpper();
+
+        // Auto-correct common actions to uppercase
+        if (new[] { "INT", "STO" }.Contains(upper))
+            value = upper;
+        else if (upper.StartsWith("ERR") || upper.StartsWith("MSG") || upper.StartsWith("GOTO"))
+            value = upper;
+
+        OnUpdateAction.InvokeAsync((index, value));
+        editingActionIndex = null;
+        editActionValue = string.Empty;
+
+    }
+
+    private void HandleNewLimitKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == "Tab") ConfirmAddPair();
+        if (e.Key == "Escape") CancelAddPair();
+    }
+
+    private void HandleNewActionKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == "Tab") ConfirmAddPair();
+        if (e.Key == "Escape") CancelAddPair();
+    }
+
+    private void inputHide()
+    {
+        ConfirmAddPair();
+        if (Limits.Count >= 1)
+            showAddInputs = false;
+
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (limitNewInputFocused && limitNewInputRef.Id != null)
+        {
+            await limitNewInputRef.FocusAsync();
+            limitNewInputFocused = false;
+        }
+
+        if (limitInputFocused && limitInputRef.Id != null)
+        {
+            await limitInputRef.FocusAsync();
+            limitInputFocused = false;
+        }
+
+        if (actionInputFocused && actionInputRef.Id != null)
+        {
+            await actionInputRef.FocusAsync();
+            actionInputFocused = false;
+        }
+    }
+
+    private void HandleLimitKeyDown(KeyboardEventArgs e, int index)
+    {
+        if (e.Key == "Enter") ConfirmLimitEdit(index);
+        if (e.Key == "Escape") { editingLimitIndex = null; editLimitValue = string.Empty; }
+    }
+
+    private void HandleActionKeyDown(KeyboardEventArgs e, int index)
+    {
+        if (e.Key == "Enter" || e.Key == "Tab") ConfirmActionEdit(index);
+        if (e.Key == "Escape") { editingActionIndex = null; editActionValue = string.Empty; }
+    }
+
+    // Drag and Drop handlers
+    private void HandleDragStart(int index)
+    {
+        draggedIndex = index;
+    }
+
+    private void HandleDragEnter(int index)
+    {
+        if (draggedIndex.HasValue && draggedIndex.Value != index)
+        {
+            dragOverIndex = index;
+        }
+    }
+
+    private void HandleDragLeave()
+    {
+        dragOverIndex = null;
+    }
+
+    private void HandleDragOver(DragEventArgs e)
+    {
+        // Required to allow drop
+    }
+
+    private void HandleDrop(int index)
+    {
+        if (draggedIndex.HasValue && draggedIndex.Value != index)
+        {
+            // Perform reordering internally
+            var fromIndex = draggedIndex.Value;
+            var toIndex = index;
+
+            var tempLimit = Limits[fromIndex];
+            var tempAction = fromIndex < Actions.Count ? Actions[fromIndex] : "";
+
+            Limits.RemoveAt(fromIndex);
+            if (fromIndex < Actions.Count)
+                Actions.RemoveAt(fromIndex);
+
+            // Adjust toIndex if we removed an item before it
+            if (fromIndex < toIndex)
+                toIndex--;
+
+            Limits.Insert(toIndex, tempLimit);
+            if (toIndex <= Actions.Count)
+                Actions.Insert(toIndex, tempAction);
+            else
+                Actions.Add(tempAction);
+        }
+        draggedIndex = null;
+        dragOverIndex = null;
+    }
+}

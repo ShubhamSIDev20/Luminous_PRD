@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The ME Primary Demonstration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+:root{
+  --ink:#16202B;
+  --ground:#E7EBEF;
+  --sheet:#FFFFFF;
+  --surface:#F2F5F8;
+  --rule:#D3DCE4;
+  --rule-strong:#B4C1CD;
+  --muted:#5C6B7A;
+  --signal:#0B5F8A;
+  --signal-soft:#E4EEF4;
+  --verify:#1C7C54;
+  --verify-soft:#E3F0EA;
+  --shadow:rgba(22,32,43,.13);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ink:#E8EDF2;
+    --ground:#0D141B;
+    --sheet:#161F28;
+    --surface:#1D2833;
+    --rule:#2C3946;
+    --rule-strong:#3E4E5D;
+    --muted:#9BAAB8;
+    --signal:#6FB6DA;
+    --signal-soft:#1B2E3A;
+    --verify:#63C79A;
+    --verify-soft:#163025;
+    --shadow:rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E8EDF2;
+  --ground:#0D141B;
+  --sheet:#161F28;
+  --surface:#1D2833;
+  --rule:#2C3946;
+  --rule-strong:#3E4E5D;
+  --muted:#9BAAB8;
+  --signal:#6FB6DA;
+  --signal-soft:#1B2E3A;
+  --verify:#63C79A;
+  --verify-soft:#163025;
+  --shadow:rgba(0,0,0,.5);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  font-size:9.59pt;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* block layout, not flex: flex containers fragment unreliably in paged media */
+.sheet{
+  background:var(--sheet);
+  width:210mm;
+  min-height:297mm;
+  margin:0 auto;
+  padding:13mm 15mm 10mm;
+  position:relative;
+}
+.sheet > * + *{margin-top:3.4mm}
+.sheet + .sheet{margin-top:8mm}
+
+/* ---------- masthead ---------- */
+.masthead{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:8mm;
+  border-bottom:1.5pt solid var(--ink);
+  padding-bottom:3mm;
+}
+.org{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:6.96pt;
+  font-weight:600;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  color:var(--signal);
+  margin:0 0 2mm;
+}
+h1{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:19.74pt;
+  font-weight:600;
+  letter-spacing:-.018em;
+  line-height:1.08;
+  text-wrap:balance;
+  margin:0;
+}
+.issue{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:7.14pt;
+  color:var(--muted);
+  text-align:right;
+  line-height:1.65;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+
+.deck{
+  font-size:10.25pt;
+  line-height:1.45;
+  margin:0;
+  max-width:62ch;
+}
+.deck strong{color:var(--signal);font-weight:600}
+
+/* ---------- section headings ---------- */
+h2{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:7.52pt;
+  font-weight:600;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin:0 0 2.4mm;
+  padding-bottom:1.4mm;
+  border-bottom:.75pt solid var(--rule);
+}
+h3{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:9.78pt;
+  font-weight:600;
+  letter-spacing:-.005em;
+  margin:0 0 1.2mm;
+}
+p{margin:0 0 2.4mm;max-width:66ch}
+p:last-child{margin-bottom:0}
+
+/* ---------- figure ---------- */
+figure{margin:0}
+figure svg{display:block;width:100%;height:auto}
+figcaption{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:7.33pt;
+  color:var(--muted);
+  margin-top:1.8mm;
+  line-height:1.45;
+}
+
+/* diagram colours live here, not in presentation attributes:
+   var() is unreliable inside SVG fill=/stroke= across browsers */
+.dg text{font-family:"IBM Plex Sans",system-ui,sans-serif}
+.dg-box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1}
+.dg-flow{color:var(--signal)}
+.dg-arrowhead{fill:var(--signal)}
+.dg-title{fill:var(--ink);font-size:13px;font-weight:600;text-anchor:middle}
+.dg-sub{fill:var(--muted);font-size:10.5px;text-anchor:middle}
+.dg-transport{fill:var(--signal);font-size:10.5px;font-weight:600;text-anchor:middle}
+.dg-transport-sub{fill:var(--muted);font-size:9.5px;text-anchor:middle}
+.dg-lane{fill:var(--muted);font-size:10px;font-weight:600;letter-spacing:.08em}
+.dg-rule{stroke:var(--rule);stroke-width:1}
+
+/* ---------- numbered pipeline ---------- */
+.stages{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:1.9mm 7mm;
+  counter-reset:stage;
+}
+.stages li{
+  counter-increment:stage;
+  display:grid;
+  grid-template-columns:6.2mm 1fr;
+  gap:2.4mm;
+  align-items:start;
+  font-size:8.55pt;
+  line-height:1.4;
+}
+.stages li::before{
+  content:counter(stage,decimal-leading-zero);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:7.14pt;
+  font-weight:600;
+  color:var(--signal);
+  padding-top:.6mm;
+  font-variant-numeric:tabular-nums;
+}
+.stages b{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-weight:600;
+  font-size:8.65pt;
+}
+
+/* ---------- metrics ---------- */
+.metrics{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  border:.75pt solid var(--rule);
+  background:var(--surface);
+}
+.metric{
+  padding:3mm 3.4mm;
+  border-left:.75pt solid var(--rule);
+}
+.metric:first-child{border-left:0}
+.metric .n{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:14.1pt;
+  font-weight:600;
+  letter-spacing:-.02em;
+  line-height:1;
+  display:block;
+  font-variant-numeric:tabular-nums;
+}
+.metric .l{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:6.77pt;
+  line-height:1.35;
+  color:var(--muted);
+  display:block;
+  margin-top:1.6mm;
+}
+.metric.pass .n{color:var(--verify)}
+
+/* ---------- enablers ---------- */
+.assets{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:3.4mm 7mm;
+}
+.asset{
+  border-top:1.2pt solid var(--rule-strong);
+  padding-top:2.2mm;
+}
+.asset .tag{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:6.58pt;
+  font-weight:600;
+  letter-spacing:.06em;
+  color:var(--signal);
+  text-transform:uppercase;
+  display:block;
+  margin-bottom:1.4mm;
+}
+.asset p{font-size:8.74pt;line-height:1.42;margin:0}
+
+/* ---------- the method callout ---------- */
+.method{
+  background:var(--signal-soft);
+  border-left:2.4pt solid var(--signal);
+  padding:3.2mm 4.2mm;
+  display:flex;
+  flex-direction:column;
+  gap:2.2mm;
+}
+.method h3{font-size:10.9pt;margin:0}
+.method .tag{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:6.58pt;
+  font-weight:600;
+  letter-spacing:.06em;
+  color:var(--signal);
+  text-transform:uppercase;
+}
+.loop{
+  display:flex;
+  align-items:center;
+  gap:2.2mm;
+  flex-wrap:wrap;
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:7.9pt;
+  font-weight:500;
+}
+.loop span{
+  background:var(--sheet);
+  border:.75pt solid var(--rule-strong);
+  padding:1.4mm 2.6mm;
+  white-space:nowrap;
+}
+.loop span.gate{
+  border-color:var(--signal);
+  color:var(--signal);
+  font-weight:600;
+}
+.loop i{color:var(--signal);font-style:normal;font-weight:600}
+
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.92em}
+
+
+/* ---------- scope strip ---------- */
+.scopegrid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  border:.75pt solid var(--rule);
+  border-top:1.8pt solid var(--rule-strong);
+  background:var(--surface);
+}
+.sc{padding:2.6mm 3mm;border-left:.75pt solid var(--rule)}
+.sc:first-child{border-left:0}
+.sc .k{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:6.86pt;
+  font-weight:600;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+  display:block;
+  margin-bottom:1.3mm;
+}
+.sc.ok .k{color:var(--verify)}
+.sc.pend .k{color:var(--muted)}
+.sc p{font-size:7.99pt;line-height:1.38;margin:0;max-width:none}
+
+footer{
+  border-top:.75pt solid var(--rule);
+  padding-top:2.2mm;
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:6.77pt;
+  color:var(--muted);
+  display:flex;
+  justify-content:space-between;
+  gap:6mm;
+}
+
+@media print{
+  body{background:#fff}
+  .sheet{margin:0;box-shadow:none;width:auto;min-height:0;padding:0}
+  .sheet + .sheet{margin-top:0;page-break-before:always}
+  section,figure,.method,.scopegrid,.metrics{break-inside:avoid}
+  @page{size:A4;margin:13mm 14mm 10mm}
+}
+@media screen{
+  body{padding:8mm 4mm}
+  .sheet{box-shadow:0 1px 3px var(--shadow),0 8px 26px var(--shadow)}
+}
+/* screen-only: an A4 print page is 210mm wide and would otherwise match this,
+   collapsing the grids and pushing the document past two pages */
+@media screen and (max-width:220mm){
+  .sheet{width:100%;padding:8mm 6mm}
+  .stages,.assets{grid-template-columns:1fr}
+  .metrics{grid-template-columns:1fr 1fr}
+  .metric{border-left:0;border-top:.75pt solid var(--rule)}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ SHEET 1 ============ -->
+<article class="sheet">
+
+  <header class="masthead">
+    <div>
+      <p class="org">Ador Powertron &middot; ME Project &middot; Engineering Whitepaper</p>
+      <h1>The ME Primary Demonstration</h1>
+    </div>
+    <div class="issue">
+      2026-08-21<br>
+      Rev 1.0<br>
+      Internal
+    </div>
+  </header>
+
+  <p class="deck">
+    On 21 August 2026 the ME Primary Board completed an <strong>end-to-end run of the
+    full battery-test data path</strong> &mdash; from channel registration on the Web
+    Application, through program delivery and execution on the i.MX8M&nbsp;Plus, out over
+    CAN-FD to the Secondary, and back again as live telemetry. The application that
+    carries this out was built in about three weeks with AI assistance. This paper
+    records what was demonstrated and the working method that made it repeatable.
+  </p>
+
+  <section>
+    <h2>The path that was demonstrated</h2>
+    <figure>
+      <svg class="dg" viewBox="0 0 960 196" role="img" aria-label="Round-trip data path: the Web Application sends registration and program frames over TCP to the ME application on the i.MX8M Plus A53 cores, which forwards CAN-FD payloads over RPMsg to the M7 core and onto the Secondary board; measurements return along the same path and are published to the Web Application over UDP.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.4" orient="auto">
+            <path class="dg-arrowhead" d="M0 0 L10 4 L0 8 z"/>
+          </marker>
+        </defs>
+
+        <!-- lane header -->
+        <text class="dg-lane" x="8" y="30">COMMAND &rarr;</text>
+        <text class="dg-lane" x="952" y="30" text-anchor="end">&larr; MEASUREMENT</text>
+        <line class="dg-rule" x1="8" y1="38" x2="952" y2="38"/>
+
+        <!-- boxes -->
+        <rect class="dg-box" x="8"   y="54" width="152" height="64" rx="2"/>
+        <rect class="dg-box" x="256" y="54" width="202" height="64" rx="2"/>
+        <rect class="dg-box" x="554" y="54" width="142" height="64" rx="2"/>
+        <rect class="dg-box" x="792" y="54" width="160" height="64" rx="2"/>
+
+        <!-- flow arrows -->
+        <g class="dg-flow" fill="none" stroke="currentColor" stroke-width="1.6">
+          <line x1="160" y1="86" x2="250" y2="86" marker-end="url(#ar)"/>
+          <line x1="458" y1="86" x2="548" y2="86" marker-end="url(#ar)"/>
+          <line x1="696" y1="86" x2="786" y2="86" marker-end="url(#ar)"/>
+          <polyline points="872,120 872,170 84,170 84,120" stroke-dasharray="5 3.5" marker-end="url(#ar)"/>
+        </g>
+
+        <!-- node labels -->
+        <text class="dg-title" x="84"  y="82">Web Application</text>
+        <text class="dg-title" x="357" y="76">ME Primary app</text>
+        <text class="dg-title" x="625" y="82">M7 core</text>
+        <text class="dg-title" x="872" y="76">Secondary</text>
+
+        <text class="dg-sub" x="84"  y="98">test operator</text>
+        <text class="dg-sub" x="357" y="92">i.MX8M Plus &middot; Cortex-A53</text>
+        <text class="dg-sub" x="357" y="107">4 threads &middot; Torizon OS</text>
+        <text class="dg-sub" x="625" y="98">Cortex-M7</text>
+        <text class="dg-sub" x="872" y="92">CAN-FD device</text>
+        <text class="dg-sub" x="872" y="107">dummy data</text>
+
+        <!-- transport labels -->
+        <text class="dg-transport" x="205" y="76">TCP/IP</text>
+        <text class="dg-transport" x="503" y="76">RPMsg</text>
+        <text class="dg-transport" x="741" y="76">CAN-FD</text>
+        <text class="dg-transport" x="478" y="161">UDP &middot; live measurements returning</text>
+
+        <text class="dg-transport-sub" x="205" y="105">port 9999</text>
+        <text class="dg-transport-sub" x="503" y="105">A53 &harr; M7</text>
+        <text class="dg-transport-sub" x="741" y="105">64-byte frames</text>
+      </svg>
+      <figcaption>
+        The complete round trip carried out in the demonstration. Every part of this path
+        ran for real. Only the Secondary was substituted, returning dummy values in place
+        of hardware that has not yet been built.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>What ran, in order</h2>
+    <ol class="stages">
+      <li><span><b>Channel registration.</b> Each test channel identifies itself to the
+        Web Application over TCP. It must be accepted before it is allowed to carry any
+        traffic.</span></li>
+      <li><span><b>Program setup.</b> The operator creates a battery-test program in the
+        Web Application, defining its steps, its limits and the conditions that end the
+        test.</span></li>
+      <li><span><b>Program delivery.</b> The program reaches the board over Ethernet as
+        <span class="mono">0xBB</span> packets. Each packet is checked with a CRC and
+        decoded into a sequence of steps the board can run.</span></li>
+      <li><span><b>Hand-off between threads.</b> Four threads &mdash; Communication, Core
+        Logic, Data Manager and CAN Manager &mdash; each handle one job and pass the work
+        between them using internal message queues.</span></li>
+      <li><span><b>Execution on START.</b> A <span class="mono">0xEE</span> control command
+        starts the step engine. It applies the setpoints for each step in turn and checks
+        them against the programmed limits.</span></li>
+      <li><span><b>CAN-FD output through the M7.</b> The setpoints are passed to the
+        Cortex-M7 core over RPMsg and sent onto the bus as 64-byte CAN-FD frames addressed
+        to the Secondary.</span></li>
+      <li><span><b>Measurements returned.</b> The frames coming back are decoded on the
+        A53 into voltage and current readings for each channel.</span></li>
+      <li><span><b>Live telemetry.</b> Those readings are sent to the Web Application as
+        <span class="mono">0xCC</span> real-time packets over UDP, which completes the
+        loop.</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>The application, in numbers</h2>
+    <div class="metrics">
+      <div class="metric"><span class="n">8,327</span><span class="l">lines of production C across 62 files</span></div>
+      <div class="metric"><span class="n">4,942</span><span class="l">lines of test code, 18 suites</span></div>
+      <div class="metric pass"><span class="n">229</span><span class="l">automated checks &mdash; 0 failing</span></div>
+      <div class="metric"><span class="n">13</span><span class="l">design &amp; plan documents written before code</span></div>
+      <div class="metric"><span class="n">39</span><span class="l">architecture decisions recorded with reasons</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Scope of the demonstration</h2>
+    <div class="scopegrid">
+      <div class="sc ok">
+        <span class="k">Proven on hardware</span>
+        <p>Registration, program delivery and decoding, execution across the four threads,
+        the A53&ndash;M7 RPMsg link, CAN-FD transmission, and live telemetry to the Web
+        Application.</p>
+      </div>
+      <div class="sc pend">
+        <span class="k">Substituted</span>
+        <p>The Secondary board has not been built yet, so the M7 returned dummy values in
+        its place. This proves the data path and the decoding, but not the analogue
+        measurement itself.</p>
+      </div>
+      <div class="sc pend">
+        <span class="k">Still to come</span>
+        <p>A full battery-test run against a real Secondary, and automatic detection of
+        which channels are physically present. This has been designed and is awaiting
+        review.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>ME Primary Board &middot; NXP i.MX8M Plus &middot; Toradex Verdin &middot; Torizon OS</span>
+    <span>Page 1 of 2</span>
+  </footer>
+</article>
+
+
+<!-- ============ SHEET 2 ============ -->
+<article class="sheet">
+
+  <section>
+    <h2>How it was achieved &mdash; four things that helped, and one method</h2>
+    <p style="margin-bottom:3.4mm">
+      The engineering judgement did not come from the AI. Four things were already in
+      place before any code was written, and one working rule was followed throughout.
+      The four gave the AI a correct foundation to build on. The rule is the reason it
+      built the right thing the first time.
+    </p>
+    <div class="assets">
+      <div class="asset">
+        <span class="tag">Knowledge of the product</span>
+        <p>More than a year of work on a similar battery-test product meant that the
+        required behaviour was already clear. No requirement had to be settled during the
+        build, and any incorrect suggestion was identified immediately.</p>
+      </div>
+      <div class="asset">
+        <span class="tag">Protocol documents written beforehand</span>
+        <p>Nine specifications were written before coding began. They covered the TCP and
+        UDP packet layouts, registration, control, configuration, and how a test program
+        is encoded and decoded. Every frame format was taken from a document rather than
+        guessed.</p>
+      </div>
+      <div class="asset">
+        <span class="tag">The earlier BTS code</span>
+        <p>Code from the earlier BTS system, written manually by the team, was used as a
+        reference for the program logic and for the behaviour of each test step. Proven
+        behaviour was reused rather than designed again from scratch.</p>
+      </div>
+      <div class="asset">
+        <span class="tag">The Digatron CAN-FD specification</span>
+        <p>The master&ndash;slave CAN-FD document from the Digatron team defined exactly
+        how the Primary and the Secondary exchange data. Because that format was already
+        fixed, the task was to implement it rather than to design it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The method that made it repeatable</h2>
+    <div class="method">
+      <span class="tag">Applied strictly to every feature for three weeks</span>
+      <h3>Write the design first. Approve it. Then implement it.</h3>
+      <div class="loop">
+        <span>Context and specs given</span><i>&rarr;</i>
+        <span>AI drafts the design</span><i>&rarr;</i>
+        <span class="gate">Engineer approves</span><i>&rarr;</i>
+        <span>AI implements</span>
+      </div>
+      <p>
+        No feature, however small, was implemented before its design document had been
+        read and approved. Any disagreement was settled on the document, where a
+        correction costs one sentence, instead of in the code, where it costs a rewrite.
+        Thirteen design and plan documents were approved in this way before their code
+        was written, and thirty-nine architecture decisions were recorded together with
+        the reasons for them. The result was a build that needed very few retries or
+        corrections, because the intent was agreed before any code existed and the code
+        then matched it.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this means for future work</h2>
+    <p>
+      The speed came from having clear limits, not from working without them. The AI was
+      fast because the target was never in doubt: complete protocol documents, a working
+      reference implementation, an engineer who already knew the correct answer, and an
+      approved design before every change. With the same conditions in place, this method
+      should work equally well on the other boards in this family. Without them &mdash;
+      unclear requirements, undocumented protocols, or no review step &mdash; the same
+      tools would still produce code that looks correct but is not. The review effort
+      would not disappear. It would simply move from reading a document to debugging the
+      board.
+    </p>
+  </section>
+
+  <footer>
+    <span>Prepared by N. Nevrekar &middot; Engineering &middot; Circulated to Technical Management</span>
+    <span>Page 2 of 2</span>
+  </footer>
+</article>
+
+</body>
+</html>

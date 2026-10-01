@@ -1,0 +1,94 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+@using BatteryTestingSystem.Services.Implementations.Workflow
+
+@* ONE svg for every edge. One svg per edge would create a stacking context each and force the
+   whole scene to repaint whenever any single edge changed.
+   overflow:visible plus a zero-size viewport lets the paths extend anywhere in world space
+   without the svg having to be resized as the graph grows.
+
+   A board is not its own rendered node (D18-revised) — it is a small pin dot on its device's own
+   card. A Device->Board edge therefore draws nothing (there is no board card to point at); a
+   Board->Channel edge starts from that pin's computed position on the device instead of from the
+   board's own (unrendered) coordinates. *@
+
+<svg class="wf-edge-layer" width="1" height="1" aria-hidden="true">
+    @{ var boardSlots = BuildBoardSlots(); }
+    @foreach (var edge in Graph.Edges)
+    {
+        var from = Node(edge.FromNodeId);
+        var to = Node(edge.ToNodeId);
+
+        if (from is not null && to is not null)
+        {
+            if (from.Kind == NodeKind.Device && to.Kind == NodeKind.Board) continue;
+
+            EdgeEndpoints points;
+
+            // A pin edge leaves a device, but its FromNodeId is the (unrendered) board. Record the
+            // owning device and the pin's offset down that device's edge so a drag can recompute
+            // the start point: redrawEdgesFor matches on data-from/data-to, which a board id never
+            // matches, so without this dragging a device left all its channel edges behind.
+            string? pinOwner = null;
+            double pinFrac = 0;
+
+            if (from.Kind == NodeKind.Board && boardSlots.TryGetValue(from.Id, out var slot))
+            {
+                var (px, py) = WorkflowEdgeGeometry.BoardPinPoint(slot.Device, slot.SlotIndex, slot.TotalSlots);
+                points = new EdgeEndpoints(px, py, to.X,
+                    to.Y + WorkflowEdgeGeometry.NodeHeightFor(to.Kind, VisibleProperties) / 2);
+                pinOwner = slot.Device.Id;
+
+                // A FRACTION of the device card's height, not an absolute offset: the level-of-
+                // detail tiers resize cards via CSS, and JS multiplies this by the measured height
+                // so the pin stays on the card's edge at every zoom level.
+                pinFrac = (slot.SlotIndex + 0.5) / slot.TotalSlots;
+            }
+            else
+            {
+                points = WorkflowEdgeGeometry.PortPoints(from, to, VisibleProperties);
+            }
+
+            var d = WorkflowEdgeGeometry.BezierPath(points);
+            var stale = StaleNodeIds.Contains(from.Id) || StaleNodeIds.Contains(to.Id);
+
+            <path class="wf-edge @(edge.Kind == EdgeKind.Power ? "wf-edge--power" : "") @(stale ? "wf-edge--stale" : "")"
+                  d="@d"
+                  data-edge-id="@edge.Id"
+                  data-from="@edge.FromNodeId"
+                  data-to="@edge.ToNodeId"
+                  data-pin-owner="@pinOwner"
+                  data-pin-frac="@pinFrac.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+        }
+    }
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public WorkflowGraph Graph { get; set; } = WorkflowGraph.Empty;
+
+    /// <summary>How many measurements each channel card is showing. A channel card grows with
+    /// this, so the edge attachment point must follow it or lines land off-centre.</summary>
+    /// <summary>
+    /// The channel properties currently shown, NOT how many. A channel cell packs Primary Data two
+    /// values per row and the labelled sections one each, so the same count can mean different
+    /// heights - and this decides where an edge attaches vertically.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string> VisibleProperties { get; set; } = Array.Empty<string>();
+    [Parameter] public IReadOnlyCollection<string> StaleNodeIds { get; set; } = Array.Empty<string>();
+
+    private WorkflowNode? Node(string id) => Graph.Nodes.FirstOrDefault(n => n.Id == id);
+
+    private record BoardSlot(WorkflowNode Device, int SlotIndex, int TotalSlots);
+
+    private Dictionary<string, BoardSlot> BuildBoardSlots()
+    {
+        var result = new Dictionary<string, BoardSlot>();
+        foreach (var device in Graph.Nodes.Where(n => n.Kind == NodeKind.Device))
+        {
+            var boards = WorkflowGraphBuilder.BoardsForDevice(Graph, device.Id);
+            for (var i = 0; i < boards.Count; i++)
+                result[boards[i].Id] = new BoardSlot(device, i, boards.Count);
+        }
+        return result;
+    }
+}

@@ -1,0 +1,76 @@
+﻿@namespace BatteryTestingSystem.Components.Layout
+@using BatteryTestingSystem.Models.Entities
+
+<ThemeProvider Mode="@CurrentTheme">
+    <Navbar BrandName="@BrandName"
+            MenuItems="@MenuItems"
+            Alarms="@Alarms"
+            CurrentTheme="@CurrentTheme"
+            OnNavigate="@OnNavigate"
+            OnLogout="@OnLogout"
+            OnThemeChange="@OnThemeChange"
+            OnAlarmAcknowledge="@OnAlarmAcknowledge"
+            OnAlarmAcknowledgeAll="@OnAlarmAcknowledgeAll"
+            OnAlarmActivate="@OnAlarmActivate" />
+
+    <main class="flex-1 min-h-0 pt-14 ">  @* footer class :  pb-20 sm:pb-16 *@
+
+        <div class="h-full overflow-auto p-1">
+            @ChildContent
+        </div>
+    </main>
+
+    <Toaster Position="ToastPosition.TopRight" />
+
+</ThemeProvider>
+
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string BrandName { get; set; } = "App";
+
+    [Parameter]
+    public List<NavMenuItem>? MenuItems { get; set; }
+
+    [Parameter]
+    public List<AlarmLog>? Alarms { get; set; }
+
+    [Parameter]
+    public EventCallback<long> OnAlarmAcknowledge { get; set; }
+
+    [Parameter]
+    public EventCallback OnAlarmAcknowledgeAll { get; set; }
+
+    [Parameter]
+    public EventCallback<AlarmLog> OnAlarmActivate { get; set; }
+
+    [Parameter]
+    public List<ErrorItem>? Errors { get; set; }
+
+    [Parameter]
+    public List<EventLogItem>? EventLogs { get; set; }
+
+    [Parameter]
+    public int ActiveCount { get; set; }
+
+    [Parameter]
+    public int TotalCount { get; set; }
+
+    [Parameter]
+    public ThemeMode CurrentTheme { get; set; }
+
+    [Parameter]
+    public EventCallback<NavMenuItem> OnNavigate { get; set; }
+
+    [Parameter]
+    public EventCallback OnLogout { get; set; }
+
+    [Parameter]
+    public EventCallback<ThemeMode> OnThemeChange { get; set; }
+
+
+
+}

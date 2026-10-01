@@ -1,0 +1,919 @@
+﻿@page "/device/list"
+@attribute [Authorize]
+@attribute [StreamRendering]
+@inject ToastService Toast
+@implements IDisposable
+
+@inject IDeviceChannelServices DCService
+@inject ChannelManager CM
+
+
+@using BatteryTestingSystem.Models.DTOs
+@using BatteryTestingSystem.Models.Enums
+
+<PageHeader Title="Circuit Records" Description="All circuits and their live connection status" />
+
+@if (isBulkProcessing)
+{
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+        <div class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center min-w-[260px]">
+            <Blazicon Svg="Lucide.Loader" class="h-8 w-8 mb-4 animate-spin" />
+            <p class="text-lg font-medium">@bulkLabel</p>
+            @if (bulkTotal > 0)
+            {
+                <p class="text-sm text-muted-foreground mt-1">@bulkCompleted / @bulkTotal circuit(s)</p>
+                <div class="w-full bg-gray-200 rounded-full h-2 mt-3">
+                    <div class="bg-primary h-2 rounded-full transition-all duration-150"
+                         style="width:@((bulkTotal > 0 ? bulkCompleted * 100 / bulkTotal : 0))%"></div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<div class="h-[80%] flex flex-col">
+<DataTable TItem="ChannelDto"
+           Title="Records"
+           Subtitle="All circuits and their live connection status"
+           Data="@Data"
+           Search="true"
+           ExcelExport="true"
+           ExcelFileName="device-list"
+           ExcelSheetName="Devices"
+           PdfExport="true"
+           PdfFileName="device-list"
+           ExportHeaderText="Device & Circuit Registry"
+           ExportFooterText="@("Exported: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"))">
+
+    <Columns>
+
+        @* ── Selection ── *@
+
+        <ColumnDef TItem="ChannelDto" Key="select" Header="" Align="center">
+            <HeaderTemplate>
+                <input type="checkbox"
+                       title="Select all circuits"
+                       checked="@(Data.Any() && selectedKeys.Count == Data.Count)"
+                       @onchange="@((ChangeEventArgs e) => ToggleSelectAll((bool)(e.Value ?? false)))" />
+            </HeaderTemplate>
+            <CellTemplate Context="c">
+                <input type="checkbox"
+                       checked="@selectedKeys.Contains(GetKey(c))"
+                       @onchange="@((ChangeEventArgs e) => ToggleSelect(c, (bool)(e.Value ?? false)))" />
+            </CellTemplate>
+        </ColumnDef>
+
+        @* ── Core identity ── *@
+
+        <ColumnDef TItem="ChannelDto" Key="circuitId" Header="Circuit ID"
+                   SearchSelector="@(c => $"{c.DeviceID}-{c.SecondaryBoardNumber}-{c.ChannelNumber}")"
+                   ExcelValueSelector="@(c => $"{c.DeviceID}-{c.SecondaryBoardNumber}-{c.ChannelNumber}")">
+            <CellTemplate Context="c">
+                @($"{c.DeviceID}-{c.SecondaryBoardNumber}-{c.ChannelNumber}")
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="deviceName" Header="Device Name"
+                   SearchSelector="@(c => c.DeviceName ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.DeviceName ?? string.Empty)">
+            <CellTemplate Context="c">
+                @c.DeviceName
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="circuitType" Header="Circuit Type"
+                   Align="center"
+                   SearchSelector="@(c => c.ChannelType)"
+                   ExcelValueSelector="@(c => c.ChannelType)">
+            <CellTemplate Context="c">
+                <span style="font-size:11px; padding:1px 6px; border-radius:10px; font-weight:500;
+                             background:@(c.ChannelType == "Dual" ? "#ede9fe" : "#dbeafe");
+                             color:@(c.ChannelType == "Dual" ? "#6d28d9" : "#1d4ed8");">
+                    @c.ChannelType
+                </span>
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="macId" Header="MAC ID"
+                   SearchSelector="@(c => c.MACID ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.MACID ?? string.Empty)">
+            <CellTemplate Context="c">
+                @c.MACID
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="ipAddress" Header="IP Address"
+                   SearchSelector="@(c => c.IPAddress ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.IPAddress ?? string.Empty)">
+            <CellTemplate Context="c">
+                @c.IPAddress
+            </CellTemplate>
+        </ColumnDef>
+
+        @* DHCP hidden — user can toggle via column visibility *@
+        <ColumnDef TItem="ChannelDto" Key="dhcp" Header="DHCP"
+                   Align="center" Visible="false"
+                   SearchSelector="@(c => c.DHCPEnable ? "Enabled" : "Disabled")"
+                   ExcelValueSelector="@(c => c.DHCPEnable ? "Enabled" : "Disabled")">
+            <CellTemplate Context="c">
+                <Badge Variant="@GetBadge(c.DHCPEnable)">
+                    @(c.DHCPEnable ? "Enabled" : "Disabled")
+                </Badge>
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="connStatus" Header="Connection Status"
+                   Align="center"
+                   SearchSelector="@(c => IsOnline(c) ? "Online" : "Offline")"
+                   ExcelValueSelector="@(c => IsOnline(c) ? "Online" : "Offline")">
+            <CellTemplate Context="c">
+                @{ var online = IsOnline(c); }
+                <Badge Variant="@GetBadge(online)">
+                    @(online ? "Online" : "Offline")
+                </Badge>
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="tcpAccess" Header="TCP Access"
+                   Align="center"
+                   SearchSelector="@(c => c.IsRegistered ? "Allow" : "Disallow")"
+                   ExcelValueSelector="@(c => c.IsRegistered ? "Allow" : "Disallow")">
+            <CellTemplate Context="c">
+                <Badge Variant="@GetBadge(c.IsRegistered)">
+                    @(c.IsRegistered ? "Allow" : "Disallow")
+                </Badge>
+            </CellTemplate>
+        </ColumnDef>
+
+        @* ── Voltage / Current — visible by default ── *@
+
+        <ColumnDef TItem="ChannelDto" Key="zntMaxV" Header="ZNT Max V"
+                   Align="right"
+                   SearchSelector="@(c => c.ZntMaxVoltage?.ToString("F2") ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.ZntMaxVoltage.HasValue ? $"{c.ZntMaxVoltage:F2} V" : string.Empty)">
+            <CellTemplate Context="c">
+                @(c.ZntMaxVoltage.HasValue ? $"{c.ZntMaxVoltage:F2} V" : "—")
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="lntMaxV" Header="LNT Max V"
+                   Align="right"
+                   SearchSelector="@(c => c.LntMaxVoltage?.ToString("F2") ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.LntMaxVoltage.HasValue ? $"{c.LntMaxVoltage:F2} V" : string.Empty)">
+            <CellTemplate Context="c">
+                @(c.LntMaxVoltage.HasValue ? $"{c.LntMaxVoltage:F2} V" : "—")
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="circuitMaxV" Header="Circuit Max V"
+                   Align="right"
+                   SearchSelector="@(c => c.ChannelMaxVoltage?.ToString("F2") ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.ChannelMaxVoltage.HasValue ? $"{c.ChannelMaxVoltage:F2} V" : string.Empty)">
+            <CellTemplate Context="c">
+                @(c.ChannelMaxVoltage.HasValue ? $"{c.ChannelMaxVoltage:F2} V" : "—")
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="circuitMinV" Header="Circuit Min V"
+                   Align="right"
+                   SearchSelector="@(c => c.ChannelMinVoltage?.ToString("F2") ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.ChannelMinVoltage.HasValue ? $"{c.ChannelMinVoltage:F2} V" : string.Empty)">
+            <CellTemplate Context="c">
+                @(c.ChannelMinVoltage.HasValue ? $"{c.ChannelMinVoltage:F2} V" : "—")
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="maxDischargeI" Header="Max Discharge I"
+                   Align="right"
+                   SearchSelector="@(c => c.ChannelMaxDischargingCurrent?.ToString("F2") ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.ChannelMaxDischargingCurrent.HasValue ? $"{c.ChannelMaxDischargingCurrent:F2} A" : string.Empty)">
+            <CellTemplate Context="c">
+                @(c.ChannelMaxDischargingCurrent.HasValue ? $"{c.ChannelMaxDischargingCurrent:F2} A" : "—")
+            </CellTemplate>
+        </ColumnDef>
+
+        <ColumnDef TItem="ChannelDto" Key="maxChargeI" Header="Max Charge I"
+                   Align="right"
+                   SearchSelector="@(c => c.ChannelMaxChargingCurrent?.ToString("F2") ?? string.Empty)"
+                   ExcelValueSelector="@(c => c.ChannelMaxChargingCurrent.HasValue ? $"{c.ChannelMaxChargingCurrent:F2} A" : string.Empty)">
+            <CellTemplate Context="c">
+                @(c.ChannelMaxChargingCurrent.HasValue ? $"{c.ChannelMaxChargingCurrent:F2} A" : "—")
+            </CellTemplate>
+        </ColumnDef>
+
+        @* ── Actions ── *@
+
+        <ColumnDef TItem="ChannelDto" Key="actions" Header="Actions"
+                   Align="right"
+                   ExcelValueSelector="@(c => string.Empty)">
+            <CellTemplate Context="c">
+                <div style="display:flex; justify-content:flex-end; gap:4px; align-items:center;">
+
+                    <Tooltip>
+                        <TooltipTrigger>
+                            <Button variant="ButtonVariant.Ghost" size="ButtonSize.Icon"
+                                    @onclick="() => OpenInfo(c)">
+                                <Blazicon Svg="Lucide.Eye" class="h-4 w-4" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent Side="TooltipSide.Top"><span>View</span></TooltipContent>
+                    </Tooltip>
+
+                    <AuthorizeView Roles="Administrator,Supervisor,Maintenance">
+                        <Authorizing>
+                            @* Loading state - show nothing *@
+                        </Authorizing>
+                        <NotAuthorized>
+                            @* Not authorized - show nothing *@
+                        </NotAuthorized>
+                        <Authorized>
+                            @{ var rowBusy = _busyKeys.Contains(GetKey(c)); }
+                            @if (c.IsRegistered)
+                            {
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button size="ButtonSize.Icon" variant="ButtonVariant.Outline"
+                                                Disabled="@rowBusy"
+                                                OnClick="@(() => ShowRegisteredConfirm(c))">
+                                            @if (rowBusy)
+                                            {
+                                                <Blazicon Svg="Lucide.Loader" class="h-4 w-4 animate-spin" />
+                                            }
+                                            else
+                                            {
+                                                <Blazicon Svg="Lucide.CircleX" />
+                                            }
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top"><span>TCP Access Allowed</span></TooltipContent>
+                                </Tooltip>
+                            }
+                            else
+                            {
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button size="ButtonSize.Icon" variant="ButtonVariant.Outline"
+                                                Disabled="@rowBusy"
+                                                OnClick="@(() => ShowRegisteredConfirm(c))">
+                                            @if (rowBusy)
+                                            {
+                                                <Blazicon Svg="Lucide.Loader" class="h-4 w-4 animate-spin" />
+                                            }
+                                            else
+                                            {
+                                                <Blazicon Svg="Lucide.CircleCheck" />
+                                            }
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top"><span>TCP Access Disallow</span></TooltipContent>
+                                </Tooltip>
+                            }
+                        </Authorized>
+                    </AuthorizeView>
+
+                    <AuthorizeView Roles="Administrator,Supervisor">
+                        <Authorizing>
+                            @* Loading state - show nothing *@
+                        </Authorizing>
+                        <NotAuthorized>
+                            @* Not authorized - show nothing *@
+                        </NotAuthorized>
+                        <Authorized>
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <Button variant="ButtonVariant.Ghost" size="ButtonSize.Icon"
+                                            Disabled="@_busyKeys.Contains(GetKey(c))"
+                                            @onclick="() => ShowDeleteConfirm(c)">
+                                        @if (_busyKeys.Contains(GetKey(c)))
+                                        {
+                                            <Blazicon Svg="Lucide.Loader" class="h-4 w-4 animate-spin" />
+                                        }
+                                        else
+                                        {
+                                            <Blazicon Svg="Lucide.Trash" class="h-4 w-4" />
+                                        }
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent Side="TooltipSide.Left"><span>Delete</span></TooltipContent>
+                            </Tooltip>
+                        </Authorized>
+                    </AuthorizeView>
+
+                </div>
+            </CellTemplate>
+        </ColumnDef>
+
+    </Columns>
+
+    <ActionButtons>
+        <AuthorizeView Roles="Administrator,Supervisor,Maintenance">
+            <Authorized>
+                <button class="dt-tb-btn inline-flex items-center justify-center rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--success,120_60%_40%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] w-auto h-[1.8em] px-[.5em] text-[.85em] disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Register Selected Circuits"
+                        disabled="@isBulkProcessing"
+                        @onclick="RegisterSelectedAsync">
+                    Register Selected
+                </button>
+                <button class="dt-tb-btn inline-flex items-center justify-center rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--destructive,0_62%_50%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] w-auto h-[1.8em] px-[.5em] text-[.85em] disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Deregister All Circuits"
+                        disabled="@isBulkProcessing"
+                        @onclick="DeregisterAllAsync">
+                    Deregister All
+                </button>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Administrator,Supervisor">
+            <Authorized>
+                <button class="dt-tb-btn inline-flex items-center justify-center rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--foreground,0_0%_10%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] w-auto h-[1.8em] px-[.5em] text-[.85em]"
+                        title="Select All Circuits"
+                        @onclick="SelectAll">
+                    Select All
+                </button>
+                <button class="dt-tb-btn inline-flex items-center justify-center rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--foreground,0_0%_10%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] w-auto h-[1.8em] px-[.5em] text-[.85em]"
+                        title="Clear selection"
+                        @onclick="ClearSelection">
+                    Clear
+                </button>
+                @if (selectedKeys.Count > 0)
+                {
+                    <button class="dt-tb-btn inline-flex items-center justify-center rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--destructive,0_62%_50%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] w-auto h-[1.8em] px-[.5em] text-[.85em] disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Delete Selected Circuits"
+                            disabled="@isBulkProcessing"
+                            @onclick="ShowDeleteSelectedConfirm">
+                        Delete Selected (@selectedKeys.Count)
+                    </button>
+                }
+                <button class="dt-tb-btn inline-flex items-center justify-center rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--destructive,0_62%_50%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] w-auto h-[1.8em] px-[.5em] text-[.85em] disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete All Circuits"
+                        disabled="@isBulkProcessing"
+                        @onclick="ShowDeleteAllConfirm">
+                    Delete All
+                </button>
+            </Authorized>
+        </AuthorizeView>
+
+        <button class="dt-tb-btn inline-flex items-center justify-center w-6 h-6 rounded
+               border border-border bg-background text-muted-foreground
+               hover:bg-muted hover:text-foreground
+               transition-colors cursor-pointer text-xs"
+                title="Refresh data"
+                @onclick="GetLoadStartup">
+            ↺
+        </button>
+    </ActionButtons>
+</DataTable>
+</div>
+
+@* ════════════════════════════════════════════════
+   View / Detail Dialog
+   ════════════════════════════════════════════════ *@
+<Dialog @bind-open="@isInfoDialogOpen">
+    <DialogContent class="min-w-[560px] max-w-[680px]">
+        <DialogHeader>
+            <DialogTitle>
+                Circuit Detail — @($"{_infoCircuit?.DeviceID}-{_infoCircuit?.SecondaryBoardNumber}-{_infoCircuit?.ChannelNumber}")
+            </DialogTitle>
+            <DialogDescription>@_infoCircuit?.DeviceName</DialogDescription>
+        </DialogHeader>
+
+        @if (_infoCircuit != null)
+        {
+            @* ── Serial Numbers ── *@
+            <div style="margin-bottom:16px;">
+                <p style="font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase;
+                           letter-spacing:.05em; margin:0 0 8px;">Serial Numbers</p>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <InfoRow Label="Primary Serial" Value="@_infoCircuit.PrimarySerialNumber" />
+                    <InfoRow Label="Secondary Serial" Value="@_infoCircuit.SecondarySerialNumber" />
+                </div>
+            </div>
+
+            @* ── Software Versions ── *@
+            <div style="margin-bottom:16px;">
+                <p style="font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase;
+                           letter-spacing:.05em; margin:0 0 8px;">Software Versions</p>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+                    <InfoRow Label="Master SW" Value="@(_infoCircuit.MasterSwVersion ?? "—")" />
+                    <InfoRow Label="Com SW" Value="@(_infoCircuit.ComSwVersion ?? "—")" />
+                    <InfoRow Label="Secondary SW" Value="@(_infoCircuit.SecondarySwVersion ?? "—")" />
+                </div>
+            </div>
+
+            @* ── Dates ── *@
+            <div style="margin-bottom:16px;">
+                <p style="font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase;
+                           letter-spacing:.05em; margin:0 0 8px;">Dates</p>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <InfoRow Label="Manufacture Date"
+                             Value="@(_infoCircuit.ManufactureDateTime?.ToString("dd MMM yyyy") ?? "—")" />
+                    <InfoRow Label="Assembly Date"
+                             Value="@(_infoCircuit.AssemblyDate?.ToString("dd MMM yyyy") ?? "—")" />
+                    <InfoRow Label="Secondary Assembly Date"
+                             Value="@(_infoCircuit.SecondaryAssemblyDate?.ToString("dd MMM yyyy") ?? "—")" />
+                    <InfoRow Label="Commissioning Date"
+                             Value="@(_infoCircuit.CommissioningDateTime?.ToString("dd MMM yyyy") ?? "—")" />
+                </div>
+            </div>
+
+            @* ── Audit ── *@
+            <div>
+                <p style="font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase;
+                           letter-spacing:.05em; margin:0 0 8px;">Audit</p>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <InfoRow Label="Created By" Value="@(_infoCircuit.CreatedBy ?? "—")" />
+                    <InfoRow Label="Created At"
+                             Value="@(_infoCircuit.CreatedAt?.ToString("dd MMM yyyy HH:mm") ?? "—")" />
+                    <InfoRow Label="Updated By" Value="@(_infoCircuit.UpdatedBy ?? "—")" />
+                    <InfoRow Label="Updated At"
+                             Value="@(_infoCircuit.UpdatedAt?.ToString("dd MMM yyyy HH:mm") ?? "—")" />
+                </div>
+            </div>
+        }
+
+        <DialogFooter>
+            <Button variant="ButtonVariant.Outline" OnClick="() => isInfoDialogOpen = false">
+                Close
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+
+@* ════════════════════════════════════════════════
+   Confirmation Dialog
+   ════════════════════════════════════════════════ *@
+<Dialog @bind-open="@isConfirmDialogOpen">
+    <DialogContent class="min-w-[420px]">
+        <DialogHeader>
+            <DialogTitle>@confirmTitle</DialogTitle>
+            <DialogDescription>@confirmMessage</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+            <Button variant="ButtonVariant.Outline" OnClick="CloseConfirmDialog">Cancel</Button>
+            <Button variant="ButtonVariant.Destructive" OnClick="ExecuteConfirmAction">Confirm</Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+
+@* ── Inline helper component for label/value pairs inside the detail dialog ── *@
+@* Place this at the bottom of the file or in a shared location *@
+@code
+{
+    // ── Data ─────────────────────────────────────────────────────────────────
+    public List<ChannelDto> Data { get; set; } = new();
+    private List<IChannelCommandHandler> circuits = new();
+
+    // ── View dialog state ─────────────────────────────────────────────────────
+    private bool isInfoDialogOpen;
+    private ChannelDto? _infoCircuit;
+
+    // ── Confirmation dialog state ─────────────────────────────────────────────
+    private bool isConfirmDialogOpen;
+    private string confirmTitle = string.Empty;
+    private string confirmMessage = string.Empty;
+    private Func<Task>? confirmAction;
+
+    // ── Row selection state ───────────────────────────────────────────────────
+    private HashSet<string> selectedKeys = new();
+
+    // ── Per-row busy state (single-circuit register/deregister/delete) ─────────
+    private HashSet<string> _busyKeys = new();
+
+    // ── Bulk operation progress overlay state (register/deregister/delete many) ─
+    private bool isBulkProcessing;
+    private int bulkTotal;
+    private int bulkCompleted;
+    private string bulkLabel = string.Empty;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        circuits = CM._devices.Values.ToList();
+        CM.HardwareManagerChanged += HandleDeviceChange;
+        await GetLoadStartup();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private bool IsOnline(ChannelDto? context)
+    {
+        if (context == null) return false;
+        var key = $"{context.DeviceID}-{context.SecondaryBoardNumber}-{context.ChannelNumber}";
+        if (CM._devices.TryGetValue(key, out var device))
+            return device.IsConnected;
+        return false;
+    }
+
+    private BadgeVariant GetBadge(bool value) =>
+        value ? BadgeVariant.Default : BadgeVariant.Destructive;
+
+    private async Task GetLoadStartup()
+    {
+        var dtoList = await DCService.GetChannelsAsync();
+        if (dtoList.Success)
+            Data = dtoList.Data.Where(e => !e.IsDeleted).ToList()!;
+    }
+
+    private void HandleDeviceChange()
+    {
+        circuits = CM._devices.Values.ToList();
+        InvokeAsync(StateHasChanged);
+    }
+
+    // ── Row selection ─────────────────────────────────────────────────────────
+    private string GetKey(ChannelDto c) => $"{c.DeviceID}-{c.SecondaryBoardNumber}-{c.ChannelNumber}";
+
+    private void ToggleSelect(ChannelDto circuit, bool isChecked)
+    {
+        var key = GetKey(circuit);
+        if (isChecked) selectedKeys.Add(key);
+        else selectedKeys.Remove(key);
+    }
+
+    private void SelectAll() => selectedKeys = Data.Select(GetKey).ToHashSet();
+
+    private void ToggleSelectAll(bool isChecked)
+    {
+        if (isChecked) SelectAll();
+        else ClearSelection();
+    }
+
+    private void ClearSelection() => selectedKeys.Clear();
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+    private void OpenInfo(ChannelDto circuit)
+    {
+        _infoCircuit = circuit;
+        isInfoDialogOpen = true;
+    }
+
+    private async Task ShowDeleteConfirm(ChannelDto circuit)
+    {
+        confirmTitle = "Circuit Delete";
+        confirmMessage = $"Are you sure you want to Delete {circuit.DeviceID}-{circuit.SecondaryBoardNumber}-{circuit.ChannelNumber}? This action cannot be undone.";
+        confirmAction = () => DeleteCircuitAsync(circuit);
+        isConfirmDialogOpen = true;
+    }
+
+    private async Task ShowRegisteredConfirm(ChannelDto circuit)
+    {
+        if (circuit.IsRegistered)
+        {
+            confirmTitle = "Circuit Deregister";
+            confirmMessage = $"Are you sure you want to Deregister {circuit.DeviceID}-{circuit.SecondaryBoardNumber}-{circuit.ChannelNumber}? This action cannot be undone.";
+            confirmAction = () => UnRegisterCircuitAsync(circuit);
+        }
+        else
+        {
+            confirmTitle = "Circuit Register";
+            confirmMessage = $"Are you sure you want to register '{circuit.DeviceID}-{circuit.SecondaryBoardNumber}-{circuit.ChannelNumber}'?";
+            confirmAction = () => RegisterCircuitAsync(circuit);
+        }
+        isConfirmDialogOpen = true;
+    }
+
+    private async Task DeleteCircuitAsync(ChannelDto circuit)
+    {
+        var key = $"{circuit.DeviceID}-{circuit.SecondaryBoardNumber}-{circuit.ChannelNumber}";
+        var deviceFound = CM._devices.TryGetValue(key, out var device);
+
+        if (deviceFound && device?.RealTime?.RealTimeRecord?.ProgramStatus == ProgramRunningStatus.Running)
+        {
+            confirmTitle = "Force Delete Circuit";
+            confirmMessage = $"'{key}' program is currently running. Do you want to delete forcefully?";
+            confirmAction = async () =>
+            {
+                _busyKeys.Add(key);
+                StateHasChanged();
+                try
+                {
+                    CM.Remove(circuit);
+                    var result = await DCService.DeleteAsync(circuit);
+                    if (result.Success)
+                    {
+                        Toast.Success("Circuit deleted successfully.");
+                        await GetLoadStartup();
+                    }
+                    else
+                    {
+                        Toast.Error("Failed to delete circuit.");
+                    }
+                }
+                finally
+                {
+                    _busyKeys.Remove(key);
+                }
+            };
+            return;
+        }
+
+        _busyKeys.Add(key);
+        StateHasChanged();
+        try
+        {
+            var deleteResult = await DCService.DeleteAsync(circuit);
+            if (deleteResult.Success)
+            {
+                if (deviceFound) CM.Remove(circuit);
+                Toast.Success("Circuit deleted successfully.");
+                await GetLoadStartup();
+            }
+            else
+            {
+                Toast.Error("Failed to delete circuit.");
+            }
+        }
+        finally
+        {
+            _busyKeys.Remove(key);
+        }
+    }
+
+    private Task ShowDeleteSelectedConfirm()
+    {
+        if (selectedKeys.Count == 0)
+        {
+            Toast.Info("No circuits selected.");
+            return Task.CompletedTask;
+        }
+
+        var toDelete = Data.Where(c => selectedKeys.Contains(GetKey(c))).ToList();
+        confirmTitle = "Delete Selected Circuits";
+        confirmMessage = $"Are you sure you want to delete {toDelete.Count} selected circuit(s)? " +
+                          "Any with a running program will be force-deleted. This action cannot be undone.";
+        confirmAction = () => DeleteManyAsync(toDelete);
+        isConfirmDialogOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private Task ShowDeleteAllConfirm()
+    {
+        if (Data.Count == 0)
+        {
+            Toast.Info("No circuits to delete.");
+            return Task.CompletedTask;
+        }
+
+        confirmTitle = "Delete All Circuits";
+        confirmMessage = $"Are you sure you want to delete all {Data.Count} circuit(s)? " +
+                          "Any with a running program will be force-deleted. This action cannot be undone.";
+        confirmAction = () => DeleteManyAsync(Data.ToList());
+        isConfirmDialogOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteManyAsync(List<ChannelDto> circuits)
+    {
+        int success = 0, failed = 0;
+
+        isBulkProcessing = true;
+        bulkLabel = "Deleting Circuits...";
+        bulkTotal = circuits.Count;
+        bulkCompleted = 0;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            foreach (var circuit in circuits)
+            {
+                var key = GetKey(circuit);
+                var deviceFound = CM._devices.TryGetValue(key, out var device);
+
+                var result = await DCService.DeleteAsync(circuit);
+                if (result.Success)
+                {
+                    if (deviceFound) CM.Remove(circuit);
+                    success++;
+                }
+                else
+                {
+                    failed++;
+                }
+
+                selectedKeys.Remove(key);
+                bulkCompleted++;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        finally
+        {
+            isBulkProcessing = false;
+        }
+
+        if (failed == 0)
+            Toast.Success($"{success} circuit(s) deleted successfully.");
+        else
+            Toast.Warning($"{success} deleted, {failed} failed.");
+
+        await GetLoadStartup();
+    }
+
+    private async Task UnRegisterCircuitAsync(ChannelDto circuit)
+    {
+        var key = $"{circuit.DeviceID}-{circuit.SecondaryBoardNumber}-{circuit.ChannelNumber}";
+        var deviceFound = CM._devices.TryGetValue(key, out var device);
+
+        if (deviceFound && device?.RealTime?.RealTimeRecord?.ProgramStatus == ProgramRunningStatus.Running)
+        {
+            confirmTitle = "Force Deregister Circuit";
+            confirmMessage = $"'{key}' program is currently running. Do you want to deregister forcefully?";
+            confirmAction = async () => await DeregisterAsync(circuit, removeFromCM: true);
+            isConfirmDialogOpen = true;
+            return;
+        }
+
+        if (deviceFound)
+        {
+            await DeregisterAsync(circuit, removeFromCM: true);
+            return;
+        }
+
+        await DeregisterAsync(circuit, removeFromCM: false);
+    }
+
+    private async Task DeregisterAsync(ChannelDto circuit, bool removeFromCM)
+    {
+        var key = GetKey(circuit);
+        _busyKeys.Add(key);
+        StateHasChanged();
+        try
+        {
+            var deregister = await DCService.AllowCicuitAsync(circuit, false);
+            if (!deregister.Success)
+            {
+                Toast.Error("Failed to deregister circuit.");
+                return;
+            }
+            if (removeFromCM) CM?.Remove(circuit, true);
+            Toast.Success("Circuit deregistered successfully.");
+            await GetLoadStartup();
+        }
+        finally
+        {
+            _busyKeys.Remove(key);
+        }
+    }
+
+    private async Task RegisterCircuitAsync(ChannelDto circuit)
+    {
+        var key = GetKey(circuit);
+        _busyKeys.Add(key);
+        StateHasChanged();
+        try
+        {
+            var register = await DCService.AllowCicuitAsync(circuit, true);
+            if (register.Success)
+            {
+                Toast.Success("Circuit registered successfully.");
+                await GetLoadStartup();
+            }
+            else
+            {
+                Toast.Error("Failed to register circuit.");
+            }
+        }
+        finally
+        {
+            _busyKeys.Remove(key);
+        }
+    }
+
+    private async Task RegisterSelectedAsync()
+    {
+        if (selectedKeys.Count == 0)
+        {
+            Toast.Warning("Please select at least one circuit to register.");
+            return;
+        }
+
+        confirmTitle = "Register Selected Circuits";
+        confirmMessage = $"Are you sure you want to register {selectedKeys.Count} selected circuit(s)?";
+        confirmAction = async () =>
+        {
+            var unregistered = Data.Where(c => selectedKeys.Contains(GetKey(c)) && !c.IsRegistered).ToList();
+            if (unregistered.Count == 0)
+            {
+                Toast.Info("All selected circuits are already registered.");
+                return;
+            }
+
+            isBulkProcessing = true;
+            bulkLabel = "Registering Circuits...";
+            bulkTotal = unregistered.Count;
+            bulkCompleted = 0;
+            await InvokeAsync(StateHasChanged);
+
+            try
+            {
+                foreach (var circuit in unregistered)
+                {
+                    await DCService.AllowCicuitAsync(circuit, true);
+                    bulkCompleted++;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            finally
+            {
+                isBulkProcessing = false;
+            }
+
+            Toast.Success($"{unregistered.Count} circuits registered successfully.");
+            await GetLoadStartup();
+        };
+        isConfirmDialogOpen = true;
+    }
+
+    private async Task DeregisterAllAsync()
+    {
+        confirmTitle = "Deregister All Circuits";
+        confirmMessage = "Are you sure you want to deregister all circuits? This will disconnect all active sessions.";
+        confirmAction = async () =>
+        {
+            var registered = Data.Where(c => c.IsRegistered).ToList();
+            if (registered.Count == 0)
+            {
+                Toast.Info("No circuits are currently registered.");
+                return;
+            }
+
+            isBulkProcessing = true;
+            bulkLabel = "Deregistering Circuits...";
+            bulkTotal = registered.Count;
+            bulkCompleted = 0;
+            await InvokeAsync(StateHasChanged);
+
+            try
+            {
+                foreach (var circuit in registered)
+                {
+                    await DCService.AllowCicuitAsync(circuit, false);
+                    var key = $"{circuit.DeviceID}-{circuit.SecondaryBoardNumber}-{circuit.ChannelNumber}";
+                    if (CM._devices.TryGetValue(key, out var device))
+                    {
+                        CM.Remove(circuit, true);
+                    }
+                    bulkCompleted++;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            finally
+            {
+                isBulkProcessing = false;
+            }
+
+            Toast.Success($"{registered.Count} circuits deregistered successfully.");
+            await GetLoadStartup();
+        };
+        isConfirmDialogOpen = true;
+    }
+
+    // ── Confirm dialog ────────────────────────────────────────────────────────
+    private void CloseConfirmDialog()
+    {
+        isConfirmDialogOpen = false;
+        confirmAction = null;
+    }
+
+    private async Task ExecuteConfirmAction()
+    {
+        if (confirmAction != null)
+            await confirmAction();
+        CloseConfirmDialog();
+    }
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+    public void Dispose()
+    {
+        try
+        {
+            CM.HardwareManagerChanged -= HandleDeviceChange;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+    // ── Local render helper: label/value row used inside the detail dialog ────
+    private RenderFragment InfoRow(string Label, string Value) => __builder =>
+    {
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "style",
+            "background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:8px 10px;");
+
+        __builder.OpenElement(2, "p");
+        __builder.AddAttribute(3, "style",
+            "font-size:10px; color:#9ca3af; margin:0 0 2px; text-transform:uppercase; letter-spacing:.04em;");
+        __builder.AddContent(4, Label);
+        __builder.CloseElement();
+
+        __builder.OpenElement(5, "p");
+        __builder.AddAttribute(6, "style",
+            "font-size:12px; font-weight:500; color:#111827; margin:0; word-break:break-all;");
+        __builder.AddContent(7, Value);
+        __builder.CloseElement();
+
+        __builder.CloseElement();
+    };
+}

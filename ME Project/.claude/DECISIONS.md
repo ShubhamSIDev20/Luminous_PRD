@@ -1,0 +1,53 @@
+# DECISIONS.md — ADR Index
+> Updated: 2026-08-21T11:15+05:30
+> Full detail for any decision lives in `DECISIONS/{filename}` — this file only indexes and describes.
+> Future agents: scan this table before changing architecture or patterns.
+
+---
+
+## 📜 Decisions
+<!-- Newest first. One row per decision, ever. -->
+| ID | Decision | File | Date | Session | Status |
+|----|----------|------|------|---------|--------|
+| ADR-39 | SET_VALUES CAN-FD transmission is never coalesced (READ-only rate limit) | [DECISIONS/2026-08-21_set-values-never-coalesced-tx.md](DECISIONS/2026-08-21_set-values-never-coalesced-tx.md) | 2026-08-21 | #16 | Accepted — ⚠️ hardware-critical, ✅ HARDWARE-VERIFIED |
+| ADR-38 | Separate SET/READ CAN-FD buffers in `can_mgr.c`; doubles as M7-echo filter | [DECISIONS/2026-08-20_separate-set-read-can-buffers-echo-filter.md](DECISIONS/2026-08-20_separate-set-read-can-buffers-echo-filter.md) | 2026-08-20 | #15 | Accepted — ⚠️ hardware-critical, ✅ HARDWARE-VERIFIED (caveat: discard branch not yet exercised) |
+| ADR-37 | A missed SET_VALUES response retries with READ_VALUES, never re-sends SET_VALUES | [DECISIONS/2026-08-20_set-timeout-retries-with-read-not-set.md](DECISIONS/2026-08-20_set-timeout-retries-with-read-not-set.md) | 2026-08-20 | #15 | Accepted — ⚠️ hardware-critical, ✅ HARDWARE-VERIFIED |
+| ADR-36 | `step_run_ms`/`program_run_ms` accumulate unconditionally, not gated on CAN response state | [DECISIONS/2026-08-20_step-time-accumulates-unconditionally.md](DECISIONS/2026-08-20_step-time-accumulates-unconditionally.md) | 2026-08-20 | #15 | Accepted — ⚠️ hardware-critical, ✅ HARDWARE-VERIFIED |
+| ADR-35 | One physical CAN-FD frame per Secondary/block, not one per channel (TX coalescing) | [DECISIONS/2026-08-20_one-canfd-frame-per-block-tx-coalescing.md](DECISIONS/2026-08-20_one-canfd-frame-per-block-tx-coalescing.md) | 2026-08-20 | #15 | Accepted — ⚠️ hardware-critical, ✅ HARDWARE-VERIFIED |
+| ADR-34 | `idle_loop()` periodically retries registration for a circuit still awaiting approval | [DECISIONS/2026-08-20_periodic-retry-for-pending-registration.md](DECISIONS/2026-08-20_periodic-retry-for-pending-registration.md) | 2026-08-20 | #14 | Accepted — ⚠️ hardware-critical, ✅ HARDWARE-VERIFIED |
+| ADR-33 | Production Dockerfile temporarily `scratch` → `debian:bookworm-slim` (restores `-it`/`apt-get`) | [DECISIONS/2026-08-20_debian-bookworm-slim-debug-image.md](DECISIONS/2026-08-20_debian-bookworm-slim-debug-image.md) | 2026-08-20 | #13 | Accepted — ⚠️ hardware-critical, TEMPORARY, developer-approved |
+| ADR-32 | Secondary 1 registers all 4 channels per connection; CAN-FD SET_VALUES coalesced per block | [DECISIONS/2026-08-19_secondary1-multichannel-can-coalescing.md](DECISIONS/2026-08-19_secondary1-multichannel-can-coalescing.md) | 2026-08-19 | #12 | Accepted — ⚠️ hardware-critical, not yet hardware-verified |
+| ADR-31 | CAN-FD RPMsg round-trip latency logged per Secondary, microseconds | [DECISIONS/2026-08-19_can-rpmsg-rtt-latency-logging.md](DECISIONS/2026-08-19_can-rpmsg-rtt-latency-logging.md) | 2026-08-19 | #11 | Accepted |
+| ADR-30 | CPU3 core isolation + production Dockerfile/Compose/CI release | [DECISIONS/2026-08-19_cpu3-core-isolation-cicd-release.md](DECISIONS/2026-08-19_cpu3-core-isolation-cicd-release.md) | 2026-08-19 | #11 | Accepted — ⚠️ hardware-critical, developer-approved |
+| ADR-29 | Real RPMsg CAN transport replaces the fabricated `can_mgr.c` responder | [DECISIONS/2026-08-18_real-rpmsg-can-transport.md](DECISIONS/2026-08-18_real-rpmsg-can-transport.md) | 2026-08-18/19 | #11 | Accepted, partially hardware-verified |
+| ADR-28 | Zero-fill unaddressed CAN slots; block selection for ch 5-8 deferred | [DECISIONS/2026-08-14_can-slot-zero-fill-block-selection.md](DECISIONS/2026-08-14_can-slot-zero-fill-block-selection.md) | 2026-08-14 | #10 | Accepted — item 1 resolved by ADR-32 |
+| ADR-27 | Real program-step execution implemented; `demo_realtime` deleted | [DECISIONS/2026-08-14_real-step-execution-demo-realtime-deleted.md](DECISIONS/2026-08-14_real-step-execution-demo-realtime-deleted.md) | 2026-08-14/15 | #10 | Accepted, NOT hardware-verified |
+| ADR-26 | `CCChg`'s trailing registration-parameters block is ALWAYS present | [DECISIONS/2026-08-15_ccchg-registration-params-always-present.md](DECISIONS/2026-08-15_ccchg-registration-params-always-present.md) | 2026-08-15 | #10 | Accepted |
+| ADR-25 | CAN-FD `SET_VALUES`/`READ_VALUES` is a two-phase, developer-clarified exchange | [DECISIONS/2026-08-14_can-fd-set-read-values-two-phase.md](DECISIONS/2026-08-14_can-fd-set-read-values-two-phase.md) | 2026-08-14 | #10 | Accepted |
+| ADR-24 | Git version control adopted; `main`/`develop` branch workflow | [DECISIONS/2026-08-14_git-version-control-main-develop-workflow.md](DECISIONS/2026-08-14_git-version-control-main-develop-workflow.md) | 2026-08-14/15 | #9/#10 | Accepted |
+| ADR-23 | One `0xCC` frame per successful registration — temporary demo | [DECISIONS/2026-08-12_post-registration-0xcc-demo-frame.md](DECISIONS/2026-08-12_post-registration-0xcc-demo-frame.md) | 2026-08-12 | #9 | Accepted — TEMPORARY, not hardware-verified |
+| ADR-22 | `0xAA` gets real frame-length entries; the CRC becomes its backstop | [DECISIONS/2026-08-12_0xaa-frame-length-table-crc-backstop.md](DECISIONS/2026-08-12_0xaa-frame-length-table-crc-backstop.md) | 2026-08-12 | #9 | Accepted — not hardware-verified |
+| ADR-21 | The battery record is 40 bytes, and a short payload is refused | [DECISIONS/2026-08-12_battery-record-40-bytes-refuse-short.md](DECISIONS/2026-08-12_battery-record-40-bytes-refuse-short.md) | 2026-08-12 | #9 | Accepted — not hardware-verified |
+| ADR-20 | Transcribe the config workbook into `Ref Docs/bm_config_v6.0.md` | [DECISIONS/2026-08-12_transcribe-config-workbook-bm-config-v6.md](DECISIONS/2026-08-12_transcribe-config-workbook-bm-config-v6.md) | 2026-08-12 | #9 | Accepted |
+| ADR-19 | The CRC is the frame delimiter of last resort | [DECISIONS/2026-08-12_crc-frame-delimiter-of-last-resort.md](DECISIONS/2026-08-12_crc-frame-delimiter-of-last-resort.md) | 2026-08-12 | #8 | Accepted — amended by #9, not hardware-verified |
+| ADR-18 | The board answers `0xBB` Q1/Q3/Q4, behind the admission gate | [DECISIONS/2026-08-12_0xbb-q1-q3-q4-replies-admission-gate.md](DECISIONS/2026-08-12_0xbb-q1-q3-q4-replies-admission-gate.md) | 2026-08-12 | #7 | Accepted — extended by #8, not hardware-verified |
+| ADR-17 | Frames are admitted per-circuit, gated in `route_frame()` alone | [DECISIONS/2026-08-12_per-circuit-admission-gate-route-frame.md](DECISIONS/2026-08-12_per-circuit-admission-gate-route-frame.md) | 2026-08-12 | #6 | Accepted — interim scope, known/accepted |
+| ADR-16 | The demo real-time emitter is scaffolding, quarantined in one file | [DECISIONS/2026-08-11_demo-realtime-emitter-scaffolding.md](DECISIONS/2026-08-11_demo-realtime-emitter-scaffolding.md) | 2026-08-11 | #4 | Accepted — ⚠️ TEMPORARY |
+| ADR-15 | The 1 Hz cadence comes from the queue receive timeout | [DECISIONS/2026-08-11_1hz-cadence-from-queue-receive-timeout.md](DECISIONS/2026-08-11_1hz-cadence-from-queue-receive-timeout.md) | 2026-08-11 | #4 | Accepted |
+| ADR-14 | Program completion is detected from the chain terminator | [DECISIONS/2026-08-11_program-completion-chain-terminator.md](DECISIONS/2026-08-11_program-completion-chain-terminator.md) | 2026-08-11 | #4 | Accepted |
+| ADR-13 | A malformed CircuitID is rejected, never folded to slot 0 | [DECISIONS/2026-08-11_malformed-circuitid-rejected-not-folded.md](DECISIONS/2026-08-11_malformed-circuitid-rejected-not-folded.md) | 2026-08-11 | #4 | Accepted |
+| ADR-12 | Every queue send has a finite timeout and drops on expiry | [DECISIONS/2026-08-11_queue-send-finite-timeout-drop-on-expiry.md](DECISIONS/2026-08-11_queue-send-finite-timeout-drop-on-expiry.md) | 2026-08-11 | #4 | Accepted |
+| ADR-11 | In-process message queues, not POSIX `mq_open` | [DECISIONS/2026-08-11_in-process-message-queues-not-posix-mq.md](DECISIONS/2026-08-11_in-process-message-queues-not-posix-mq.md) | 2026-08-11 | #4 | Accepted |
+| ADR-10 | Response Value 0x02 is success; the board idles after registering | [DECISIONS/2026-08-10_response-0x02-is-success-board-idles.md](DECISIONS/2026-08-10_response-0x02-is-success-board-idles.md) | 2026-08-10 | #3 | Accepted — ✅ HARDWARE-VERIFIED |
+| ADR-9 | CRC goes on the wire BIG-ENDIAN (high byte first) — supersedes ADR-5 | [DECISIONS/2026-08-10_crc-big-endian-supersedes-adr5.md](DECISIONS/2026-08-10_crc-big-endian-supersedes-adr5.md) | 2026-08-10 | #3 | Accepted — ✅ HARDWARE-VERIFIED, both directions |
+| ADR-8 | No `getaddrinfo` — server addresses are dotted-quad literals | [DECISIONS/2026-08-07_no-getaddrinfo-dotted-quad-literals.md](DECISIONS/2026-08-07_no-getaddrinfo-dotted-quad-literals.md) | 2026-08-07 | #2 | Accepted |
+| ADR-7 | `proto/` stays free of platform headers; the native build runs unit tests | [DECISIONS/2026-08-07_proto-platform-free-native-build-tests.md](DECISIONS/2026-08-07_proto-platform-free-native-build-tests.md) | 2026-08-07 | #2 | Accepted |
+| ADR-6 | The container must run with `--network host` | [DECISIONS/2026-08-07_container-network-host-required.md](DECISIONS/2026-08-07_container-network-host-required.md) | 2026-08-07 | #2 | Accepted |
+| ADR-5 | CRC byte order is runtime-selectable, defaulting to little-endian | [DECISIONS/2026-08-07_crc-byte-order-runtime-selectable-le-default.md](DECISIONS/2026-08-07_crc-byte-order-runtime-selectable-le-default.md) | 2026-08-07 | #2 | **SUPERSEDED by ADR-9** |
+| ADR-4 | `bm_device_registration_v5.0` is authoritative; ICD §3.4 response is wrong | [DECISIONS/2026-08-07_bm-device-registration-v5-authoritative.md](DECISIONS/2026-08-07_bm-device-registration-v5-authoritative.md) | 2026-08-07 | #2 | Accepted |
+| ADR-3 | No local execution of the aarch64 binary; MinGW native build for logic checks only | [DECISIONS/2026-08-06_no-local-aarch64-execution-mingw-native-build.md](DECISIONS/2026-08-06_no-local-aarch64-execution-mingw-native-build.md) | 2026-08-06 | #1 | Accepted |
+| ADR-2 | Link board binaries statically | [DECISIONS/2026-08-06_link-board-binaries-statically.md](DECISIONS/2026-08-06_link-board-binaries-statically.md) | 2026-08-06 | #1 | Accepted |
+| ADR-1 | Standalone Arm GNU cross-toolchain instead of Docker Desktop or WSL2 | [DECISIONS/2026-08-06_standalone-arm-gnu-toolchain.md](DECISIONS/2026-08-06_standalone-arm-gnu-toolchain.md) | 2026-08-06 | #1 | Accepted |
+
+**Rule:** The "Decision" column stays one line — enough to recognize the decision, not explain it. Anything more belongs in the linked file.
+**Rule:** New rows go at the TOP of the table — newest first.

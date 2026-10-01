@@ -1,0 +1,28 @@
+@using BatteryTestingSystem.Components.UI.Accordion
+
+@if (Item?.IsOpen == true)
+{
+    <div class="@GetContentClasses()" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+
+@code {
+    [CascadingParameter]
+    public AccordionItem? Item { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetContentClasses()
+    {
+        var baseClasses = "overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down pb-4 pt-0";
+        return $"{baseClasses} {Class ?? ""}".Trim();
+    }
+}

@@ -1,0 +1,621 @@
+﻿@namespace BatteryTestingSystem.Components.Layout
+@using BatteryTestingSystem.Components.Pages.Home
+@using BatteryTestingSystem.Components.Pages.Settings
+@using BatteryTestingSystem.Components.UI.UserManual
+@using BatteryTestingSystem.Models.Entities
+@using BatteryTestingSystem.Models.Enums
+
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-border bg-card">
+    <div class="flex items-center justify-between px-4 py-2">
+
+        @* Left: Logo *@
+        <div class="text-primary font-bold text-lg cursor-pointer" @onclick="@(() => Navigate(MenuItems?.FirstOrDefault() ?? new NavMenuItem {Url = "/", Title = "Home", ComponentType = typeof(DashboardView), Icon = Lucide.House}))">
+            @BrandName
+        </div>
+
+        @* Center: Menu (Desktop) *@
+        <div class="hidden md:flex items-center gap-1">
+            @if (MenuItems != null)
+            {
+                @foreach (var item in MenuItems)
+                {
+                    @if (item.Dropdown != null && item.Dropdown.Any())
+                    {
+                        <DropdownMenu>
+                            <DropdownMenuTrigger>
+                                <Button Variant="ButtonVariant.Ghost" Class="flex items-center gap-1">
+                                    @if (item.Icon != null)
+                                    {
+                                        <Blazicon Svg="item.Icon" class="h-4 w-4" />
+                                    }
+                                    <span>@item.Title</span>
+                                    <Blazicon Svg="Lucide.ChevronDown" class="h-3 w-3 ml-1" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                @foreach (var subItem in item.Dropdown)
+                                {
+                                    <DropdownMenuItem OnClick="@(() => Navigate(subItem))">
+                                        @subItem.Title
+                                    </DropdownMenuItem>
+                                }
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    }
+                    else
+                    {
+                        <Button Variant="ButtonVariant.Ghost"
+                        Class="flex items-center gap-2"
+                        OnClick="@(() => Navigate(item))">
+                            @if (item.Icon != null)
+                            {
+                                <Blazicon Svg="item.Icon" class="h-4 w-4" />
+                            }
+                            <span>@item.Title</span>
+                        </Button>
+                    }
+                }
+            }
+        </div>
+
+        @* Right: Notifications, Settings, Theme, Profile *@
+        <div class="flex items-center gap-2">
+
+            @* User Manual *@
+            <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+            title="User Manual"
+            OnClick="@(() => Navigate(new NavMenuItem { Url = "/help/manual", Icon = Lucide.BookOpen, Title = "User Manual", ComponentType = typeof(UserManual), Unique = true }))">
+                <Blazicon Svg="Lucide.BookOpen" class="h-5 w-5" />
+            </Button>
+
+            @* Alarms Popover *@
+            <Popover>
+                <PopoverTrigger>
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon" Class="relative" title="Alarms">
+                        <Blazicon Svg="@(HasCritical ? Lucide.BellRing : Lucide.Bell)"
+                                  class="@($"h-5 w-5 {(HasCritical ? "animate-pulse text-destructive" : "")}")" />
+                        @if (UnackedCount > 0)
+                        {
+                            <span class="@BadgeClasses">
+                                @(UnackedCount > 99 ? "99+" : UnackedCount.ToString())
+                            </span>
+                        }
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent Class="w-96 p-0 rounded-xl shadow-lg overflow-hidden" Align="PopoverAlign.End">
+
+                    @* Header *@
+                    <div class="flex items-center justify-between px-3 py-2.5 border-b border-border bg-muted/30">
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-semibold text-sm">Alarms</h3>
+                            @if (UnackedCount > 0)
+                            {
+                                <span class="text-xs text-muted-foreground">@UnackedCount unacknowledged</span>
+                            }
+                        </div>
+                        <div class="flex items-center gap-0.5">
+                            <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                    title="Acknowledge all" Class="h-7 w-7"
+                                    OnClick="@AcknowledgeAll">
+                                <Blazicon Svg="Lucide.CheckCheck" class="h-4 w-4" />
+                            </Button>
+                            <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                    title="Alarm settings" Class="h-7 w-7"
+                                    OnClick="@(() => Navigate(new NavMenuItem { Url = "/settings/notifications", Icon = Lucide.BellRing, Title = "Alarm Settings", ComponentType = typeof(NotificationSettings), Unique = true }))">
+                                <Blazicon Svg="Lucide.Settings" class="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+
+                    @* Filter *@
+                    <div class="flex gap-1 px-2 py-2 border-b border-border">
+                        @foreach (var f in new[] { AlarmFilter.All, AlarmFilter.Unacked, AlarmFilter.Critical })
+                        {
+                            var filter = f;
+                            <button class="@FilterChipClasses(filter)" @onclick="@(() => _filter = filter)">
+                                @filter.ToString()
+                            </button>
+                        }
+                    </div>
+
+                    @* List *@
+                    <ScrollArea Class="max-h-[420px]">
+                        @if (!FilteredAlarms.Any())
+                        {
+                            <div class="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
+                                <Blazicon Svg="Lucide.BellOff" class="h-8 w-8 opacity-40" />
+                                <p class="text-sm">No active alarms</p>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var group in FilteredAlarms.Take(_displayedAlarms)
+                                                                 .GroupBy(a => a.LastSeenUtc.ToLocalTime().Date))
+                            {
+                                <div class="sticky top-0 z-10 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground bg-background/95 backdrop-blur border-b border-border/50">
+                                    @DayLabel(group.Key)
+                                </div>
+
+                                @foreach (var alarm in group)
+                                {
+                                    var current = alarm;
+                                    <div class="@RowClasses(current)" @onclick="@(() => ActivateAlarm(current))">
+                                        <span class="@AccentClasses(current.Severity)"></span>
+
+                                        <div class="flex-1 min-w-0 pl-2.5 pr-1 py-2.5">
+                                            <div class="flex items-start gap-2">
+                                                <Blazicon Svg="@SeverityIcon(current.Severity)"
+                                                          class="@($"h-4 w-4 mt-0.5 shrink-0 {SeverityTextClass(current.Severity)}")" />
+                                                <div class="flex-1 min-w-0">
+                                                    <div class="flex items-center gap-1.5">
+                                                        <p class="text-sm font-medium truncate">@current.Title</p>
+                                                        @if (current.OccurrenceCount > 1)
+                                                        {
+                                                            <span class="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                                                x@current.OccurrenceCount
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                    <p class="text-xs text-muted-foreground line-clamp-2 mt-0.5">@current.Message</p>
+                                                </div>
+                                                <div class="flex flex-col items-end gap-1 shrink-0">
+                                                    <span class="text-[11px] text-muted-foreground">@RelativeTime(current.LastSeenUtc)</span>
+                                                    @if (current.AcknowledgedAtUtc == null)
+                                                    {
+                                                        <button class="hidden group-hover:inline-flex text-[11px] font-medium text-primary hover:underline"
+                                                                @onclick:stopPropagation="true"
+                                                                @onclick="@(() => Acknowledge(current.Id))">
+                                                            Ack
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+
+                            @if (FilteredAlarms.Count() > _displayedAlarms)
+                            {
+                                <Button Variant="ButtonVariant.Ghost" Class="w-full rounded-none" OnClick="@LoadMoreAlarms">
+                                    Load More
+                                </Button>
+                            }
+                        }
+                    </ScrollArea>
+
+                    @* Footer *@
+                    <div class="border-t border-border px-3 py-2 bg-muted/20">
+                        <button class="text-xs font-medium text-primary hover:underline"
+                                @onclick="@(() => Navigate(new NavMenuItem { Url = "/settings/notifications", Icon = Lucide.BellRing, Title = "Alarm Settings", ComponentType = typeof(NotificationSettings), Unique = true }))">
+                            View all alarms →
+                        </button>
+                    </div>
+                </PopoverContent>
+            </Popover>
+
+            @* Settings Dropdown *@
+            <DropdownMenu>
+                <DropdownMenuTrigger>
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon" Class="flex items-center">
+                        <Blazicon Svg="Lucide.Settings" class="h-5 w-5" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Align="DropdownAlign.End" Class="w-48">
+                    <DropdownMenuItem OnClick="@(() => Navigate(new NavMenuItem { Url = "/settings/notifications", Icon = Lucide.BellRing, Title = "Alarm Settings", ComponentType = typeof(NotificationSettings), Unique = true }))">
+                        Alarm Settings
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem OnClick="@(() => Navigate(new NavMenuItem { Url = "/settings/CardConfiguration", Icon = Lucide.LayoutGrid, Title = "Card Configuration", ComponentType = typeof(CardConfiguration), Unique = true }))">
+                        Card Configuration
+                    </DropdownMenuItem>
+
+                    <AuthorizeView Roles="Administrator,Maintenance">
+                        <DropdownMenuItem OnClick="@(() => Navigate(new NavMenuItem { Url = "/settings/live-logs", Icon= Lucide.Logs, Title = "logs", ComponentType = typeof(LiveLogs)}))">
+                            Logs
+                        </DropdownMenuItem>
+                        <DropdownMenuItem OnClick="@(() => Navigate(new NavMenuItem { Url = "/settings/Discover", Icon= Lucide.Logs, Title = "Discover", ComponentType = typeof(DeviceDiscovery), keepAlive = true}))">
+                            Discover
+                        </DropdownMenuItem>
+                    </AuthorizeView>
+
+                    <AuthorizeView Roles="Administrator,Supervisor">
+                        <DropdownMenuItem OnClick="@(() => Navigate(new NavMenuItem { Url = "/settings/auditLogs", Icon= Lucide.ClipboardList, Title = "Audit Logs", ComponentType = typeof(ApplicationErrorLogs), Unique = true }))">
+                            Audit Logs
+                        </DropdownMenuItem>
+                    </AuthorizeView>
+
+                    <AuthorizeView Roles="Administrator,Supervisor,Maintenance">
+
+                        <DropdownMenuSeparator />
+                        <DropdownMenuSub>
+                            <DropdownMenuSubTrigger>
+                                User Management
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent>
+                                <DropdownMenuItem OnClick="@(() => Navigate(new NavMenuItem { Url = "/settings/users", Icon = Lucide.User,  Title = "Users", ComponentType = typeof(Users), Unique = true }))">
+                                    Users
+                                </DropdownMenuItem>
+                            </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+
+                    </AuthorizeView>
+
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            @* Theme Toggle Dropdown *@
+            <DropdownMenu>
+                <DropdownMenuTrigger>
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon" Class="flex items-center">
+                        @if (CurrentTheme == ThemeMode.Light)
+                        {
+                            <!-- Light Theme -->
+                            <Blazicon Svg="Lucide.Sun" class="w-5 h-5" />
+
+                        }
+                        else if (CurrentTheme == ThemeMode.System)
+                        {
+                            <!-- System Theme -->
+                            <Blazicon Svg="Lucide.Monitor" class="w-5 h-5" />
+
+                        }
+                        else if (CurrentTheme == ThemeMode.Dark)
+                        {
+                            <!-- Dark Theme -->
+                            <Blazicon Svg="Lucide.Moon" class="w-5 h-5" />
+
+                        }
+                        else if (CurrentTheme == ThemeMode.ShieldOS)
+                        {
+                            <!-- Shield OS -->
+                            <Blazicon Svg="Lucide.Shield" class="w-5 h-5" />
+
+                        }
+                        else if (CurrentTheme == ThemeMode.IronMan)
+                        {
+                            <!-- IronMan Tech Eye Icon -->
+                            <Blazicon Svg="Lucide.Scan" class="w-5 h-5" />
+
+                        }
+                        else if (CurrentTheme == ThemeMode.Tech)
+                        {
+                            <!-- Tech Chip Icon -->
+                            <Blazicon Svg="Lucide.Cpu" class="w-5 h-5" />
+
+                        }
+                        else if (CurrentTheme == ThemeMode.Future)
+                        {
+                            <!-- Futuristic Rocket -->
+                            <Blazicon Svg="Lucide.Rocket" class="w-5 h-5" />
+
+                        }
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Align="DropdownAlign.End">
+
+                    <!-- LIGHT -->
+                    <DropdownMenuItem OnClick="@(() => HandleThemeChange(ThemeMode.Light))">
+                        <div class="flex items-center gap-3">
+                            <Blazicon Svg="Lucide.Sun" class="w-5 h-5" />
+                            <span>Light</span>
+                        </div>
+                    </DropdownMenuItem>
+
+                    <!-- DARK -->
+                    <DropdownMenuItem OnClick="@(() => HandleThemeChange(ThemeMode.Dark))">
+                        <div class="flex items-center gap-3">
+                            <Blazicon Svg="Lucide.Moon" class="w-5 h-5" />
+                            <span>Dark</span>
+                        </div>
+                    </DropdownMenuItem>
+
+                    <!-- SYSTEM -->
+                    <DropdownMenuItem OnClick="@(() => HandleThemeChange(ThemeMode.System))">
+                        <div class="flex items-center gap-3">
+                            <Blazicon Svg="Lucide.Monitor" class="w-5 h-5" />
+                            <span>System</span>
+                        </div>
+                    </DropdownMenuItem>
+
+                    <!-- SHIELD OS -->
+                    <DropdownMenuItem OnClick="@(() => HandleThemeChange(ThemeMode.ShieldOS))">
+                        <div class="flex items-center gap-3">
+                            <Blazicon Svg="Lucide.Shield" class="w-5 h-5" />
+                            <span>Shield</span>
+                        </div>
+                    </DropdownMenuItem>
+
+                    <!-- IRONMAN -->
+                    <DropdownMenuItem OnClick="@(() => HandleThemeChange(ThemeMode.IronMan))">
+                        <div class="flex items-center gap-3">
+                            <Blazicon Svg="Lucide.Scan" class="w-5 h-5" />
+                            <span>Iron</span>
+                        </div>
+                    </DropdownMenuItem>
+
+                    <!-- TECH -->
+                    <DropdownMenuItem OnClick="@(() => HandleThemeChange(ThemeMode.Tech))">
+                        <div class="flex items-center gap-3">
+                            <Blazicon Svg="Lucide.Cpu" class="w-5 h-5" />
+                            <span>Tech</span>
+                        </div>
+                    </DropdownMenuItem>
+
+                    <!-- FUTURE -->
+                    <DropdownMenuItem OnClick="@(() => HandleThemeChange(ThemeMode.Future))">
+                        <div class="flex items-center gap-3">
+                            <Blazicon Svg="Lucide.Rocket" class="w-5 h-5" />
+                            <span>Future</span>
+                        </div>
+                    </DropdownMenuItem>
+
+                </DropdownMenuContent>
+
+            </DropdownMenu>
+
+            @* Profile Dropdown *@
+            <DropdownMenu>
+                <DropdownMenuTrigger>
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon" Class="flex items-center">
+                        <Blazicon Svg="Lucide.User" class="h-5 w-5" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Align="DropdownAlign.End">
+                    <DropdownMenuItem OnClick="@(() => Navigate(new NavMenuItem { Url = "/profile" }))">
+                        Profile
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem OnClick="@HandleLogout">
+                        <Blazicon Svg="Lucide.LogOut" class="h-4 w-4" />
+                        Logout
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            @* Mobile Menu Button *@
+            <Sheet @bind-Open="_mobileMenuOpen">
+                <SheetTrigger>
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon" Class="md:hidden">
+                        <Blazicon Svg="Lucide.Menu" class="h-5 w-5" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent Side="SheetSide.Right" Class="w-80">
+                    <div class="flex flex-col gap-4 mt-6">
+                        @if (MenuItems != null)
+                        {
+                            @foreach (var item in MenuItems)
+                            {
+                                @if (item.Dropdown != null && item.Dropdown.Any())
+                                {
+                                    <div class="space-y-1">
+                                        <div class="flex items-center gap-2 px-3 py-2 font-medium">
+                                            @if (item.Icon != null)
+                                            {
+                                                <Blazicon Svg="item.Icon" class="h-4 w-4" />
+                                            }
+                                            <span>@item.Title</span>
+                                        </div>
+                                        @foreach (var subItem in item.Dropdown)
+                                        {
+                                            <button class="w-full text-left px-8 py-2 text-sm hover:bg-accent rounded transition-colors"
+                                            @onclick="@(() => NavigateAndCloseMobile(subItem))">
+                                                @subItem.Title
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button class="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-accent transition-colors"
+                                    @onclick="@(() => NavigateAndCloseMobile(item))">
+                                        @if (item.Icon != null)
+                                        {
+                                            <Blazicon Svg="item.Icon" class="h-4 w-4" />
+                                        }
+                                        <span>@item.Title</span>
+                                    </button>
+                                }
+                            }
+                        }
+
+                        <Separator />
+
+                        <Button Variant="ButtonVariant.Ghost"
+                        Class="justify-start"
+                                OnClick="@(() => NavigateAndCloseMobile(new NavMenuItem { Url = "/settings/notifications", Icon = Lucide.BellRing, Title = "Alarm Settings", ComponentType = typeof(NotificationSettings), Unique = true }))">
+                            <Blazicon Svg="Lucide.Settings" class="h-4 w-4 mr-2" />
+                            Settings
+                        </Button>
+
+                        <Button Variant="ButtonVariant.Ghost"
+                        Class="justify-start"
+                                OnClick="@(() => NavigateAndCloseMobile(new NavMenuItem { Url = "/profile"}))">
+                            <Blazicon Svg="Lucide.User" class="h-4 w-4 mr-2" />
+                            Profile
+                        </Button>
+
+                        <Button Variant="ButtonVariant.Ghost"
+                        Class="justify-start"
+                        OnClick="@HandleLogout">
+                            <Blazicon Svg="Lucide.LogOut" class="h-4 w-4 mr-2" />
+                            Logout
+                        </Button>
+                    </div>
+                </SheetContent>
+            </Sheet>
+        </div>
+    </div>
+</nav>
+
+@code {
+    [Parameter]
+    public string BrandName { get; set; } = "App";
+
+    [Parameter]
+    public List<NavMenuItem>? MenuItems { get; set; }
+
+    [Parameter]
+    public List<AlarmLog>? Alarms { get; set; }
+
+    [Parameter]
+    public ThemeMode CurrentTheme { get; set; }
+
+    [Parameter]
+    public EventCallback<NavMenuItem> OnNavigate { get; set; }
+
+    [Parameter]
+    public EventCallback OnLogout { get; set; }
+
+    [Parameter]
+    public EventCallback<ThemeMode> OnThemeChange { get; set; }
+
+    [Parameter]
+    public EventCallback<long> OnAlarmAcknowledge { get; set; }
+
+    [Parameter]
+    public EventCallback OnAlarmAcknowledgeAll { get; set; }
+
+    [Parameter]
+    public EventCallback<AlarmLog> OnAlarmActivate { get; set; }
+
+    private bool _mobileMenuOpen = false;
+
+    private enum AlarmFilter { All, Unacked, Critical }
+
+    private AlarmFilter _filter = AlarmFilter.All;
+    private int _displayedAlarms = 10;
+
+    private IEnumerable<AlarmLog> FilteredAlarms => (Alarms ?? new List<AlarmLog>())
+        .Where(a => _filter switch
+        {
+            AlarmFilter.Unacked => a.AcknowledgedAtUtc == null,
+            AlarmFilter.Critical => a.Severity == SeverityLevel.CRITICAL,
+            _ => true
+        })
+        .OrderByDescending(a => a.AcknowledgedAtUtc == null)
+        .ThenByDescending(a => a.LastSeenUtc);
+
+    private int UnackedCount => Alarms?.Count(a => a.AcknowledgedAtUtc == null) ?? 0;
+
+    private bool HasCritical => Alarms?.Any(a => a.AcknowledgedAtUtc == null
+                                                 && a.Severity == SeverityLevel.CRITICAL) ?? false;
+
+    private string BadgeClasses
+    {
+        get
+        {
+            var tone = HasCritical
+                ? "bg-destructive text-destructive-foreground"
+                : "bg-amber-500 text-white";
+            return "absolute -top-1 -right-1 min-w-[1.15rem] h-[1.15rem] px-1 rounded-full " +
+                   "ring-2 ring-background flex items-center justify-center text-[10px] font-bold " + tone;
+        }
+    }
+
+    private string FilterChipClasses(AlarmFilter filter)
+    {
+        var baseClasses = "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors";
+        return _filter == filter
+            ? $"{baseClasses} bg-primary text-primary-foreground"
+            : $"{baseClasses} text-muted-foreground hover:bg-accent";
+    }
+
+    private string RowClasses(AlarmLog alarm)
+    {
+        var baseClasses = "group relative flex cursor-pointer border-b border-border/40 transition-colors hover:bg-accent";
+        return alarm.AcknowledgedAtUtc == null ? $"{baseClasses} bg-accent/40" : baseClasses;
+    }
+
+    private string AccentClasses(SeverityLevel severity) =>
+        "absolute left-0 top-0 bottom-0 w-[2px] " + severity switch
+        {
+            SeverityLevel.CRITICAL => "bg-destructive",
+            SeverityLevel.ERROR => "bg-destructive/70",
+            SeverityLevel.WARNING => "bg-amber-500",
+            _ => "bg-muted-foreground/30"
+        };
+
+    private string SeverityTextClass(SeverityLevel severity) => severity switch
+    {
+        SeverityLevel.CRITICAL => "text-destructive",
+        SeverityLevel.ERROR => "text-destructive/80",
+        SeverityLevel.WARNING => "text-amber-500",
+        _ => "text-muted-foreground"
+    };
+
+    private SvgIcon SeverityIcon(SeverityLevel severity) => severity switch
+    {
+        SeverityLevel.CRITICAL => Lucide.OctagonAlert,
+        SeverityLevel.ERROR => Lucide.CircleAlert,
+        SeverityLevel.WARNING => Lucide.TriangleAlert,
+        _ => Lucide.Info
+    };
+
+    private static string DayLabel(DateTime localDate)
+    {
+        if (localDate == DateTime.Today) return "Today";
+        if (localDate == DateTime.Today.AddDays(-1)) return "Yesterday";
+        return localDate.ToString("d MMM yyyy");
+    }
+
+    private static string RelativeTime(DateTime utc)
+    {
+        var delta = DateTime.UtcNow - utc;
+        if (delta.TotalSeconds < 60) return "now";
+        if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes}m";
+        if (delta.TotalHours < 24) return $"{(int)delta.TotalHours}h";
+        return $"{(int)delta.TotalDays}d";
+    }
+
+    private async Task Acknowledge(long id)
+    {
+        if (OnAlarmAcknowledge.HasDelegate)
+            await OnAlarmAcknowledge.InvokeAsync(id);
+    }
+
+    private async Task AcknowledgeAll()
+    {
+        if (OnAlarmAcknowledgeAll.HasDelegate)
+            await OnAlarmAcknowledgeAll.InvokeAsync();
+    }
+
+    private async Task ActivateAlarm(AlarmLog alarm)
+    {
+        if (OnAlarmActivate.HasDelegate)
+            await OnAlarmActivate.InvokeAsync(alarm);
+    }
+
+    private void LoadMoreAlarms()
+    {
+        _displayedAlarms = Math.Min(_displayedAlarms + 10, FilteredAlarms.Count());
+    }
+
+    private async Task Navigate(NavMenuItem navMenuItem)
+    {
+        if (OnNavigate.HasDelegate)
+            await OnNavigate.InvokeAsync(navMenuItem);
+    }
+
+    private async Task NavigateAndCloseMobile(NavMenuItem navMenuItem)
+    {
+        _mobileMenuOpen = false;
+        await Navigate(navMenuItem);
+    }
+
+    private async Task HandleLogout()
+    {
+        _mobileMenuOpen = false;
+        if (OnLogout.HasDelegate)
+            await OnLogout.InvokeAsync();
+    }
+
+    private async Task HandleThemeChange(ThemeMode theme)
+    {
+        if (OnThemeChange.HasDelegate)
+        {
+            await OnThemeChange.InvokeAsync(theme);
+        }
+    }
+
+}

@@ -1,0 +1,96 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Services.Implementations.Workflow
+
+@* The channel cell's interior.
+
+   STRUCTURE IS THE LOAD-BEARING DECISION HERE. The frame is a bordered body with an inner well,
+   and every text block is an ordinary flex child inside padding. The fill/surface/march/segment
+   layers are the only absolutely-positioned elements and they sit BEHIND the content at z-0.
+   Consequence: adding fields can only make the cell taller, it can never push text outside the
+   outline. An earlier design positioned each block at an absolute offset inside a fixed SVG
+   viewBox, and text escaped the battery as soon as the field list grew.
+
+   Live values are never Blazor-bound. Each is a data-role slot that workflow-canvas.js writes
+   into, so a telemetry tick costs zero re-renders at any node count. *@
+
+<div class="wf-bcell" data-role="cell">
+    <div class="wf-bcell__body">
+        <div class="wf-bcell__well">
+            @* --wf-soc drives all three geometry layers as a PERCENTAGE, so they track the real
+               charge at any cell height - and the height changes with the property selection. *@
+            <div class="wf-bcell__fill" data-role="soc-fill"></div>
+            <div class="wf-bcell__surface"></div>
+            <div class="wf-bcell__march"></div>
+            <div class="wf-bcell__segs"></div>
+
+            <div class="wf-bcell__content">
+                <div class="wf-bcell__hd">
+                    <span class="wf-bcell__tcp" data-role="tcp" title="TCP status"></span>
+                    <span class="wf-bcell__cs" data-role="circuit-status">--</span>
+                    <span class="wf-bcell__soc">
+                        <span data-role="soc">--%</span>
+                        <span class="wf-bcell__socicon" aria-hidden="true"></span>
+                    </span>
+                </div>
+
+                @foreach (var sec in WorkflowNodeProperties.SectionsFor(SelectedProperties))
+                {
+                    <div class="wf-bcell__sec">@sec.Title</div>
+
+                    @if (sec.TwoPerRow)
+                    {
+                        @* Primary Data: the VALUE ONLY, with no visible label. The unit token is the
+                           identifier here (Ah vs AhCha vs AhDch vs AhStep) and it is ALREADY PART
+                           OF THE VALUE the telemetry bridge writes into the slot - rendering
+                           UnitFor(key) alongside it produced "0.164 AhAh". The full name is on the
+                           title attribute for hover.
+
+                           Left column aligns left and right column right, so each pair spans the
+                           cell's two edges in the same rhythm as the labelled rows below it. *@
+                        <div class="wf-bcell__grid2">
+                            @for (var i = 0; i < sec.Keys.Count; i++)
+                            {
+                                var key = sec.Keys[i];
+
+                                <span class="wf-bcell__v @(i % 2 == 0 ? "wf-bcell__v--left" : "wf-bcell__v--right")"
+                                      data-role="prop-@key"
+                                      title="@WorkflowNodeProperties.LabelWithoutUnit(key)">--</span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        @* Configuration and Program Data: these values carry no unit and are
+                           meaningless without a name, so they get visible labels. *@
+                        <div class="wf-bcell__rows">
+                            @foreach (var key in sec.Keys)
+                            {
+                                <div class="wf-bcell__row">
+                                    <span class="wf-bcell__k">@WorkflowNodeProperties.LabelWithoutUnit(key)</span>
+                                    <span class="wf-bcell__v" data-role="prop-@key">--</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+
+                @* ALWAYS reserved, even with no battery attached. Cell height must not depend on
+                   whether one happens to be wired up: ChannelNodeHeight is computed from the
+                   property list alone, before any telemetry exists, so a conditional strip would
+                   desynchronise every edge attachment and row spacing on a board where only some
+                   channels have batteries. *@
+                <div class="wf-bcell__spec" data-role="battery-line"></div>
+
+                <div class="wf-bcell__ft">
+                    <span data-role="last-update">--</span>
+                    <span data-role="program-status">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<string> SelectedProperties { get; set; } =
+        WorkflowNodeProperties.DefaultVisibleProperties;
+}

@@ -1,0 +1,137 @@
+@namespace BatteryTestingSystem.Components.UI
+
+
+<div class="flex items-center justify-between px-4 py-3 bg-card border-b border-border">
+    <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+            <Blazicon Svg="Lucide.FileText" class="w-5 h-5 text-primary" />
+            @if (isEditingName)
+            {
+                <div class="flex items-center gap-1">
+                    <input type="text" @bind="tempName" @onkeydown="HandleNameKeyDown" class="bg-secondary px-2 py-1 rounded text-sm font-medium outline-none focus:ring-1 ring-primary" />
+                    <button @onclick="HandleNameSubmit" class="p-1 hover:bg-secondary rounded transition-colors">
+                        <Blazicon Svg="Lucide.Check" class="w-4 h-4 text-green-500" />
+                    </button>
+                    <button @onclick="CancelEditName" class="p-1 hover:bg-secondary rounded transition-colors">
+                        <Blazicon Svg="Lucide.X" class="w-4 h-4 text-muted-foreground" />
+                    </button>
+                </div>
+            }
+            else
+            {
+                <button @onclick="StartEditName" class="flex items-center gap-2 group">
+                    <span class="text-sm font-medium">@ProgramName</span>
+                    <Blazicon Svg="Lucide.Pencil" class="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+            }
+        </div>
+
+        @if (IsDirty)
+        {
+            <span class="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded">Unsaved changes</span>
+        }
+    </div>
+
+    <div class="flex items-center gap-2">
+        @if (IsValid)
+        {
+            <div class="flex items-center gap-1.5 text-green-500 text-sm">
+                <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                Valid
+            </div>
+        }
+        else
+        {
+            <div class="flex items-center gap-1.5 text-red-500 text-sm">
+                <Blazicon Svg="Lucide.TriangleAlert" class="w-4 h-4" />
+                @ErrorCount @(ErrorCount == 1 ? "error" : "errors")
+            </div>
+        }
+    </div>
+
+    <div class="flex items-center gap-1">
+        <button @onclick="OnAddStep" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" data-addnew-btn>
+            <Blazicon Svg="Lucide.Plus" class="w-4 h-4" />
+            Add Step
+        </button>
+
+        <div class="w-px h-6 bg-border mx-2"></div>
+
+        <button @onclick="@OnDeleteSelected" disabled="@(!HasSelection)" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium hover:bg-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed" data-delete-btn>
+            <Blazicon Svg="Lucide.Trash2" class="w-4 h-4" />
+            Delete
+        </button>
+
+        <button @onclick="@OnUpSelected" disabled="@(!HasSelection)" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium hover:bg-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed" data-up-btn>
+            <Blazicon Svg="Lucide.ArrowUp" class="w-4 h-4" />
+            Up
+        </button>
+        <button @onclick="@OnDownSelected" disabled="@(!HasSelection)" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium hover:bg-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed" data-down-btn>
+            <Blazicon Svg="Lucide.ArrowDown" class="w-4 h-4" />
+            Down
+        </button>
+        <div class="w-px h-6 bg-border mx-2"></div>
+
+        <button @onclick="@OnSave" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium hover:bg-secondary transition-colors" data-save-btn>
+            <Blazicon Svg="Lucide.Save" class="w-4 h-4" />
+            Save
+        </button>
+
+        <button @onclick="@OnDownload" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium hover:bg-secondary transition-colors">
+            <Blazicon Svg="Lucide.Download" class="w-4 h-4" />
+            Download
+        </button>
+
+      @*   <button @onclick="OnImport" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium hover:bg-secondary transition-colors">
+            <Blazicon Svg="Lucide.Upload" class="w-4 h-4" />
+            Import
+        </button> *@
+    </div>
+</div>
+
+@code {
+    [Parameter] public string ProgramName { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> OnNameChange { get; set; }
+    [Parameter] public bool IsDirty { get; set; }
+    [Parameter] public bool IsValid { get; set; }
+    [Parameter] public int ErrorCount { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnDownload { get; set; }
+    [Parameter] public EventCallback OnImport { get; set; }
+    [Parameter] public EventCallback OnAddStep { get; set; }
+    [Parameter] public EventCallback OnDeleteSelected { get; set; }
+    [Parameter] public EventCallback OnUpSelected { get; set; }
+    [Parameter] public EventCallback OnDownSelected { get; set; }
+
+    [Parameter] public bool HasSelection { get; set; }
+
+    private bool isEditingName = false;
+    private string tempName = string.Empty;
+
+    private void StartEditName()
+    {
+        isEditingName = true;
+        tempName = ProgramName;
+    }
+
+    private void HandleNameKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") HandleNameSubmit();
+        if (e.Key == "Escape") CancelEditName();
+    }
+
+    private void HandleNameSubmit()
+    {
+        if (!string.IsNullOrWhiteSpace(tempName))
+        {
+            OnNameChange.InvokeAsync(tempName.Trim());
+        }
+        isEditingName = false;
+    }
+
+    private void CancelEditName()
+    {
+        tempName = ProgramName;
+        isEditingName = false;
+    }
+}

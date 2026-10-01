@@ -1,0 +1,98 @@
+name: Release me-primary image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to tag (e.g. 1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Security guard: workflow_dispatch can be run against ANY branch/tag.
+      # Without this, an authorized-but-careless (or compromised) trigger
+      # could build and publish an unreviewed branch under the official
+      # image name. Releases only ever come from main.
+      - name: Guard - only release from main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::release.yml may only be run from main (got $REF) - refusing to build/publish from an unreviewed branch"
+            exit 1
+          fi
+
+      # Never interpolate ${{ }} expressions directly inside a run: script
+      # body - the substitution happens before bash parses the script, so a
+      # crafted input string is a script-injection vector even in a
+      # validation step. Pass through env: and reference as a shell
+      # variable instead, here and in every step below.
+      - name: Validate version input (strict semver X.Y.Z)
+        env:
+          NEW_VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be strict semver X.Y.Z (got '$NEW_VERSION')"
+            exit 1
+          fi
+
+      # :latest must never silently move backward. Only update it when the
+      # new version is actually the highest ever published, per the org's
+      # existing GHCR package tags.
+      - name: Determine whether to also update :latest
+        id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh api "/orgs/quench-ev-charger/packages/container/me-primary/versions" \
+            --jq '.[].metadata.container.tags[]' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          MAX=$(printf '%s\n%s\n' "$NEW_VERSION" "$EXISTING" | sort -V | tail -1)
+          if [ "$MAX" = "$NEW_VERSION" ]; then
+            echo "update=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::$NEW_VERSION is not newer than the highest existing published tag ($MAX) - :latest will NOT be moved backward"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tag list
+        id: tags
+        env:
+          NEW_VERSION: ${{ inputs.version }}
+          UPDATE_LATEST: ${{ steps.latest.outputs.update }}
+        run: |
+          TAGS="ghcr.io/quench-ev-charger/me-primary:$NEW_VERSION"
+          if [ "$UPDATE_LATEST" = "true" ]; then
+            TAGS="$TAGS
+          ghcr.io/quench-ev-charger/me-primary:latest"
+          fi
+          {
+            echo "list<<TAGS_EOF"
+            echo "$TAGS"
+            echo "TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./ME Project/me-primary
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.list }}

@@ -1,0 +1,337 @@
+@using BatteryTestingSystem.Models.SqliteEntities
+@using BatteryTestingSystem.Models.ViewModels
+@namespace BatteryTestingSystem.Components.UI.DataViewer
+@inject IJSRuntime JS
+
+<div class="bms-card flex flex-col h-full overflow-hidden">
+
+    @* ── Header ──────────────────────────────────────────────────────────── *@
+    <div class="flex items-center gap-1.5 px-3 py-1.5 border-b border-[hsl(var(--border))] shrink-0 flex-wrap bg-[hsl(var(--card))]">
+        <h2 class="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+            Data
+            <span class="normal-case tracking-normal font-normal text-[10px] ml-1">
+                (@TotalRows.ToString("N0") rows@(SelectedStep.HasValue ? $" — Step {SelectedStep}" : ""))
+            </span>
+        </h2>
+        @if (IsLoading)
+        {
+            <span class="font-mono text-[10px] text-[hsl(var(--primary))]" style="animation:bms-pulse 1.5s infinite">● Streaming…</span>
+        }
+        <div class="flex items-center gap-1 ml-auto">
+            <label class="text-[10px] text-[hsl(var(--muted-foreground))]">Rows:</label>
+            <div class="relative">
+                <select class="h-6 pl-2 pr-5 text-xs rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] appearance-none cursor-pointer focus:outline-none"
+                        @bind="_pageSize" @bind:after="OnPageSizeChanged">
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+                <Blazicon Svg="Lucide.ChevronDown" class="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+            </div>
+            <button class="bms-icon-btn @(IsExporting ? "bms-icon-btn--loading" : "")" title="Export to Excel" disabled="@IsExporting" @onclick="OnExportClick">
+                @if (IsExporting)
+                { <Blazicon Svg="Lucide.LoaderCircle" class="w-3.5 h-3.5 bms-spin" /> }
+                else
+                { <Blazicon Svg="Lucide.Download" class="w-3.5 h-3.5" /> }
+            </button>
+            <button class="bms-icon-btn" title="@(IsFullscreen ? "Restore" : "Fullscreen")" @onclick="OnFullscreenToggle">
+                @if (IsFullscreen)
+                { <Blazicon Svg="Lucide.Minimize" class="w-3.5 h-3.5" /> }
+                else
+                { <Blazicon Svg="Lucide.Maximize" class="w-3.5 h-3.5" /> }
+            </button>
+        </div>
+    </div>
+
+    @* ── Table ────────────────────────────────────────────────────────────── *@
+    <div class="flex-1 overflow-auto min-h-0">
+        @if (DisplayRows.Count == 0 && !IsLoading)
+        {
+            <div class="flex items-center justify-center h-12 text-[hsl(var(--muted-foreground))] text-xs">No data</div>
+        }
+        else
+        {
+            var dbcCols = DbcColumns;
+            <table class="w-full border-collapse" style="font-size:12.5px;">
+                <thead class="sticky top-0 z-10 bg-[hsl(var(--grid-header))]">
+                    <tr>
+                        <th class="bms-th">#</th>
+                        <th class="bms-th">Program Time</th>
+                        <th class="bms-th">Step</th>
+                        <th class="bms-th">Operator</th>
+                        <th class="bms-th bms-th-right col-v">V</th>
+                        <th class="bms-th bms-th-right col-a">A</th>
+                        <th class="bms-th bms-th-right col-temp">°C</th>
+                        <th class="bms-th bms-th-right bms-col-sm">W</th>
+                        <th class="bms-th bms-th-right bms-col-md">Ah Acc</th>
+                        <th class="bms-th bms-th-right bms-col-md">Ah Cha</th>
+                        <th class="bms-th bms-th-right bms-col-lg">Ah Dch</th>
+                        <th class="bms-th bms-th-right bms-col-lg">Ah Step</th>
+                        <th class="bms-th bms-th-right bms-col-xl">Wh Acc</th>
+                        <th class="bms-th bms-th-right bms-col-xl">Wh Cha</th>
+                        <th class="bms-th bms-th-right bms-col-xl">Wh Dch</th>
+                        <th class="bms-th bms-th-right bms-col-xl">Wh Step</th>
+                        @* Dynamic DBC signal columns — derived from the rows on this page *@
+                        @foreach (var key in dbcCols)
+                        {
+                            <th class="bms-th bms-th-right bms-col-dbc">@key</th>
+                        }
+                        <th class="bms-th bms-th-right bms-col-xl">Remark</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in DisplayRows)
+                    {
+                        var isSelected = SelectedStep.HasValue && row.StepNumber == SelectedStep;
+                        var hasError   = row.ErrorId > 0;
+                        <tr class="@(isSelected ? "bms-tr--selected" : "bms-tr") cursor-pointer"
+                            @onclick="() => OnStepSelected.InvokeAsync(row.StepNumber)">
+                            <td class="bms-td bms-mono bms-muted">@row.Id</td>
+                            <td class="bms-td bms-mono bms-muted">@TimeSpan.FromMilliseconds(row.ProgramRunningTime).ToString(@"hh\:mm\:ss\.fff")</td>
+                            <td class="bms-td bms-mono @(isSelected ? "bms-primary bms-bold" : "bms-muted")">@row.StepNumber</td>
+                            <td class="bms-td bms-mono">@OperatorConstants.ToName((byte)row.Operator)</td>
+                            @if (hasError || row.MessageId > 0)
+                            {
+                                var text = hasError
+                                    ? ErrorMessages.Errors.FirstOrDefault(x => x.Index == row.ErrorId)?.Message
+                                    : ErrorMessages.Messages.FirstOrDefault(x => x.Index == row.MessageId)?.Message;
+                                <td colspan="@(13 + dbcCols.Count)" class="bms-td bms-bold" style="color:hsl(var(--warning))">
+                                    @(hasError ? "Error" : "Message"): @text
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="bms-td bms-mono bms-right" style="color:hsl(var(--warning))">@Fmt(row.Voltage,"F2")</td>
+                                <td class="bms-td bms-mono bms-right" style="color:hsl(var(--success))">@Fmt(row.Current,"F2")</td>
+                                <td class="bms-td bms-mono bms-right" style="color:hsl(var(--warning))">@Fmt(row.Temperature,"F1")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-sm">@Fmt(row.Power,"F1")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-md">@Fmt(row.AccumulatedCapacity,"F3")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-md">@Fmt(row.ChargeCapacity,"F3")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-lg">@Fmt(row.DischargeCapacity,"F3")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-lg">@Fmt(row.StepCapacity,"F3")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-xl">@Fmt(row.AccumulatedEnergy,"F3")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-xl">@Fmt(row.ChargeEnergy,"F3")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-xl">@Fmt(row.DischargeEnergy,"F3")</td>
+                                <td class="bms-td bms-mono bms-right bms-col-xl">@Fmt(row.StepEnergy,"F3")</td>
+                                @if (dbcCols.Count > 0)
+                                {
+                                    var dbc = row.DbcValuesParsed;
+                                    @foreach (var key in dbcCols)
+                                    {
+                                        <td class="bms-td bms-mono bms-right bms-col-dbc">@FmtDbc(dbc, key)</td>
+                                    }
+                                }
+                                <td class="bms-td bms-mono bms-right bms-col-xl">@(row.Remark ?? "")</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    @* ── Pagination ───────────────────────────────────────────────────────── *@
+    <div class="flex items-center justify-between px-3 py-1.5 border-t border-[hsl(var(--border))] shrink-0">
+        <span class="font-mono text-[10px] text-[hsl(var(--muted-foreground))]">
+            @if (TotalRows > 0)
+            {
+                var s = (CurrentPage - 1) * _pageSize + 1;
+                var e = Math.Min(CurrentPage * _pageSize, TotalRows);
+                @($"{s:N0}–{e:N0} / {TotalRows:N0}")
+            }
+        </span>
+        <div class="flex items-center gap-0.5">
+            <button class="bms-page-btn" disabled="@(CurrentPage == 1)"          @onclick="() => GoToPage(1)">«</button>
+            <button class="bms-page-btn" disabled="@(CurrentPage == 1)"          @onclick="PrevPage">‹</button>
+            @foreach (var pn in VisiblePages)
+            {
+                var isCurrent = pn == CurrentPage;
+                <button class="bms-page-btn @(isCurrent ? "bms-page-btn--active" : "")" @onclick="() => GoToPage(pn)">@pn</button>
+            }
+            <button class="bms-page-btn" disabled="@(CurrentPage == TotalPages)" @onclick="NextPage">›</button>
+            <button class="bms-page-btn" disabled="@(CurrentPage == TotalPages)" @onclick="() => GoToPage(TotalPages)">»</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bms-card { background:hsl(var(--card)); color:hsl(var(--card-foreground)); border:1px solid hsl(var(--border)); border-radius:var(--radius); overflow:hidden; }
+    .bms-icon-btn { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:calc(var(--radius) - 2px); border:1px solid hsl(var(--border)); background:hsl(var(--background)); color:hsl(var(--muted-foreground)); cursor:pointer; transition:all .1s; flex-shrink:0; }
+    .bms-icon-btn:hover { background:hsl(var(--accent)); color:hsl(var(--foreground)); }
+    .bms-icon-btn--loading { opacity:.7; cursor:not-allowed; background:hsl(var(--accent)); color:hsl(var(--primary)); border-color:hsl(var(--primary)/.4); }
+    .bms-col-sm { display:none; } .bms-col-md { display:none; } .bms-col-lg { display:none; } .bms-col-xl { display:none; }
+    .bms-col-dbc { display:table-cell; background:hsl(var(--muted)/.25); }
+    @@media (min-width:600px)  { .bms-col-sm { display:table-cell; } }
+    @@media (min-width:800px)  { .bms-col-md { display:table-cell; } }
+    @@media (min-width:1100px) { .bms-col-lg { display:table-cell; } }
+    @@media (min-width:1400px) { .bms-col-xl { display:table-cell; } }
+    .bms-th { padding:4px 6px; text-align:left; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:hsl(var(--muted-foreground)); border-bottom:1px solid hsl(var(--grid-border)); white-space:nowrap; }
+    .bms-th-right { text-align:right; }
+    .bms-td { padding:2px 6px; border-bottom:1px solid hsl(var(--grid-border)); border-right:1px solid hsl(var(--grid-border)); vertical-align:middle; white-space:nowrap; }
+    .bms-tr { background:hsl(var(--grid-row)); transition:background .08s; }
+    .bms-tr:nth-child(even) { background:hsl(var(--grid-row-alt)); }
+    .bms-tr:hover { background:hsl(var(--grid-row-hover)) !important; }
+    .bms-tr--selected { background:hsl(var(--grid-row-selected)) !important; }
+    .bms-mono { font-family:'JetBrains Mono',monospace; } .bms-muted { color:hsl(var(--muted-foreground)); }
+    .bms-primary { color:hsl(var(--primary)); } .bms-bold { font-weight:600; } .bms-right { text-align:right; }
+    .bms-page-btn { min-width:24px; height:24px; padding:0 4px; border-radius:calc(var(--radius) - 2px); border:1px solid hsl(var(--border)); background:hsl(var(--secondary)); color:hsl(var(--secondary-foreground)); font-size:11px; cursor:pointer; transition:all .1s; font-family:inherit; }
+    .bms-page-btn:hover:not(:disabled) { background:hsl(var(--accent)); color:hsl(var(--accent-foreground)); }
+    .bms-page-btn:disabled { opacity:.35; cursor:not-allowed; }
+    .bms-page-btn--active { background:hsl(var(--primary)) !important; color:hsl(var(--primary-foreground)) !important; border-color:hsl(var(--primary)) !important; font-weight:600; }
+    @@keyframes bms-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    @@keyframes bms-spin   { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+    .bms-spin { animation:bms-spin .8s linear infinite; }
+</style>
+
+@code {
+    // ── New server-side pagination parameters ──────────────────────────────
+    /// <summary>Current page of offline data — null when IsLive=true.</summary>
+    [Parameter] public PagedResult<MeasurementData>? PagedData { get; set; }
+
+    /// <summary>Live streaming rows from the bounded buffer (IsLive=true only).</summary>
+    [Parameter] public List<MeasurementData>? LiveRows { get; set; }
+
+    /// <summary>True while a live session is running — table shows LiveRows, not PagedData.</summary>
+    [Parameter] public bool IsLive { get; set; }
+
+    // Unchanged parameters
+    [Parameter] public int? SelectedStep { get; set; }
+    [Parameter] public EventCallback<int?> OnStepSelected { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool IsFullscreen { get; set; }
+    [Parameter] public EventCallback OnFullscreenToggle { get; set; }
+
+    /// <summary>
+    /// Raised when the user changes page or page-size.
+    /// BmsDashboard handles this by calling ReadSessionPageAsync and updating PagedData.
+    /// </summary>
+    [Parameter] public EventCallback<PageChangeRequest> OnPageChanged { get; set; }
+
+    /// <summary>Raised when the user clicks Export. BmsDashboard decides in-memory vs job.</summary>
+    [Parameter] public EventCallback OnExportRequested { get; set; }
+
+    /// <summary>
+    /// Controlled by BmsDashboard — true while an export is in-flight.
+    /// Disables the export button and shows the spinner for the full duration,
+    /// including background Hangfire jobs (not just the initial HTTP round-trip).
+    /// </summary>
+    [Parameter] public bool IsExporting { get; set; }
+
+    // ── Internal state ──────────────────────────────────────────────────────
+    private int _pageSize    = 50;
+    private int _currentPage = 1;
+
+    // ── Derived helpers ─────────────────────────────────────────────────────
+    private int TotalRows => IsLive
+        ? (LiveRows?.Count ?? 0)
+        : (PagedData?.TotalRows ?? 0);
+
+    private int TotalPages => IsLive
+        ? Math.Max(1, (int)Math.Ceiling(TotalRows / (double)_pageSize))
+        : (PagedData?.TotalPages ?? 1);
+
+    /// <summary>
+    /// The page currently shown. Offline mode uses PagedData.Page — what the DB
+    /// actually returned — as the single source of truth, so the highlighted page
+    /// number can never desync from the loaded rows. Live mode uses the local
+    /// client-side cursor since there is no server round-trip.
+    /// </summary>
+    private int CurrentPage => IsLive ? _currentPage : (PagedData?.Page ?? 1);
+
+    /// <summary>
+    /// Rows to display:
+    /// - Live mode: client-side slice of the bounded live buffer.
+    /// - Offline mode: PagedData.Items (already the right page from the DB).
+    /// </summary>
+    private List<MeasurementData> DisplayRows
+    {
+        get
+        {
+            if (IsLive && LiveRows != null)
+            {
+                // Live: client-side pagination of the bounded buffer (max 50k rows — fast)
+                return LiveRows
+                    .Skip((CurrentPage - 1) * _pageSize)
+                    .Take(_pageSize)
+                    .ToList();
+            }
+            return PagedData?.Items ?? [];
+        }
+    }
+
+    /// <summary>
+    /// DBC signal column names present on the current page, de-duplicated and
+    /// ordered. Derived from the rows actually displayed, so the column set
+    /// follows whatever signals were recorded for this session.
+    /// </summary>
+    private List<string> DbcColumns => DisplayRows
+        .Where(r => r.DbcValuesParsed is { Count: > 0 })
+        .SelectMany(r => r.DbcValuesParsed.Keys)
+        .Distinct()
+        .OrderBy(k => k)
+        .ToList();
+
+    private IEnumerable<int> VisiblePages
+    {
+        get
+        {
+            var start = Math.Max(1, CurrentPage - 2);
+            var end   = Math.Min(TotalPages, start + 4);
+            start     = Math.Max(1, end - 4);
+            for (int i = start; i <= end; i++) yield return i;
+        }
+    }
+
+    // ── Lifecycle ───────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await ErrorMessages.GetMessages(true);
+        await ErrorMessages.GetErrors(true);
+    }
+
+    // ── Page navigation ─────────────────────────────────────────────────────
+    // Offline: the requested page is sent to the parent, which fetches it and
+    // returns PagedData with the new Page — that becomes CurrentPage. We never
+    // mutate a local page field offline, so the highlight always matches the data.
+    private async Task GoToPage(int page)
+    {
+        var target = Math.Clamp(page, 1, Math.Max(1, TotalPages));
+
+        if (IsLive)
+            _currentPage = target;
+        else
+            await OnPageChanged.InvokeAsync(new PageChangeRequest(target, _pageSize));
+    }
+
+    private Task PrevPage() => GoToPage(CurrentPage - 1);
+    private Task NextPage() => GoToPage(CurrentPage + 1);
+
+    private async Task OnPageSizeChanged()
+    {
+        if (IsLive)
+            _currentPage = 1;
+        else
+            await OnPageChanged.InvokeAsync(new PageChangeRequest(1, _pageSize));
+    }
+
+    // ── Export ──────────────────────────────────────────────────────────────
+    private async Task OnExportClick()
+    {
+        if (IsExporting) return;
+        await OnExportRequested.InvokeAsync();
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    private static string Fmt(float? v, string fmt) => v.HasValue ? v.Value.ToString(fmt) : "—";
+
+    /// <summary>Format a single DBC signal value for a cell — numbers to 4 dp, else raw text.</summary>
+    private static string FmtDbc(Dictionary<string, object?> dbc, string key)
+    {
+        if (!dbc.TryGetValue(key, out var v) || v is null)
+            return "—";
+        return v is double or float or decimal or int or long
+            ? Convert.ToDouble(v).ToString("0.####")
+            : v.ToString() ?? "—";
+    }
+}

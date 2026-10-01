@@ -1,0 +1,772 @@
+﻿@using BatteryTestingSystem.Components.UI.DataViewer
+@using BatteryTestingSystem.Models.SqliteEntities
+@using BatteryTestingSystem.Models.ViewModels
+@using BatteryTestingSystem.Models.Entities
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Repositories.Interfaces
+@using BatteryTestingSystem.Utils
+@implements IDisposable
+@implements IAsyncDisposable
+@inject ISqliteBulkDatabaseManager dbManager
+@inject EventBusService EventBus
+@inject IJSRuntime JS
+@inject ChannelManager CM
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject IExportRepository ExportRepo
+
+<div class="bms-root">
+
+    @* ── Export Toast ────────────────────────────────────────────────────── *@
+    @if (_exportToast != null)
+    {
+        <div class="bms-toast bms-toast--@(_exportToast.Kind)">
+            @if (_exportToast.Kind == "spin")
+            {
+                <Blazicon Svg="Lucide.LoaderCircle" class="w-3.5 h-3.5 bms-spin flex-shrink-0" />
+            }
+            else if (_exportToast.Kind == "ok")
+            {
+                <Blazicon Svg="Lucide.CircleCheck" class="w-3.5 h-3.5 flex-shrink-0" />
+            }
+            else
+            {
+                <Blazicon Svg="Lucide.CircleAlert" class="w-3.5 h-3.5 flex-shrink-0" />
+            }
+            <span class="text-xs">@_exportToast.Message</span>
+            @if (_exportToast.DownloadId.HasValue)
+            {
+                <button class="bms-toast-link" @onclick="@(() => DownloadById(_exportToast.DownloadId.Value))">Download</button>
+            }
+            <button class="bms-toast-close" @onclick="() => _exportToast = null">✕</button>
+        </div>
+    }
+
+    @* ── Chart Section ───────────────────────────────────────────────────── *@
+    @if (_fullscreen != FullscreenView.Program && _fullscreen != FullscreenView.DataTable)
+    {
+        <div class="@(_fullscreen == FullscreenView.Chart ? "bms-section-full" : "bms-chart-section")">
+            <BmsChart @ref="_bmsChart"
+                      Data="@_liveBuffer"
+                      SessionFilePath="@(IsLiveData ? null : SQLFilePath)"
+                      TotalRows="@_totalRows"
+                      StepFilter="@(IsLiveData ? null : selectedStep)"
+                      IsFullscreen="@(_fullscreen == FullscreenView.Chart)"
+                      IsLiveData="@IsLiveData"
+                      OnFullscreenToggle="@(() => ToggleFullscreen(FullscreenView.Chart))" />
+        </div>
+    }
+
+    @* ── Tables Row ──────────────────────────────────────────────────────── *@
+    @if (_fullscreen != FullscreenView.Chart)
+    {
+        <div class="@(_fullscreen == FullscreenView.None ? "bms-tables-section bms-tables-grid" : "bms-section-full bms-tables-flex") bms-tables-row-responsive">
+
+            @if (_fullscreen != FullscreenView.DataTable)
+            {
+                <div class="@(_fullscreen == FullscreenView.Program ? "bms-section-full" : "bms-table-cell")">
+                    <BmsProgramTable Steps="@Steps"
+                                     SelectedStep="@selectedStep"
+                                     OnStepSelected="@HandleStepSelected"
+                                     IsFullscreen="@(_fullscreen == FullscreenView.Program)"
+                                     OnFullscreenToggle="@(() => ToggleFullscreen(FullscreenView.Program))"
+                                     OnBatteryDetails="@OpenBatteryModal"
+                                     Battery="@Battery"
+                                     Program="@Pg"
+                                     IsLiveData="@IsLiveData"
+                                     LiveStep="@_liveStep"
+                                     ShowLiveToggle="@(!string.IsNullOrEmpty(_dataSubId))"
+                                     OnLiveToggle="@ToggleLive"
+                                     ProducerPrograms="@_sessionProducerPrograms"
+                                     TableFileData="@_sessionTableFileData" />
+                </div>
+            }
+
+            @if (_fullscreen != FullscreenView.Program)
+            {
+                <div class="@(_fullscreen == FullscreenView.DataTable ? "bms-section-full" : "bms-table-cell")">
+                    <BmsDataTable PagedData="@_pagedData"
+                                  LiveRows="@(IsLiveData ? _liveBuffer : null)"
+                                  IsLive="@IsLiveData"
+                                  SelectedStep="@selectedStep"
+                                  OnStepSelected="@HandleStepSelected"
+                                  OnPageChanged="@HandlePageChanged"
+                                  OnExportRequested="@HandleExportAsync"
+                                  IsExporting="@_isExporting"
+                                  IsLoading="@IsLoading"
+                                  IsFullscreen="@(_fullscreen == FullscreenView.DataTable)"
+                                  OnFullscreenToggle="@(() => ToggleFullscreen(FullscreenView.DataTable))" />
+                </div>
+            }
+        </div>
+    }
+
+    @* ── REG Logs (labeled REG-step data — separate from the main session data above) ── *@
+    @if (_fullscreen == FullscreenView.None && _regLabels.Count > 0)
+    {
+        <div class="bms-regs-section">
+            <div class="bms-regs-header">
+                <span class="text-xs font-semibold">REG Logs</span>
+                <div class="bms-regs-chips">
+                    @foreach (var label in _regLabels)
+                    {
+                        <button class="bms-reg-chip @(string.Equals(_selectedRegLabel, label, StringComparison.OrdinalIgnoreCase) ? "bms-reg-chip--active" : "")"
+                                @onclick="@(() => HandleRegLabelSelected(label))">
+                            @label
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @if (_selectedRegLabel != null)
+            {
+                <div class="bms-regs-table">
+                    <BmsDataTable PagedData="@_regLogPagedData"
+                                  IsLive="false"
+                                  IsLoading="false"
+                                  OnPageChanged="@HandleRegLogPageChanged" />
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* ── Battery Modal ──────────────────────────────────────────────────────── *@
+@if (_showBatteryModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" @onclick="CloseBatteryModal">
+        <div class="relative bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))] border border-[hsl(var(--border))] rounded-lg shadow-2xl w-[520px] max-w-[95vw] max-h-[80vh] overflow-hidden flex flex-col" @onclick:stopPropagation>
+            <div class="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))] shrink-0">
+                <div class="flex items-center gap-2">
+                    <h3 class="text-sm font-semibold">Battery Details</h3>
+                    @if (!string.IsNullOrEmpty(Battery?.Name))
+                    { <span class="text-xs text-[hsl(var(--muted-foreground))] font-mono">— @Battery.Name</span> }
+                </div>
+                <button class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[hsl(var(--accent))] transition-colors" @onclick="CloseBatteryModal">✕</button>
+            </div>
+            <div class="overflow-y-auto flex-1 p-4">
+                @if (Battery == null)
+                {
+                    <div class="flex items-center justify-center h-24 text-[hsl(var(--muted-foreground))] text-sm">No battery data</div>
+                }
+                else
+                {
+                    <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                        @BatteryField("Name", Battery.Name) @BatteryField("Producer", Battery.Producer)
+                        @BatteryField("Quantity", Battery.Quantity.ToString()) @BatteryField("Cells", Battery.NumberOfCells.ToString())
+                        @BatteryField("Nominal V", $"{Battery.NominalVoltage:F2} V") @BatteryField("Max V", $"{Battery.MaximumVoltage:F2} V")
+                        @BatteryField("Break V", $"{Battery.BreakVoltage:F2} V") @BatteryField("Gassing V", $"{Battery.GassingVoltage:F2} V")
+                        @BatteryField("Nominal A", $"{Battery.NominalCurrent:F2} A") @BatteryField("Capacity", $"{Battery.NominalCapacity:F2} Ah")
+                        @BatteryField("Charge Factor", Battery.ChargeFactor.ToString("F3")) @BatteryField("Impedance", $"{Battery.Impedance:F3} Ω")
+                        @BatteryField("Energy Density", Battery.EnergyDensity.ToString("F2")) @BatteryField("Cold Cranking", $"{Battery.ColdCrankingCurrent:F2} A")
+                        @BatteryField("Created", Battery.CreatedAt.ToString("yyyy-MM-dd HH:mm")) @BatteryField("Updated", Battery.UpdatedAt.ToString("yyyy-MM-dd HH:mm"))
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Export Confirm Dialog ──────────────────────────────────────────────── *@
+@if (_showExportConfirm && _existingExportRecord != null)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" @onclick="CancelExportConfirm">
+        <div class="relative bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))] border border-[hsl(var(--border))] rounded-lg shadow-2xl w-[420px] max-w-[95vw] overflow-hidden flex flex-col" @onclick:stopPropagation>
+            <div class="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))] shrink-0">
+                <div class="flex items-center gap-2">
+                    <Blazicon Svg="Lucide.FileSpreadsheet" class="w-4 h-4 text-[hsl(var(--primary))]" />
+                    <h3 class="text-sm font-semibold">Export Already Exists</h3>
+                </div>
+                <button class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[hsl(var(--accent))] transition-colors" @onclick="CancelExportConfirm">✕</button>
+            </div>
+            <div class="px-4 py-4 text-sm text-[hsl(var(--muted-foreground))]">
+                <p>An export was generated on <span class="font-medium text-[hsl(var(--foreground))]">@_existingExportRecord.CompletedAt?.ToString("yyyy-MM-dd HH:mm")</span>
+                @if (_existingExportRecord.FileSizeBytes > 0)
+                {
+                    <span> (@FormatFileSize(_existingExportRecord.FileSizeBytes))</span>
+                }.</p>
+                <p class="mt-1">Do you want to download the existing file or re-generate it from the latest data?</p>
+            </div>
+            <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-[hsl(var(--border))] shrink-0">
+                <button class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:bg-[hsl(var(--accent))] transition-colors"
+                        @onclick="CancelExportConfirm">Cancel</button>
+                <button class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))] transition-colors"
+                        @onclick="ConfirmRegenerateAsync">
+                    <Blazicon Svg="Lucide.RefreshCw" class="w-3.5 h-3.5" />
+                    Re-generate
+                </button>
+                <button class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
+                        @onclick="ConfirmDownloadExistingAsync">
+                    <Blazicon Svg="Lucide.Download" class="w-3.5 h-3.5" />
+                    Download Existing
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .bms-root { display:flex; flex-direction:column; height:100%; overflow:hidden; background:hsl(var(--background)); color:hsl(var(--foreground)); font-family:'Inter',sans-serif; padding:8px; gap:8px; box-sizing:border-box; }
+    .bms-chart-section  { height:60%; min-height:0; flex-shrink:0; }
+    .bms-tables-section { height:40%; min-height:0; flex-shrink:0; }
+    .bms-section-full   { flex:1; min-height:0; overflow:hidden; }
+    .bms-tables-grid    { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .bms-tables-flex    { display:flex; }
+    .bms-table-cell     { min-height:0; overflow:hidden; }
+    @@media (max-width:900px) { .bms-tables-row-responsive { grid-template-columns:1fr !important; overflow-y:auto; } }
+    .bms-toast { position:fixed; bottom:1rem; right:1rem; z-index:9999; display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:8px; border:1px solid; font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,.2); background:hsl(var(--card)); color:hsl(var(--card-foreground)); max-width:380px; }
+    .bms-toast--spin  { border-color:hsl(var(--primary)/.4); }
+    .bms-toast--ok    { border-color:hsl(var(--success)/.5); color:hsl(var(--success)); }
+    .bms-toast--error { border-color:hsl(var(--destructive)/.5); color:hsl(var(--destructive)); }
+    .bms-toast-link  { margin-left:4px; font-weight:600; text-decoration:underline; cursor:pointer; color:hsl(var(--primary)); }
+    .bms-toast-close { margin-left:auto; background:none; border:none; cursor:pointer; font-size:14px; opacity:.6; }
+    .bms-toast-close:hover { opacity:1; }
+    @@keyframes bms-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+    .bms-spin { animation:bms-spin .8s linear infinite; }
+
+    .bms-regs-section { border-top:1px solid hsl(var(--border)); padding-top:8px; margin-top:4px; flex-shrink:0; }
+    .bms-regs-header { display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+    .bms-regs-chips { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .bms-reg-chip { font-size:11px; padding:2px 10px; border-radius:9999px; border:1px solid hsl(var(--border)); background:hsl(var(--background)); color:hsl(var(--muted-foreground)); cursor:pointer; transition:background .15s,color .15s; }
+    .bms-reg-chip:hover { background:hsl(var(--accent)); }
+    .bms-reg-chip--active { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); border-color:hsl(var(--primary)); }
+    .bms-regs-table { height:260px; min-height:0; overflow:hidden; }
+</style>
+
+@code {
+
+    // ── Parameters ───────────────────────────────────────────────────────────
+    [Parameter] public string SQLFilePath { get; set; } = "";
+    [Parameter] public string? Key { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    private ProgramDTO Pg { get; set; } = new();
+    private BatteryDTO Battery { get; set; } = new();
+    private bool IsLoading { get; set; }
+    private bool IsLiveData = false;
+    private int? selectedStep;
+    private int? _liveStep;
+    private bool _showBatteryModal = false;
+    private BmsChart? _bmsChart;
+
+    // ── Paged offline data ────────────────────────────────────────────────────
+    // The table always shows one page from the DB — never the full list.
+    private PagedResult<MeasurementData> _pagedData = PagedResult<MeasurementData>.Empty(50);
+    private int _totalRows = 0;
+    private bool _sessionMetaLoaded = false;   // guard: load program/battery only once
+
+    // ── Live buffer — bounded; older rows are safe in SQLite ─────────────────
+    private const int LiveBufferMaxRows = 50_000;
+    private List<MeasurementData> _liveBuffer = new();
+
+    private string _dataSubId = "";
+
+    private enum FullscreenView { None, Chart, Program, DataTable }
+    private FullscreenView _fullscreen = FullscreenView.None;
+
+    // ── REG Logs (separate from main session data) ──────────────────────────
+    private List<string> _regLabels = new();
+    private string? _selectedRegLabel;
+    private PagedResult<MeasurementData> _regLogPagedData = PagedResult<MeasurementData>.Empty(50);
+
+    private List<StepModel> _expandedSteps = new();
+    private List<ProgramDTO> _sessionProducerPrograms = new();
+    private Dictionary<string, string[]> _sessionTableFileData = new();
+    private DotNetObjectReference<BmsDashboard>? _selfRef;
+    private DateTime _lastUiRefresh = DateTime.MinValue;
+    private static readonly TimeSpan UiRefreshInterval = TimeSpan.FromSeconds(1);
+
+    // ── Export toast ──────────────────────────────────────────────────────────
+    private record ToastState(string Kind, string Message, int? DownloadId = null);
+    private ToastState? _exportToast;
+
+    // ── Export spinner (owned here, passed to BmsDataTable as parameter) ──────
+    private bool _isExporting = false;
+
+    // ── Export confirm dialog ─────────────────────────────────────────────────
+    private bool _showExportConfirm = false;
+    private ExportRecord? _existingExportRecord = null;
+
+    // ── Derived ───────────────────────────────────────────────────────────────
+    private IChannelCommandHandler? commandHandler;
+
+    private List<StepModel> Steps =>
+        commandHandler != null && commandHandler.ExpandedProgramSteps.Count > 0
+            ? commandHandler.ExpandedProgramSteps
+            : _expandedSteps.Count > 0 ? _expandedSteps
+            : Pg?.ProgramStepModel ?? [];
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            IsLoading = true;
+
+            if (Key != null && CM._devices.TryGetValue(Key, out var h))
+                commandHandler = h;
+
+            await ErrorMessages.GetMessages(true);
+            await ErrorMessages.GetErrors(true);
+
+            if (!string.IsNullOrEmpty(SQLFilePath))
+            {
+                // Load page 1 first (also loads session metadata), then snap to the
+                // last page so the newest time-series rows are shown on open.
+                await LoadPagedAsync(page: 1);
+                if (_pagedData.TotalPages > 1)
+                    await LoadPagedAsync(page: _pagedData.TotalPages);
+
+                // If a background export job was already running when the user
+                // last left (or refreshed), reconnect to it so the toast and
+                // spinner are restored automatically.
+                await ResumeInProgressExportAsync();
+            }
+
+            // Subscribe to live data only when a program is actively running
+            if (commandHandler?.RealTime.RealTimeRecord.ProgramStatus == Models.Enums.ProgramRunningStatus.Running)
+            {
+                _dataSubId = EventBus.Subscribe<List<MeasurementData>>(SQLFilePath, async newRows =>
+                {
+                    if (!IsLiveData) return;
+
+                    // Bounded live buffer — discard oldest rows when full
+                    if (_liveBuffer.Count + newRows.Count > LiveBufferMaxRows)
+                    {
+                        int excess = (_liveBuffer.Count + newRows.Count) - LiveBufferMaxRows;
+                        _liveBuffer.RemoveRange(0, Math.Min(excess, _liveBuffer.Count));
+                    }
+                    _liveBuffer.AddRange(newRows);
+
+                    if (newRows.Count > 0)
+                    {
+                        _liveStep = newRows[^1].StepNumber;
+
+                        if ((byte)newRows[^1].Operator == OperatorConstants.STO)
+                        {
+                            EventBus?.Unsubscribe(SQLFilePath, _dataSubId);
+                            _dataSubId = "";
+                            Key = string.Empty;
+                            await InvokeAsync(StateHasChanged);
+                            return;
+                        }
+                    }
+
+                    var now = DateTime.UtcNow;
+                    if (now - _lastUiRefresh >= UiRefreshInterval)
+                    {
+                        _lastUiRefresh = now;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                });
+            }
+            else if (commandHandler != null)
+            {
+                EventBus?.Unsubscribe(SQLFilePath, _dataSubId);
+                _dataSubId = "";
+                Key = string.Empty;
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("BmsExport.register", _selfRef);
+        }
+    }
+
+    // ── Paged load ────────────────────────────────────────────────────────────
+    private async Task LoadPagedAsync(int page, int pageSize = 50)
+    {
+        _pagedData = await dbManager.ReadSessionPageAsync(
+            SQLFilePath, page, pageSize, IsLiveData ? null : selectedStep);
+        _totalRows = _pagedData.TotalRows;
+
+        // Only load session metadata on the very first page-1 load.
+        // Subsequent GoToPage(1) calls (e.g. step filter, user pressing «) must
+        // not re-fetch program/battery/steps — they're already loaded and stable.
+        if (page == 1 && !_sessionMetaLoaded)
+        {
+            _sessionMetaLoaded = true;
+            var session = await dbManager.GetSessionAsync(SQLFilePath);
+            if (session != null)
+            {
+                Pg = session.Program;
+                Battery = session.Battery;
+                _sessionProducerPrograms = session.ProducerPrograms ?? new();
+                _sessionTableFileData = session.TableFileData ?? new();
+                _expandedSteps = session.ExpandedProgramSteps ?? new();
+            }
+
+            _regLabels = await dbManager.GetDistinctRegLabelsAsync(SQLFilePath);
+        }
+    }
+
+    // ── REG Logs (labeled REG-step data, stored separately from Measurements) ──
+    private async Task HandleRegLabelSelected(string label)
+    {
+        _selectedRegLabel = string.Equals(_selectedRegLabel, label, StringComparison.OrdinalIgnoreCase) ? null : label;
+
+        if (_selectedRegLabel != null)
+            await LoadRegLogPageAsync(1, _regLogPagedData.PageSize);
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleRegLogPageChanged(PageChangeRequest req)
+    {
+        await LoadRegLogPageAsync(req.Page, req.PageSize);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadRegLogPageAsync(int page, int pageSize)
+    {
+        if (_selectedRegLabel == null) return;
+
+        var regPage = await dbManager.ReadRegLogPageAsync(SQLFilePath, _selectedRegLabel, page, pageSize);
+        _regLogPagedData = new PagedResult<MeasurementData>
+        {
+            Items     = regPage.Items.Select(MapRegLogToMeasurement).ToList(),
+            TotalRows = regPage.TotalRows,
+            Page      = regPage.Page,
+            PageSize  = regPage.PageSize
+        };
+    }
+
+    // BmsDataTable is hardcoded to MeasurementData; RegLogRecord's field shape mirrors it
+    // deliberately so its existing rendering can be reused as-is for the REG Logs view.
+    private static MeasurementData MapRegLogToMeasurement(RegLogRecord r) => new()
+    {
+        Id                  = r.Id,
+        SessionID           = r.SessionID,
+        DeviceId            = r.DeviceId,
+        ChannelId           = r.CircuitId,
+        StepNumber          = r.StepNumber,
+        Operator            = r.Operator,
+        CircuitStatus       = r.CircuitStatus,
+        DateTime            = r.DateTime,
+        ProgramRunningTime  = r.ProgramRunningTime,
+        Current             = r.Current,
+        Voltage             = r.Voltage,
+        Temperature         = r.Temperature,
+        Power               = r.Power,
+        AccumulatedCapacity = r.AccumulatedCapacity,
+        ChargeCapacity      = r.ChargeCapacity,
+        DischargeCapacity   = r.DischargeCapacity,
+        StepCapacity        = r.StepCapacity,
+        AccumulatedEnergy   = r.AccumulatedEnergy,
+        ChargeEnergy        = r.ChargeEnergy,
+        DischargeEnergy     = r.DischargeEnergy,
+        StepEnergy          = r.StepEnergy,
+        SystemErrorID       = r.SystemErrorID,
+        ErrorId             = r.ErrorId,
+        MessageId           = r.MessageId,
+        Remark              = r.Remark,
+        dbcValues           = r.dbcValues
+    };
+
+    // Called by BmsDataTable when user changes page or page-size
+    private async Task HandlePageChanged(PageChangeRequest req)
+    {
+        await LoadPagedAsync(req.Page, req.PageSize);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Step filter ───────────────────────────────────────────────────────────
+    private async Task HandleStepSelected(int? step)
+    {
+        if (IsLiveData) return;
+        selectedStep = selectedStep == step ? null : step;
+        await LoadPagedAsync(1, _pagedData.PageSize);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Live toggle ───────────────────────────────────────────────────────────
+    private void ToggleLive()
+    {
+        IsLiveData = !IsLiveData;
+        if (IsLiveData)
+            selectedStep = null;
+        else
+            _liveStep = null;
+    }
+
+    // ── Fullscreen ────────────────────────────────────────────────────────────
+    private void ToggleFullscreen(FullscreenView view) =>
+        _fullscreen = _fullscreen == view ? FullscreenView.None : view;
+
+    // ── Battery modal ─────────────────────────────────────────────────────────
+    private void OpenBatteryModal() => _showBatteryModal = true;
+    private void CloseBatteryModal() => _showBatteryModal = false;
+
+    // ── Export ────────────────────────────────────────────────────────────────
+    // Entry point: called by BmsDataTable export button.
+    // Small/live sessions always re-run in-memory (no dialog needed).
+    // Large sessions check for an existing Ready export first.
+    private async Task HandleExportAsync()
+    {
+        if (_totalRows == 0 && !IsLiveData) return;
+        if (_isExporting) return;
+
+        if (IsLiveData || _totalRows <= SmallSessionThreshold)
+        {
+            _isExporting = true;
+            await InvokeAsync(StateHasChanged);
+            try { await InMemoryExportAsync(); }
+            finally { _isExporting = false; await InvokeAsync(StateHasChanged); }
+            return;
+        }
+
+        // Large session — check for an existing Ready export for this user
+        _isExporting = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var existing = await FindReadyExportAsync();
+            if (existing != null)
+            {
+                // Pause spinner and show confirm dialog
+                _isExporting = false;
+                _existingExportRecord = existing;
+                _showExportConfirm = true;
+                await InvokeAsync(StateHasChanged);
+                return; // spinner reset here; dialog callbacks handle next step
+            }
+        }
+        catch
+        {
+            _isExporting = false;
+            await InvokeAsync(StateHasChanged);
+            throw;
+        }
+
+        // No existing export — proceed directly
+        await RequestBackgroundExportAsync();
+    }
+
+    // ── Confirm dialog callbacks ──────────────────────────────────────────────
+    private void CancelExportConfirm()
+    {
+        _showExportConfirm = false;
+        _existingExportRecord = null;
+        _isExporting = false;
+    }
+
+    private async Task ConfirmDownloadExistingAsync()
+    {
+        var rec = _existingExportRecord;
+        _showExportConfirm = false;
+        _existingExportRecord = null;
+        _isExporting = false;
+        await InvokeAsync(StateHasChanged);
+
+        if (rec == null) return;
+
+        // Stream directly from the server — no RAM/SignalR overhead
+        await JS.InvokeVoidAsync("BmsExport.openDownloadUrl", $"/api/export/download/{rec.Id}");
+    }
+
+    private async Task ConfirmRegenerateAsync()
+    {
+        var rec = _existingExportRecord;
+        _showExportConfirm = false;
+        _existingExportRecord = null;
+        await InvokeAsync(StateHasChanged);
+
+        // Mark old record as superseded then queue fresh job
+        if (rec != null)
+            await ExportRepo.MarkSupersededAsync(rec.Id);
+
+        await RequestBackgroundExportAsync();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private const int SmallSessionThreshold = 50_000;
+
+    private async Task<ExportRecord?> FindReadyExportAsync()
+    {
+        var records = await ExportRepo.GetBySessionAsync(SQLFilePath);
+        return records.FirstOrDefault(e =>
+            e.RequestedBy == CurrentUser.UserName &&
+            e.Status == ExportStatus.Ready &&
+            File.Exists(e.ExportFilePath));
+    }
+
+    /// <summary>
+    /// Called on every page load. Looks for a Processing/Queued export that
+    /// was started in a previous circuit (before a refresh or navigation away).
+    /// If found, restores the spinner toast and resumes the status poll loop
+    /// so the user sees the job complete without having to re-request it.
+    /// </summary>
+    private async Task ResumeInProgressExportAsync()
+    {
+        try
+        {
+            var records = await ExportRepo.GetBySessionAsync(SQLFilePath);
+            var inProgress = records.FirstOrDefault(e =>
+                e.RequestedBy == CurrentUser.UserName &&
+                (e.Status == ExportStatus.Processing || e.Status == ExportStatus.Pending));
+
+            if (inProgress == null) return;
+
+            // Restore UI state — the Hangfire job is still running on the server.
+            _isExporting = true;
+            _exportToast = new ToastState("spin",
+                "Export still in progress — reconnected after page reload…");
+            await InvokeAsync(StateHasChanged);
+
+            // Resume polling the existing job ID.
+            _ = PollExportStatusAsync(inProgress.Id);
+        }
+        catch
+        {
+            // Non-critical — if resume fails, user can simply request a new export.
+        }
+    }
+
+    /// <summary>
+    /// Triggers a server-side HTTP download for an already-generated export.
+    /// The file is streamed by the ExportController — nothing passes through SignalR.
+    /// Safe for files of any size.
+    /// </summary>
+    private async Task DownloadById(int exportId)
+        => await JS.InvokeVoidAsync("BmsExport.openDownloadUrl", $"/api/export/download/{exportId}");
+
+    private static string FormatFileSize(long bytes) => bytes switch
+    {
+        >= 1_048_576 => $"{bytes / 1_048_576.0:F1} MB",
+        >= 1_024     => $"{bytes / 1_024.0:F0} KB",
+        _            => $"{bytes} B"
+    };
+
+    /// <summary>In-memory export — identical to the old ExportExcelAsync path.</summary>
+    [JSInvokable]
+    public async Task ExportExcelAsync()
+    {
+        List<MeasurementData> allData = IsLiveData
+            ? _liveBuffer.ToList()
+            : await dbManager.ReadSessionDataAsync(SQLFilePath);
+
+        var exporter = new BmsExcelExport()
+            .AddProgram(Pg)
+            .AddMeasurementData(allData)
+            .AddBattery(Battery)
+            .AddChartImage(null);
+
+        var bytes    = exporter.Export();
+        var base64   = Convert.ToBase64String(bytes);
+        var fileName = $"BMS_Export_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        await JS.InvokeVoidAsync("BmsExport.downloadFile", fileName, base64);
+    }
+
+    private async Task InMemoryExportAsync() =>
+        await JS.InvokeAsync<object>("BmsExport.trigger");
+
+    private async Task RequestBackgroundExportAsync()
+    {
+        try
+        {
+            _exportToast = new ToastState("spin", "Queuing export — this may take a few minutes for large sessions…");
+            await InvokeAsync(StateHasChanged);
+
+            var resp = await Http.PostAsJsonAsync("/api/export/request", new
+            {
+                SessionFilePath = SQLFilePath,
+                DisplayName     = Path.GetFileNameWithoutExtension(SQLFilePath)
+            });
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                _exportToast = new ToastState("error", "Export request failed. Please try again.");
+                _isExporting = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var body = await resp.Content.ReadFromJsonAsync<ExportRequestResult>();
+            if (body == null) { _isExporting = false; return; }
+
+            // Fire-and-forget poll — spinner stays on while polling
+            _ = PollExportStatusAsync(body.Id);
+        }
+        catch (Exception ex)
+        {
+            _exportToast = new ToastState("error", $"Export error: {ex.Message}");
+            _isExporting = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollExportStatusAsync(int exportId)
+    {
+        for (int i = 0; i < 180; i++)   // 180 × 5 s = 15 min timeout
+        {
+            await Task.Delay(5_000);
+            try
+            {
+                var status = await Http.GetFromJsonAsync<ExportStatusResult>($"/api/export/status/{exportId}");
+                if (status == null) continue;
+
+                if (status.Status == "Ready")
+                {
+                    _exportToast = new ToastState("ok", "Export ready!", exportId);
+                    _isExporting = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+                if (status.Status == "Failed")
+                {
+                    _exportToast = new ToastState("error", $"Export failed: {status.ErrorMessage}");
+                    _isExporting = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            catch { /* ignore transient HTTP errors */ }
+        }
+
+        _exportToast = new ToastState("error", "Export is taking longer than expected. Check the Reports → My Exports page.");
+        _isExporting = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private RenderFragment BatteryField(string label, string value) => __builder =>
+    {
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class", "py-1 border-b border-[hsl(var(--border)/0.4)]");
+        __builder.OpenElement(2, "span");
+        __builder.AddAttribute(3, "class", "text-[hsl(var(--muted-foreground))] font-medium uppercase tracking-wide text-[10px] block");
+        __builder.AddContent(4, label);
+        __builder.CloseElement();
+        __builder.OpenElement(5, "span");
+        __builder.AddAttribute(6, "class", "font-mono text-[hsl(var(--foreground))]");
+        __builder.AddContent(7, value);
+        __builder.CloseElement();
+        __builder.CloseElement();
+    };
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+    public void Dispose()
+    {
+        if (!string.IsNullOrEmpty(_dataSubId))
+            EventBus?.Unsubscribe(SQLFilePath, _dataSubId);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _selfRef?.Dispose();
+        await ValueTask.CompletedTask;
+    }
+
+    // ── Response DTOs for API calls ───────────────────────────────────────────
+    private record ExportRequestResult(int Id, string Status, bool Reused);
+    private record ExportStatusResult(int Id, string Status, string? ErrorMessage, bool CanDownload);
+}

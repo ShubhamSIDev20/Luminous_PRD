@@ -1,0 +1,314 @@
+﻿@page "/products-demo"
+@using System.Linq
+
+<PageTitle>Products - Infinite Scroll Demo</PageTitle>
+
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6">Products Catalog</h1>
+
+    <InfiniteScrollComponent TItem="Product"
+                             DataSource="LoadProducts"
+                             Height="700px"
+                             InitialItemsPerPage="25"
+                             ItemsPerPageOptions="new List<int> { 10, 25, 50, 100 }"
+                             InitialViewMode="InfiniteScrollComponent<Product>.ViewMode.Grid"
+                             GridColumnsLg="3"
+                             GridColumnsXl="4"
+                             GridGap="6"
+                             ShowActionBar="true"
+                             ShowViewToggle="true"
+                             ShowItemsPerPageSelector="true"
+                             ShowItemCount="true"
+                             ActionBarPosition="InfiniteScrollComponent<Product>.ActionBarPlacement.Both"
+                             OnViewModeChanged="HandleViewModeChanged">
+
+        @* Top Action Bar Custom Content *@
+        <TopActionBarContent>
+            <div class="flex items-center gap-2">
+                <button @onclick="RefreshData"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh
+                </button>
+
+                <select @bind="SelectedCategory" @bind:after="RefreshData"
+                        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
+                    <option value="">All Categories</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Clothing">Clothing</option>
+                    <option value="Books">Books</option>
+                    <option value="Home">Home & Garden</option>
+                </select>
+            </div>
+        </TopActionBarContent>
+
+        @* Grid View Template *@
+        <GridItem Context="product">
+            <div class="bg-white dark:bg-gray-700 rounded-xl shadow-md hover:shadow-xl transition-shadow overflow-hidden group cursor-pointer"
+                 @onclick="() => SelectProduct(product)">
+
+                @* Image *@
+                <div class="relative h-48 bg-gradient-to-br from-blue-400 to-purple-500 overflow-hidden">
+                    <div class="absolute inset-0 flex items-center justify-center text-white text-6xl font-bold opacity-20">
+                        @product.Id
+                    </div>
+                    @if (product.IsNew)
+                    {
+                        <span class="absolute top-2 right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">NEW</span>
+                    }
+                </div>
+
+                @* Content *@
+                <div class="p-4">
+                    <div class="flex items-start justify-between mb-2">
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+                            @product.Name
+                        </h3>
+                    </div>
+
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+                        @product.Description
+                    </p>
+
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                            $@product.Price.ToString("N2")
+                        </span>
+                        <span class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-full">
+                            @product.Category
+                        </span>
+                    </div>
+
+                    @* Rating *@
+                    <div class="flex items-center gap-1 mb-3">
+                        @for (int i = 1; i <= 5; i++)
+                        {
+                            <svg class="w-4 h-4 @(i <= product.Rating ? "text-yellow-400" : "text-gray-300")" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                        }
+                        <span class="text-xs text-gray-600 dark:text-gray-400 ml-1">(@product.ReviewCount)</span>
+                    </div>
+
+                    @* Actions *@
+                    <div class="flex gap-2">
+                        <button @onclick="() => AddToCart(product)" @onclick:stopPropagation="true"
+                                class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                            Add to Cart
+                        </button>
+                        <button @onclick="() => ToggleFavorite(product)" @onclick:stopPropagation="true"
+                                class="px-3 py-2 @(product.IsFavorite ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-600") hover:bg-gray-200 dark:bg-gray-600 dark:hover:bg-gray-500 rounded-lg transition-colors">
+                            <svg class="w-5 h-5" fill="@(product.IsFavorite ? "currentColor" : "none")" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </GridItem>
+
+        @* List View Template *@
+        <ListItem Context="product">
+            <div class="bg-white dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors cursor-pointer"
+                 @onclick="() => SelectProduct(product)">
+                <div class="p-4 flex items-center gap-4">
+
+                    @* Thumbnail *@
+                    <div class="flex-shrink-0 w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg flex items-center justify-center text-white text-2xl font-bold relative">
+                        @product.Id
+                        @if (product.IsNew)
+                        {
+                            <span class="absolute -top-2 -right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">NEW</span>
+                        }
+                    </div>
+
+                    @* Info *@
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between mb-1">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                @product.Name
+                            </h3>
+                            <span class="text-xl font-bold text-gray-900 dark:text-gray-100 ml-4">
+                                $@product.Price.ToString("N2")
+                            </span>
+                        </div>
+
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2 line-clamp-1">
+                            @product.Description
+                        </p>
+
+                        <div class="flex items-center gap-4 text-sm">
+                            <span class="px-2 py-1 bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-full">
+                                @product.Category
+                            </span>
+
+                            <div class="flex items-center gap-1">
+                                @for (int i = 1; i <= 5; i++)
+                                {
+                                    <svg class="w-4 h-4 @(i <= product.Rating ? "text-yellow-400" : "text-gray-300")" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                }
+                                <span class="text-gray-600 dark:text-gray-400 ml-1">(@product.ReviewCount)</span>
+                            </div>
+
+                            <span class="text-gray-500 dark:text-gray-400">Stock: @product.StockQuantity</span>
+                        </div>
+                    </div>
+
+                    @* Actions *@
+                    <div class="flex-shrink-0 flex gap-2">
+                        <button @onclick="() => AddToCart(product)" @onclick:stopPropagation="true"
+                                class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                            Add to Cart
+                        </button>
+                        <button @onclick="() => ToggleFavorite(product)" @onclick:stopPropagation="true"
+                                class="px-3 py-2 @(product.IsFavorite ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-600") hover:bg-gray-200 dark:bg-gray-600 dark:hover:bg-gray-500 rounded-lg transition-colors">
+                            <svg class="w-5 h-5" fill="@(product.IsFavorite ? "currentColor" : "none")" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </ListItem>
+
+        @* Empty State *@
+        <EmptyContent>
+            <div class="text-center py-12">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No products found</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Try adjusting your filters or check back later.</p>
+            </div>
+        </EmptyContent>
+
+        @* Bottom Action Bar Custom Content *@
+        <BottomActionBarContent>
+            <div class="flex items-center justify-between w-full">
+                <button @onclick="ExportData"
+                        class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    Export to CSV
+                </button>
+                @if (SelectedProduct != null)
+                {
+                    <div class="text-sm text-gray-600 dark:text-gray-400">
+                        Selected: <strong class="text-gray-900 dark:text-gray-100">@SelectedProduct.Name</strong>
+                    </div>
+                }
+            </div>
+        </BottomActionBarContent>
+
+    </InfiniteScrollComponent>
+</div>
+
+@code {
+    private InfiniteScrollComponent<Product>? scrollComponent;
+    private Product? SelectedProduct;
+    private string SelectedCategory = "";
+    private List<Product> allProducts = new();
+
+    protected override void OnInitialized()
+    {
+        // Generate sample data
+        var categories = new[] { "Electronics", "Clothing", "Books", "Home" };
+        var random = new Random();
+
+        allProducts = Enumerable.Range(1, 500)
+            .Select(i => new Product
+                {
+                    Id = i,
+                    Name = $"Product {i} - {GetProductName(i)}",
+                    Description = $"High-quality product with excellent features. This is a detailed description for product number {i} that provides valuable information to customers.",
+                    Price = Math.Round(10 + (i % 200) * 2.5m, 2),
+                    Category = categories[i % categories.Length],
+                    Rating = random.Next(3, 6),
+                    ReviewCount = random.Next(10, 500),
+                    StockQuantity = random.Next(0, 100),
+                    IsNew = i % 20 == 0,
+                    IsFavorite = false
+                })
+            .ToList();
+    }
+
+    private string GetProductName(int id)
+    {
+        var names = new[] { "Premium Edition", "Deluxe", "Pro", "Ultimate", "Classic", "Modern", "Vintage", "Smart" };
+        return names[id % names.Length];
+    }
+
+    private async Task<InfiniteScrollComponent<Product>.InfiniteScrollResponse<Product>> LoadProducts(
+        InfiniteScrollComponent<Product>.InfiniteScrollRequest request)
+    {
+        // Simulate server delay
+        await Task.Delay(300, request.CancellationToken);
+
+        // Filter by category
+        var filtered = string.IsNullOrEmpty(SelectedCategory)
+            ? allProducts
+            : allProducts.Where(p => p.Category == SelectedCategory).ToList();
+
+        // Pagination
+        var items = filtered
+            .Skip(request.StartIndex)
+            .Take(request.Count)
+            .ToList();
+
+        return new InfiniteScrollComponent<Product>.InfiniteScrollResponse<Product>
+            {
+                Items = items,
+                TotalCount = filtered.Count
+            };
+    }
+
+    private void SelectProduct(Product product)
+    {
+        SelectedProduct = product;
+    }
+
+    private void AddToCart(Product product)
+    {
+        // Add to cart logic
+        Console.WriteLine($"Added {product.Name} to cart");
+    }
+
+    private void ToggleFavorite(Product product)
+    {
+        product.IsFavorite = !product.IsFavorite;
+    }
+
+    private async Task RefreshData()
+    {
+        if (scrollComponent != null)
+        {
+            await scrollComponent.RefreshAsync();
+        }
+    }
+
+    private void HandleViewModeChanged(InfiniteScrollComponent<Product>.ViewMode mode)
+    {
+        Console.WriteLine($"View mode changed to: {mode}");
+    }
+
+    private void ExportData()
+    {
+        Console.WriteLine("Exporting data...");
+    }
+
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public decimal Price { get; set; }
+        public string Category { get; set; } = string.Empty;
+        public int Rating { get; set; }
+        public int ReviewCount { get; set; }
+        public int StockQuantity { get; set; }
+        public bool IsNew { get; set; }
+        public bool IsFavorite { get; set; }
+    }
+}

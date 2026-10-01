@@ -1,0 +1,14 @@
+@namespace BatteryTestingSystem.Components.UI.Pagination
+
+<nav class="@CN.Merge("mx-auto flex w-full justify-center", Class)" role="navigation" aria-label="pagination" @attributes="AdditionalAttributes">
+    <ul class="flex flex-row items-center gap-1">
+        @ChildContent
+    </ul>
+</nav>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}

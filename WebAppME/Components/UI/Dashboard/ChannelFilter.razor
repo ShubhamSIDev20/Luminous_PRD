@@ -1,0 +1,396 @@
+@namespace BatteryTestingSystem.Components.UI.Dashboard
+@inject ServerSessionStorageService sessionStorage
+@using BatteryTestingSystem.Models.Enums
+
+<Popover>
+    <PopoverTrigger AsChild>
+        <Button Variant="ButtonVariant.Outline" size="ButtonSize.Icon" Class="relative">
+            <Blazicon Svg="Lucide.ListFilter" class="h-4 w-4" />
+            @if (_hiddenCount > 0)
+            {
+                <span class="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-mono rounded-full w-4 h-4 flex items-center justify-center">
+                    @(_hiddenCount > 9 ? "9+" : _hiddenCount.ToString())
+                </span>
+            }
+        </Button>
+    </PopoverTrigger>
+
+    <PopoverContent Class="w-72 bg-popover border border-border z-50" Align="PopoverAlign.End">
+        <div class="space-y-3">
+
+            @* Header *@
+            <div class="flex items-center justify-between pb-2 border-b border-border">
+                <div>
+                    <h4 class="font-medium text-sm text-foreground">My Channels</h4>
+                    <span class="text-[10px] text-muted-foreground">
+                        @(AccessChannels.Count - _hiddenCount) / @AccessChannels.Count visible
+                    </span>
+                </div>
+                <div class="flex gap-1">
+                    @if (_hiddenCount > 0)
+                    {
+                        <Button Variant="ButtonVariant.Ghost" size="ButtonSize.Small"
+                                @onclick="ShowAll" class="h-6 px-2 text-xs">
+                            Show All
+                        </Button>
+                    }
+                    <Button Variant="ButtonVariant.Ghost" size="ButtonSize.Small"
+                            @onclick="HideAll" class="h-6 px-2 text-xs text-muted-foreground">
+                        Hide All
+                    </Button>
+                </div>
+            </div>
+
+            @* Search *@
+            <input type="search" placeholder="Search channels…"
+                   class="w-full h-7 px-2 text-xs rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                   @bind="_search" @bind:event="oninput" />
+
+            @* Device › Secondary › Channel tree *@
+            <div class="max-h-64 overflow-y-auto space-y-0.5">
+                @foreach (var dev in _tree)
+                {
+                    var devState = GetDeviceState(dev);
+                    var devExpanded = IsDeviceExpanded(dev.DeviceID);
+                    <div class="space-y-0.5">
+                        <div class="flex items-center gap-1 px-1 py-1 hover:bg-muted/50 rounded text-xs font-medium">
+                            <button type="button" @onclick="@(() => ToggleDeviceExpanded(dev.DeviceID))" class="w-4 h-4 flex items-center justify-center text-muted-foreground">
+                                <Blazicon Svg="@(devExpanded ? Lucide.ChevronDown : Lucide.ChevronRight)" class="h-3 w-3" />
+                            </button>
+                            <input type="checkbox"
+                                   checked="@(devState == TriState.Checked)"
+                                   class="@TriStateCheckboxClass(devState)"
+                                   @onchange="@(async e => await SetDeviceVisible(dev, (bool)(e.Value ?? true)))" />
+                            <span class="text-foreground cursor-pointer flex-1" @onclick="@(() => ToggleDeviceExpanded(dev.DeviceID))">@dev.DeviceLabel</span>
+                        </div>
+
+                        @if (devExpanded)
+                        {
+                            @foreach (var sec in dev.Secondaries)
+                            {
+                                var secState = GetSecondaryState(sec);
+                                var secExpanded = IsSecondaryExpanded(dev.DeviceID, sec.SecondaryBoardNumber);
+                                @* pl-6, not pl-5: `pl-5` is absent from the prebuilt
+                                   wwwroot/css/app.min.css (ADR-2 - no rebuild pipeline), so it
+                                   resolved to 0px and rendered Board flush with Device, making a
+                                   real 3-level tree read as 2 levels. pl-6 (24px) and the leaf's
+                                   pl-9 (36px) are both verified present in that file. *@
+                                <div class="pl-6 space-y-0.5">
+                                    <div class="flex items-center gap-1 px-1 py-1 hover:bg-muted/50 rounded text-xs">
+                                        <button type="button" @onclick="@(() => ToggleSecondaryExpanded(dev.DeviceID, sec.SecondaryBoardNumber))" class="w-4 h-4 flex items-center justify-center text-muted-foreground">
+                                            <Blazicon Svg="@(secExpanded ? Lucide.ChevronDown : Lucide.ChevronRight)" class="h-3 w-3" />
+                                        </button>
+                                        <input type="checkbox"
+                                               checked="@(secState == TriState.Checked)"
+                                               class="@TriStateCheckboxClass(secState)"
+                                               @onchange="@(async e => await SetSecondaryVisible(sec, (bool)(e.Value ?? true)))" />
+                                        <span class="text-foreground cursor-pointer flex-1" @onclick="@(() => ToggleSecondaryExpanded(dev.DeviceID, sec.SecondaryBoardNumber))">Board @sec.SecondaryBoardNumber</span>
+                                    </div>
+
+                                    @if (secExpanded)
+                                    {
+                                        @foreach (var c in sec.Channels)
+                                        {
+                                            var key = (c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber);
+                                            var isVisible = IsVisible(key);
+                                            <label class="flex items-center gap-2 pl-9 pr-1 py-1 hover:bg-muted/50 cursor-pointer rounded text-xs">
+                                                <input type="checkbox" checked="@isVisible"
+                                                       @onchange="@(async e => await Toggle(key, (bool)(e.Value ?? true)))"
+                                                       class="w-3.5 h-3.5 accent-primary cursor-pointer" />
+                                                <span class="text-foreground">@c.Name – @(c.SecondaryBoardNumber)-@(c.ChannelNumber)</span>
+                                            </label>
+                                        }
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+                @if (!_tree.Any())
+                {
+                    <p class="text-xs text-muted-foreground py-2 text-center">No channels match.</p>
+                }
+            </div>
+        </div>
+    </PopoverContent>
+</Popover>
+
+@code {
+    /// <summary>Channels this user is permitted to see — set by DashboardView from DB access table.</summary>
+    [Parameter] public List<(int DeviceID, int SecondaryBoardNumber, int ChannelNumber, string Name)> AccessChannels { get; set; } = new();
+
+    /// <summary>Current visible subset — two-way bound to DashboardView._visibleChannels.</summary>
+    [Parameter] public HashSet<(int DeviceID, int SecondaryBoardNumber, int ChannelNumber)> VisibleChannels { get; set; } = new();
+    [Parameter] public EventCallback<HashSet<(int DeviceID, int SecondaryBoardNumber, int ChannelNumber)>> VisibleChannelsChanged { get; set; }
+
+    // Channels the user has chosen to hide — persisted; new access channels auto-show.
+    private HashSet<(int DeviceID, int SecondaryBoardNumber, int ChannelNumber)> _hidden = new();
+
+    private string _searchBacking = "";
+    private string _search
+    {
+        get => _searchBacking;
+        set
+        {
+            if (_searchBacking == value) return;
+            _searchBacking = value;
+            RefreshFilteredList();
+        }
+    }
+
+    private bool _ready = false;
+
+    // Cached fields — updated only when state changes (Issue 1 & 2).
+    private int _hiddenCount = 0;
+    private List<(int DeviceID, int SecondaryBoardNumber, int ChannelNumber, string Name)> _filteredList = new();
+
+    private string StorageKey => $"{CurrentUser.UserId}_channel_view_pref_v3";
+
+    private void RefreshFilteredList()
+    {
+        _filteredList = string.IsNullOrWhiteSpace(_searchBacking)
+            ? AccessChannels
+            : AccessChannels.Where(c =>
+                c.Name.Contains(_searchBacking, StringComparison.OrdinalIgnoreCase) ||
+                c.ChannelNumber.ToString().Contains(_searchBacking)).ToList();
+        RefreshTree();
+    }
+
+    private record ChannelLeaf(int DeviceID, int SecondaryBoardNumber, int ChannelNumber, string Name);
+
+    private class SecondaryNode
+    {
+        public int SecondaryBoardNumber { get; init; }
+        public List<ChannelLeaf> Channels { get; init; } = new();
+    }
+
+    private class DeviceNode
+    {
+        public int DeviceID { get; init; }
+        public string DeviceLabel { get; init; } = "";
+        public List<SecondaryNode> Secondaries { get; init; } = new();
+    }
+
+    // Expand state — keyed by DeviceID for device nodes, "{DeviceID}:{SecondaryBoardNumber}" for secondary nodes.
+    private HashSet<int> _expandedDevices = new();
+    private HashSet<string> _expandedSecondaries = new();
+
+    // Nodes are expanded by default the first time they appear in the tree, so the popover
+    // reads as an actual Device -> Board -> Channel treeview on open instead of a flat list
+    // of collapsed device rows. Tracked separately from _expanded* so a user's manual
+    // collapse survives later RefreshTree() calls (search keystrokes, live access updates).
+    private HashSet<int> _seenDevices = new();
+    private HashSet<string> _seenSecondaries = new();
+
+    private List<DeviceNode> BuildTree(List<(int DeviceID, int SecondaryBoardNumber, int ChannelNumber, string Name)> source)
+    {
+        return source
+            .GroupBy(c => c.DeviceID)
+            .OrderBy(g => g.Key)
+            .Select(deviceGroup => new DeviceNode
+            {
+                DeviceID = deviceGroup.Key,
+                DeviceLabel = $"Device {deviceGroup.Key}",
+                Secondaries = deviceGroup
+                    .GroupBy(c => c.SecondaryBoardNumber)
+                    .OrderBy(g => g.Key)
+                    .Select(secGroup => new SecondaryNode
+                    {
+                        SecondaryBoardNumber = secGroup.Key,
+                        Channels = secGroup
+                            .OrderBy(c => c.ChannelNumber)
+                            .Select(c => new ChannelLeaf(c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber, c.Name))
+                            .ToList()
+                    })
+                    .ToList()
+            })
+            .ToList();
+    }
+
+    private List<DeviceNode> _tree = new();
+
+    private void RefreshTree()
+    {
+        _tree = BuildTree(_filteredList);
+
+        foreach (var dev in _tree)
+        {
+            if (_seenDevices.Add(dev.DeviceID))
+                _expandedDevices.Add(dev.DeviceID);
+
+            foreach (var sec in dev.Secondaries)
+            {
+                var secKey = $"{dev.DeviceID}:{sec.SecondaryBoardNumber}";
+                if (_seenSecondaries.Add(secKey))
+                    _expandedSecondaries.Add(secKey);
+            }
+        }
+    }
+
+    private enum TriState { Checked, Unchecked, Indeterminate }
+
+    private bool IsVisible((int DeviceID, int SecondaryBoardNumber, int ChannelNumber) key) => !_hidden.Contains(key);
+
+    private TriState GetSecondaryState(SecondaryNode sec)
+    {
+        var states = sec.Channels.Select(c => IsVisible((c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber))).ToList();
+        if (states.All(v => v)) return TriState.Checked;
+        if (states.All(v => !v)) return TriState.Unchecked;
+        return TriState.Indeterminate;
+    }
+
+    private TriState GetDeviceState(DeviceNode dev)
+    {
+        var states = dev.Secondaries.Select(GetSecondaryState).ToList();
+        if (states.All(s => s == TriState.Checked)) return TriState.Checked;
+        if (states.All(s => s == TriState.Unchecked)) return TriState.Unchecked;
+        return TriState.Indeterminate;
+    }
+
+    private async Task SetDeviceVisible(DeviceNode dev, bool visible)
+    {
+        foreach (var sec in dev.Secondaries)
+            foreach (var c in sec.Channels)
+                SetHidden((c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber), !visible);
+        RefreshCachedState();
+        Persist();
+        await EmitAsync();
+    }
+
+    private async Task SetSecondaryVisible(SecondaryNode sec, bool visible)
+    {
+        foreach (var c in sec.Channels)
+            SetHidden((c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber), !visible);
+        RefreshCachedState();
+        Persist();
+        await EmitAsync();
+    }
+
+    private void SetHidden((int DeviceID, int SecondaryBoardNumber, int ChannelNumber) key, bool hidden)
+    {
+        if (hidden) _hidden.Add(key);
+        else _hidden.Remove(key);
+    }
+
+    private void ToggleDeviceExpanded(int deviceId)
+    {
+        if (!_expandedDevices.Remove(deviceId)) _expandedDevices.Add(deviceId);
+    }
+
+    private void ToggleSecondaryExpanded(int deviceId, int secondaryBoardNumber)
+    {
+        var key = $"{deviceId}:{secondaryBoardNumber}";
+        if (!_expandedSecondaries.Remove(key)) _expandedSecondaries.Add(key);
+    }
+
+    private bool IsDeviceExpanded(int deviceId) =>
+        _expandedDevices.Contains(deviceId) || (!string.IsNullOrWhiteSpace(_searchBacking));
+
+    private bool IsSecondaryExpanded(int deviceId, int secondaryBoardNumber) =>
+        _expandedSecondaries.Contains($"{deviceId}:{secondaryBoardNumber}") || (!string.IsNullOrWhiteSpace(_searchBacking));
+
+    private string TriStateCheckboxClass(TriState state) => state switch
+    {
+        TriState.Indeterminate => "w-3.5 h-3.5 accent-primary cursor-pointer opacity-70",
+        _ => "w-3.5 h-3.5 accent-primary cursor-pointer"
+    };
+
+    private void RefreshCachedState()
+    {
+        // Update hidden count — channels no longer in access set don't count.
+        var accessSet = AccessChannels.Select(c => (c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber)).ToHashSet();
+        _hiddenCount = _hidden.Count(h => accessSet.Contains(h));
+        RefreshFilteredList();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _ready) return;
+
+        // Issue 4: load session state BEFORE setting _ready so OnParametersSetAsync
+        // doesn't prune hidden channels before the stored list is loaded.
+        var stored = sessionStorage.GetComponentState<ChannelViewPref>(StorageKey);
+        if (stored?.HiddenChannels?.Count > 0)
+            _hidden = stored.HiddenChannels.Select(k => (k.DeviceID, k.SecondaryBoardNumber, k.ChannelNumber)).ToHashSet();
+
+        _ready = true;
+
+        RefreshCachedState();
+        await EmitAsync();
+        StateHasChanged();
+    }
+
+    // When the access set changes (hardware reconnect/disconnect), prune stale hidden entries.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_ready) return;
+        var accessKeys = AccessChannels.Select(c => (c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber)).ToHashSet();
+        if (_hidden.RemoveWhere(h => !accessKeys.Contains(h)) > 0)
+        {
+            RefreshCachedState();
+            await EmitAsync();
+        }
+        else
+        {
+            RefreshFilteredList();
+        }
+    }
+
+    private async Task Toggle((int DeviceID, int SecondaryBoardNumber, int ChannelNumber) key, bool isVisible)
+    {
+        if (isVisible) _hidden.Remove(key);
+        else _hidden.Add(key);
+        RefreshCachedState();
+        Persist();
+        await EmitAsync();
+    }
+
+    private async Task ShowAll()
+    {
+        _hidden.Clear();
+        RefreshCachedState();
+        Persist();
+        await EmitAsync();
+    }
+
+    private async Task HideAll()
+    {
+        _hidden = AccessChannels.Select(c => (c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber)).ToHashSet();
+        RefreshCachedState();
+        Persist();
+        await EmitAsync();
+    }
+
+    // Emit the visible set — all access channels minus hidden ones.
+    private async Task EmitAsync()
+    {
+        var visible = AccessChannels
+            .Where(c => !_hidden.Contains((c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber)))
+            .Select(c => (c.DeviceID, c.SecondaryBoardNumber, c.ChannelNumber))
+            .ToHashSet();
+        await VisibleChannelsChanged.InvokeAsync(visible);
+    }
+
+    // Permanent=true writes through to DB via IConfigStorageService — survives logouts.
+    private void Persist()
+    {
+        // Issue 3: use named DTO (ChannelKey) instead of value-tuple for reliable JSON round-trip.
+        var pref = new ChannelViewPref
+        {
+            HiddenChannels = _hidden.Select(h => new ChannelKey { DeviceID = h.DeviceID, SecondaryBoardNumber = h.SecondaryBoardNumber, ChannelNumber = h.ChannelNumber }).ToList()
+        };
+        sessionStorage.SetComponentState(StorageKey, pref, Permanent: true);
+    }
+
+    private class ChannelViewPref
+    {
+        public List<ChannelKey> HiddenChannels { get; set; } = new();
+    }
+
+    private class ChannelKey
+    {
+        public int DeviceID { get; set; }
+        public int SecondaryBoardNumber { get; set; }
+        public int ChannelNumber { get; set; }
+    }
+}

@@ -1,0 +1,863 @@
+﻿@page "/settings/users"
+@attribute [Authorize]
+@attribute [StreamRendering]
+@using BatteryTestingSystem.Components.UI.Form
+@using BatteryTestingSystem.Models.Entities
+@using Microsoft.AspNetCore.Identity
+@using System.ComponentModel.DataAnnotations
+
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<ApplicationRole> RoleManager
+@inject ToastService Toast
+@inject NavigationManager nav
+@inject IUserCircuitAccessService CircuitAccessService
+@inject IDeviceCircuitServices DCService
+
+<div class="p-6 space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold">User Management</h1>
+            <p class="text-muted-foreground">
+                Manage system users, roles, and access
+            </p>
+        </div>
+         <AuthorizeView Roles="Administrator,Supervisor">
+            <Button OnClick="OpenCreateDialog" Title="Add User">
+                <Blazicon Svg="Lucide.Plus" class="h-4 w-4 mr-2" />
+                Add User
+            </Button>
+        </AuthorizeView>
+    </div>
+
+    <!-- Users Table -->
+    <Card>
+        <CardContent>
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>User Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Roles</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead class="text-right">Actions</TableHead>
+                    </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                    @foreach (var user in users)
+                    {
+                        <TableRow @key="user.Id">
+                            <TableCell>@user.UserName</TableCell>
+                            <TableCell>@user.Email</TableCell>
+
+                            <TableCell>
+                                <Badge variant="BadgeVariant.Outline">
+                                    @string.Join(", ", userRoles[user.Id])
+                                </Badge>
+                            </TableCell>
+
+                            <TableCell>
+                                <Badge variant="@(user.LockoutEnd != null ? BadgeVariant.Destructive : BadgeVariant.Outline)">
+                                    @(user.LockoutEnd != null ? "Locked" : "Active")
+                                </Badge>
+                            </TableCell>
+
+                            <TableCell class="text-right">
+                              
+                                
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button size="ButtonSize.Icon"
+                                                variant="ButtonVariant.Outline"
+                                                @onclick="@(() => OpenPasswordDialog(user))">
+                                            <Blazicon Svg="Lucide.Key" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">
+                                        <span>Change Password</span>
+                                    </TooltipContent>
+                                </Tooltip>
+
+                                <AuthorizeView Roles="Administrator,Supervisor">
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <Button size="ButtonSize.Icon"
+                                                    variant="ButtonVariant.Ghost"
+                                                    @onclick="@(() => OpenEditDialog(user))">
+                                                <Blazicon Svg="Lucide.Pencil" class="h-4 w-4" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent Side="TooltipSide.Top">
+                                            <span>Edit User</span>
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    @if (user.LockoutEnd == null)
+                                    {
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <Button size="ButtonSize.Icon"
+                                                        variant="ButtonVariant.Ghost"
+                                                        @onclick="@(() => OpenLockConfirmation(user))">
+                                                    <Blazicon Svg="Lucide.Lock" class="h-4 w-4" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent Side="TooltipSide.Top">
+                                                <span>Lock User</span>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    }
+                                    else
+                                    {
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <Button size="ButtonSize.Icon"
+                                                        variant="ButtonVariant.Ghost"
+                                                        @onclick="@(() => OpenUnlockConfirmation(user))">
+                                                    <Blazicon Svg="Lucide.LockOpen" class="h-4 w-4" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent Side="TooltipSide.Top">
+                                                <span>Unlock User</span>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    }
+
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <Button size="ButtonSize.Icon"
+                                                    variant="ButtonVariant.Ghost"
+                                                    @onclick="@(() => OpenDeleteConfirmation(user))">
+                                                <Blazicon Svg="Lucide.Trash2" class="h-4 w-4 text-destructive" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent Side="TooltipSide.Top">
+                                            <span>Delete User</span>
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    @if(!CurrentUser.UserName.Contains("admin"))
+                                    {
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <Button size="ButtonSize.Icon"
+                                                        variant="ButtonVariant.Ghost"
+                                                        @onclick="@(() => OpenCircuitAccessDialog(user))">
+                                                    <Blazicon Svg="Lucide.Cable" class="h-4 w-4" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent Side="TooltipSide.Top">
+                                                <span>Circuit Access @CurrentUser.UserName</span>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    }
+
+                                </AuthorizeView>
+                                                                    
+                                
+                            </TableCell>
+                        </TableRow>
+                    }
+                </TableBody>
+            </Table>
+        </CardContent>
+    </Card>
+
+
+    <!-- Create / Edit Dialog -->
+    <Dialog @bind-Open="@isDialogOpen">
+        <DialogContent>
+
+            <EditForm EditContext="@editContext" OnValidSubmit="@SaveUserAsync">
+                <DataAnnotationsValidator />
+
+                <DialogHeader>
+                    <DialogTitle>@dialogTitle</DialogTitle>
+                </DialogHeader>
+
+                <div class="space-y-8">
+
+                    <!-- Username -->
+                    <FormField TValue="string" For="@(() => userModel.UserName)" Context="field">
+                        <FormInputText TValue="string"
+                                       FieldId="@field.FieldId"
+                                       Value="@field.Value"
+                                       ValueChanged="@field.ValueChanged"
+                                       IsInvalid="@field.IsInvalid"
+                                       Label="Username"
+                                       Disabled="@(userModel.UserName.ToLower() == "admin")"
+                                       Description="This is your public display name."
+                                       Placeholder="Enter username" />
+                    </FormField>
+
+                    <!-- Email -->
+                    <FormField TValue="string" For="@(() => userModel.Email)" Context="field">
+                        <FormInputText TValue="string"
+                                       FieldId="@field.FieldId"
+                                       Value="@field.Value"
+                                       ValueChanged="@field.ValueChanged"
+                                       IsInvalid="@field.IsInvalid"
+                                       Label="Email"
+                                       Description="Enter your Email ID."
+                                       Placeholder="Enter email address" />
+                    </FormField>
+
+                    @if (isCreateMode)
+                    {
+                        <!-- Password -->
+                        <FormField TValue="string" For="@(() => userModel.Password)" Context="field">
+                            <FormInputText TValue="string"
+                                           FieldId="@field.FieldId"
+                                           Value="@field.Value"
+                                           ValueChanged="@field.ValueChanged"
+                                           IsInvalid="@field.IsInvalid"
+                                           Label="Password"
+                                           Description="Must be at least 8 characters."
+                                           Placeholder="Enter password"
+                                           Type="password" />
+                        </FormField>
+
+                        <!-- Confirm Password -->
+                        <FormField TValue="string" For="@(() => userModel.ConfirmPassword)" Context="field">
+                            <FormInputText TValue="string"
+                                           FieldId="@field.FieldId"
+                                           Value="@field.Value"
+                                           ValueChanged="@field.ValueChanged"
+                                           IsInvalid="@field.IsInvalid"
+                                           Label="Confirm Password"
+                                           Description="Re-enter your password."
+                                           Placeholder="Confirm password"
+                                           Type="password" />
+                        </FormField>
+                    }
+
+                    <!-- Role -->
+                    <FormField TValue="string" For="@(() => userModel.Role)" Context="field">
+                        <FormSelect TValue="string" TItem="string"
+                                    FieldId="@field.FieldId"
+                                    Value="@field.Value"
+                                    ValueChanged="@field.ValueChanged"
+                                    IsInvalid="@field.IsInvalid"
+                                    Label="Role"
+                                    Description="Select user role."
+                                    Placeholder="Select a role"
+                                    Items="@roles.Where(e => !e.StartsWith("Admin"))" />
+                    </FormField>
+
+                </div>
+
+                <DialogFooter>
+                    <Button Variant="ButtonVariant.Outline"
+                            Type="button"
+                            @onclick="CloseDialog">
+                        Cancel
+                    </Button>
+
+                    <Button Type="submit">
+                        Save
+                    </Button>
+                </DialogFooter>
+
+            </EditForm>
+
+        </DialogContent>
+    </Dialog>
+
+    <!-- Change Password Dialog -->
+    <Dialog @bind-Open="@isPasswordDialogOpen">
+        <DialogContent class="min-w-[420px]">
+
+            <EditForm EditContext="@passwordEditContext"
+                      OnValidSubmit="@ChangePasswordAsync">
+                <DataAnnotationsValidator />
+
+                <DialogHeader>
+                    <DialogTitle>Change Password</DialogTitle>
+                    <DialogDescription>
+                        Change password for @passwordUser?.UserName
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="space-y-8">
+
+                    <!-- New Password -->
+                    <FormField TValue="string"
+                               For="@(() => passwordModel.NewPassword)"
+                               Context="field">
+                        <FormInputText TValue="string"
+                                       FieldId="@field.FieldId"
+                                       Value="@field.Value"
+                                       ValueChanged="@field.ValueChanged"
+                                       IsInvalid="@field.IsInvalid"
+                                       Label="New Password"
+                                       Description="Must be at least 8 characters."
+                                       Placeholder="Enter new password"
+                                       Type="password" />
+                    </FormField>
+
+                    <!-- Confirm New Password -->
+                    <FormField TValue="string"
+                               For="@(() => passwordModel.ConfirmPassword)"
+                               Context="field">
+                        <FormInputText TValue="string"
+                                       FieldId="@field.FieldId"
+                                       Value="@field.Value"
+                                       ValueChanged="@field.ValueChanged"
+                                       IsInvalid="@field.IsInvalid"
+                                       Label="Confirm Password"
+                                       Description="Re-enter new password."
+                                       Placeholder="Confirm new password"
+                                       Type="password" />
+                    </FormField>
+
+                </div>
+
+                <DialogFooter>
+                    <Button Variant="ButtonVariant.Outline"
+                            Type="button"
+                            @onclick="ClosePasswordDialog">
+                        Cancel
+                    </Button>
+
+                    <Button Type="submit">
+                        Change Password
+                    </Button>
+                </DialogFooter>
+
+            </EditForm>
+
+        </DialogContent>
+    </Dialog>
+
+    <!-- Confirmation Dialog -->
+    <Dialog @bind-open="@isConfirmDialogOpen">
+        <DialogContent class="min-w-[420px]">
+            <DialogHeader>
+                <DialogTitle>@confirmTitle</DialogTitle>
+                <DialogDescription>
+                    @confirmMessage
+                </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter>
+                <Button variant="ButtonVariant.Outline"
+                        OnClick="CloseConfirmDialog">
+                    Cancel
+                </Button>
+
+                <Button variant="ButtonVariant.Destructive"
+                        OnClick="ExecuteConfirmAction">
+                    Confirm
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <!-- Circuit Access Dialog -->
+    <Dialog @bind-Open="@isCircuitAccessDialogOpen">
+        <DialogContent Size="DialogSize.Large">
+            <DialogHeader>
+                <DialogTitle>Circuit Access – @circuitAccessUser?.UserName</DialogTitle>
+                <DialogDescription>
+                    Select which circuits this user can see. Leave all unchecked to allow all.
+                </DialogDescription>
+            </DialogHeader>
+
+            <ScrollArea class="max-h-72 border rounded-lg p-3">
+                @foreach (var circuit in allCircuits)
+                {
+                    var key = (circuit.DeviceID, circuit.CircuitID);
+                    var isChecked = selectedCircuitAccess.Contains(key);
+                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50 rounded cursor-pointer">
+                        <input type="checkbox"
+                               checked="@isChecked"
+                               @onchange="@(e => ToggleCircuitAccess(key, (bool)(e.Value ?? false)))"
+                               class="w-4 h-4 rounded accent-primary cursor-pointer" />
+                        <span class="text-sm">@circuit.DeviceName – Circuit @circuit.CircuitID</span>
+                    </label>
+                }
+            </ScrollArea>
+
+            <DialogFooter>
+                <Button Variant="ButtonVariant.Outline" @onclick="CloseCircuitAccessDialog">Cancel</Button>
+                <Button @onclick="SaveCircuitAccessAsync">Save</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+</div>
+
+@code {
+
+    // ===== MODELS =====
+    public class CreateUserModel
+    {
+        [Required(ErrorMessage = "Username is required")]
+        [StringLength(50, MinimumLength = 3, ErrorMessage = "Username must be between 3 and 50 characters")]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Password is required")]
+        [StringLength(100, MinimumLength = 8, ErrorMessage = "Password must be at least 8 characters")]
+        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$",
+            ErrorMessage = "Password must contain at least one uppercase, one lowercase, one number and one special character")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Confirm password is required")]
+        [Compare(nameof(Password), ErrorMessage = "Passwords do not match")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Role is required")]
+        public string Role { get; set; } = string.Empty;
+    }
+
+    public class EditUserModel
+    {
+        [Required(ErrorMessage = "Username is required")]
+        [StringLength(50, MinimumLength = 3, ErrorMessage = "Username must be between 3 and 50 characters")]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string Email { get; set; } = string.Empty;
+
+
+        [Required(ErrorMessage = "Password is required")]
+        [StringLength(100, MinimumLength = 8, ErrorMessage = "Password must be at least 8 characters")]
+        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$",
+            ErrorMessage = "Password must contain at least one uppercase, one lowercase, one number and one special character")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Confirm password is required")]
+        [Compare(nameof(Password), ErrorMessage = "Passwords do not match")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+
+        [Required(ErrorMessage = "Role is required")]
+        public string Role { get; set; } = string.Empty;
+
+        public string UserId { get; set; } = string.Empty;
+    }
+
+    public class ChangePasswordModel
+    {
+        [Required(ErrorMessage = "New password is required")]
+        [StringLength(100, MinimumLength = 8, ErrorMessage = "Password must be at least 8 characters")]
+        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$",
+            ErrorMessage = "Password must contain at least one uppercase, one lowercase, one number and one special character")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Confirm password is required")]
+        [Compare(nameof(NewPassword), ErrorMessage = "Passwords do not match")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    // ===== STATE =====
+    private List<ApplicationUser> users = new();
+    private Dictionary<string, IList<string>> userRoles = new();
+    private List<string> roles = new();
+
+    private EditUserModel userModel = new();
+    private EditContext editContext = default!;
+
+    private bool isDialogOpen;
+    private bool isCreateMode;
+    private string dialogTitle = string.Empty;
+
+    // Confirmation dialog state
+    private bool isConfirmDialogOpen;
+    private string confirmTitle = string.Empty;
+    private string confirmMessage = string.Empty;
+    private Func<Task>? confirmAction;
+
+    // Change password dialog state
+    private bool isPasswordDialogOpen;
+    private ApplicationUser? passwordUser;
+    private ChangePasswordModel passwordModel = new();
+    private EditContext passwordEditContext = default!;
+
+    // ===== LIFECYCLE =====
+    protected override async Task OnInitializedAsync()
+    {
+        editContext = new EditContext(userModel);
+        passwordEditContext = new EditContext(passwordModel);
+
+        await LoadRolesAsync();
+        await LoadUsersAsync();
+    }
+
+    // ===== LOAD DATA =====
+    private async Task LoadUsersAsync()
+    {
+        users = UserManager.Users.ToList();
+        userRoles.Clear();
+
+        foreach (var user in users)
+            userRoles[user.Id] = await UserManager.GetRolesAsync(user);
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        roles = RoleManager.Roles.Select(r => r.Name!).ToList();
+        await Task.CompletedTask;
+    }
+
+    // ===== USER DIALOG =====
+    private void OpenCreateDialog()
+    {
+        userModel = new EditUserModel();
+        editContext = new EditContext(userModel);
+        isCreateMode = true;
+        dialogTitle = "Create User";
+        isDialogOpen = true;
+    }
+
+    private void OpenEditDialog(ApplicationUser user)
+    {
+        userModel = new EditUserModel
+        {
+            UserId = user.Id,
+            UserName = user.UserName ?? string.Empty,
+            Email = user.Email ?? string.Empty,
+            Role = userRoles[user.Id].FirstOrDefault() ?? string.Empty
+        };
+        editContext = new EditContext(userModel);
+        isCreateMode = false;
+        dialogTitle = "Edit User";
+        isDialogOpen = true;
+    }
+
+    private void CloseDialog()
+    {
+        isDialogOpen = false;
+    }
+
+    // ===== PASSWORD DIALOG =====
+    private void OpenPasswordDialog(ApplicationUser user)
+    {
+        passwordUser = user;
+        passwordModel = new ChangePasswordModel();
+        passwordEditContext = new EditContext(passwordModel);
+        isPasswordDialogOpen = true;
+    }
+
+    private void ClosePasswordDialog()
+    {
+        isPasswordDialogOpen = false;
+        passwordUser = null;
+        passwordModel = new ChangePasswordModel();
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        if (!passwordEditContext.Validate())
+        {
+            Toast.Error("Validation Failed", "Please fix the errors before submitting.");
+            return;
+        }
+
+        if (passwordUser == null) return;
+
+        try
+        {
+            var token = await UserManager.GeneratePasswordResetTokenAsync(passwordUser);
+            var result = await UserManager.ResetPasswordAsync(passwordUser, token, passwordModel.NewPassword);
+
+            if (result.Succeeded)
+            {
+                Toast.Success("Success", $"Password changed successfully for {passwordUser.UserName}.");
+                ClosePasswordDialog();
+            }
+            else
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                Toast.Error("Error", errors);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("Error", $"Failed to change password: {ex.Message}");
+        }
+    }
+
+    // ===== CONFIRMATION DIALOG =====
+    private void OpenDeleteConfirmation(ApplicationUser user)
+    {
+        confirmTitle = "Delete User";
+        confirmMessage = $"Are you sure you want to delete user '{user.UserName}'? This action cannot be undone.";
+        confirmAction = () => DeleteUserAsync(user.Id);
+        isConfirmDialogOpen = true;
+    }
+
+    private void OpenLockConfirmation(ApplicationUser user)
+    {
+        confirmTitle = "Lock User";
+        confirmMessage = $"Are you sure you want to lock user '{user.UserName}'? They will not be able to log in.";
+        confirmAction = () => LockUserAsync(user);
+        isConfirmDialogOpen = true;
+    }
+
+    private void OpenUnlockConfirmation(ApplicationUser user)
+    {
+        confirmTitle = "Unlock User";
+        confirmMessage = $"Are you sure you want to unlock user '{user.UserName}'?";
+        confirmAction = () => UnlockUserAsync(user);
+        isConfirmDialogOpen = true;
+    }
+
+    private void CloseConfirmDialog()
+    {
+        isConfirmDialogOpen = false;
+        confirmAction = null;
+    }
+
+    private async Task ExecuteConfirmAction()
+    {
+        if (confirmAction != null)
+        {
+            await confirmAction();
+        }
+        CloseConfirmDialog();
+    }
+
+    // ===== SAVE =====
+    private async Task SaveUserAsync()
+    {
+        if (!editContext.Validate())
+        {
+            Toast.Error("Validation Failed", "Please fix the errors before submitting.");
+            return;
+        }
+
+        try
+        {
+            if (isCreateMode)
+            {
+                // Create new user
+                var newUser = new ApplicationUser
+                {
+                    UserName = userModel.UserName,
+                    Email = userModel.Email,
+                    FullName = userModel.UserName,
+                    EmailConfirmed = true
+                };
+
+                var result = await UserManager.CreateAsync(newUser, userModel.Password);
+
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    Toast.Error("Error", errors);
+                    return;
+                }
+
+                // Add role
+                if (!string.IsNullOrWhiteSpace(userModel.Role))
+                {
+                    await UserManager.AddToRoleAsync(newUser, userModel.Role);
+                }
+
+                Toast.Success("Success", $"User '{userModel.UserName}' created successfully.");
+
+                // For non-admin users, open circuit access dialog immediately so circuits
+                // are assigned before the user can first log in.
+                var createdUser = await UserManager.FindByNameAsync(newUser.UserName);
+                bool isAdminRole = string.Equals(userModel.Role, "Administrator", StringComparison.OrdinalIgnoreCase);
+                if (createdUser != null && !isAdminRole)
+                {
+                    await LoadUsersAsync();
+                    CloseDialog();
+                    await OpenCircuitAccessDialog(createdUser);
+                    return;
+                }
+            }
+            else
+            {
+                // Update existing user
+                var existingUser = await UserManager.FindByIdAsync(userModel.UserId);
+                if (existingUser == null)
+                {
+                    Toast.Error("Error", "User not found.");
+                    return;
+                }
+
+                if (existingUser.UserName.ToLower() != "admin")
+                    existingUser.UserName = userModel.UserName;
+
+                existingUser.Email = userModel.Email;
+                existingUser.FullName = userModel.UserName;
+
+                var result = await UserManager.UpdateAsync(existingUser);
+
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    Toast.Error("Error", errors);
+                    return;
+                }
+
+                // Update role
+                var currentRoles = await UserManager.GetRolesAsync(existingUser);
+                await UserManager.RemoveFromRolesAsync(existingUser, currentRoles);
+
+                if (!string.IsNullOrWhiteSpace(userModel.Role))
+                {
+                    await UserManager.AddToRoleAsync(existingUser, userModel.Role);
+                }
+
+                Toast.Success("Success", $"User '{userModel.UserName}' updated successfully.");
+            }
+
+            await LoadUsersAsync();
+            CloseDialog();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("Error", $"Failed to save user: {ex.Message}");
+        }
+    }
+
+    // ===== ACTIONS =====
+    private async Task DeleteUserAsync(string userId)
+    {
+        try
+        {
+            var user = await UserManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                Toast.Error("Error", "User not found.");
+                return;
+            }
+
+            var result = await UserManager.DeleteAsync(user);
+            if (result.Succeeded)
+            {
+                Toast.Success("Success", $"User '{user.UserName}' deleted successfully.");
+                await LoadUsersAsync();
+            }
+            else
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                Toast.Error("Error", errors);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("Error", $"Failed to delete user: {ex.Message}");
+        }
+    }
+
+    private async Task LockUserAsync(ApplicationUser user)
+    {
+        try
+        {
+            user.LockoutEnd = DateTimeOffset.MaxValue;
+            var result = await UserManager.UpdateAsync(user);
+
+            if (result.Succeeded)
+            {
+                Toast.Success("Success", $"User '{user.UserName}' locked successfully.");
+                await LoadUsersAsync();
+            }
+            else
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                Toast.Error("Error", errors);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("Error", $"Failed to lock user: {ex.Message}");
+        }
+    }
+
+    private async Task UnlockUserAsync(ApplicationUser user)
+    {
+        try
+        {
+            user.LockoutEnd = null;
+            var result = await UserManager.UpdateAsync(user);
+
+            if (result.Succeeded)
+            {
+                Toast.Success("Success", $"User '{user.UserName}' unlocked successfully.");
+                await LoadUsersAsync();
+            }
+            else
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                Toast.Error("Error", errors);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("Error", $"Failed to unlock user: {ex.Message}");
+        }
+    }
+
+
+    #region Circuit Access
+    // Circuit Access
+    private bool isCircuitAccessDialogOpen;
+    private ApplicationUser? circuitAccessUser;
+    private List<CircuitDto> allCircuits = new();
+    private HashSet<(int DeviceID, int CircuitID)> selectedCircuitAccess = new();
+
+    private async Task OpenCircuitAccessDialog(ApplicationUser user)
+    {
+        circuitAccessUser = user;
+        selectedCircuitAccess = new();
+
+        // Load all available circuits
+        var allResult = await DCService.GetCircuitsAsync();
+        if (allResult.Success)
+            allCircuits = allResult.Data ?? new();
+
+        // Load existing access for this user
+        var accessResult = await CircuitAccessService.GetByUserIdAsync(user.Id);
+        if (accessResult.Success && accessResult.Data != null)
+        {
+            foreach (var a in accessResult.Data)
+                selectedCircuitAccess.Add((a.DeviceId, a.CircuitId));
+        }
+
+        isCircuitAccessDialogOpen = true;
+    }
+
+    private void CloseCircuitAccessDialog()
+    {
+        isCircuitAccessDialogOpen = false;
+        circuitAccessUser = null;
+    }
+
+    private void ToggleCircuitAccess((int DeviceID, int CircuitID) key, bool isChecked)
+    {
+        if (isChecked) selectedCircuitAccess.Add(key);
+        else selectedCircuitAccess.Remove(key);
+    }
+
+    private async Task SaveCircuitAccessAsync()
+    {
+        if (circuitAccessUser == null) return;
+
+        var circuits = selectedCircuitAccess
+            .Select(x => (x.DeviceID, x.CircuitID))
+            .ToList();
+
+        var result = await CircuitAccessService.SetUserCircuitAccessAsync(circuitAccessUser.Id, circuits);
+
+        if (result.Success)
+            Toast.Success("Success", $"Circuit access saved for {circuitAccessUser.UserName}.");
+        else
+            Toast.Error("Error", result.Message ?? "Failed to save.");
+
+        CloseCircuitAccessDialog();
+    }
+
+    #endregion
+}

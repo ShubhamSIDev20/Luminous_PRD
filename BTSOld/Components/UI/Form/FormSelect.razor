@@ -1,0 +1,73 @@
+﻿@typeparam TValue
+@typeparam TItem
+@using Microsoft.AspNetCore.Components
+@namespace BatteryTestingSystem.Components.UI.Form
+
+<FormLabel>@Label</FormLabel>
+<FormControl>
+    <select id="@FieldId"
+            class="@SelectCss"
+            @onchange="@HandleChange">
+        <option value="">@Placeholder</option>
+        @if (Items != null)
+        {
+            @foreach (var item in Items)
+            {
+                var itemValue = GetItemValue(item);
+                <option value="@itemValue" selected="@(itemValue?.ToString() == Value?.ToString())">
+                    @GetItemText(item)
+                </option>
+            }
+        }
+    </select>
+</FormControl>
+@if (!string.IsNullOrEmpty(Description))
+{
+    <FormDescription Text="@Description" />
+}
+<FormMessage />
+
+@code {
+    [Parameter] public string FieldId { get; set; } = "";
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue> ValueChanged { get; set; }
+    [Parameter] public bool IsInvalid { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; } = "Select an option...";
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    [Parameter] public Func<TItem, object>? ValueSelector { get; set; }
+    [Parameter] public Func<TItem, string>? TextSelector { get; set; }
+
+    private string SelectCss => $"flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 {(IsInvalid ? "border-destructive" : "")}";
+
+    private async Task HandleChange(ChangeEventArgs e)
+    {
+        if (e.Value != null && !string.IsNullOrEmpty(e.Value.ToString()))
+        {
+            var stringValue = e.Value.ToString();
+            if (TryConvertValue(stringValue, out var result))
+            {
+                await ValueChanged.InvokeAsync(result);
+            }
+        }
+    }
+
+    private object? GetItemValue(TItem item) => ValueSelector?.Invoke(item) ?? item;
+
+    private string GetItemText(TItem item) => TextSelector?.Invoke(item) ?? item?.ToString() ?? "";
+
+    private bool TryConvertValue(string? value, out TValue result)
+    {
+        try
+        {
+            result = (TValue)Convert.ChangeType(value, typeof(TValue))!;
+            return true;
+        }
+        catch
+        {
+            result = default!;
+            return false;
+        }
+    }
+}

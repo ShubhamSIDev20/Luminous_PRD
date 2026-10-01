@@ -1,0 +1,316 @@
+@page "/settings/auditLogs"
+@attribute [Authorize]
+@attribute [StreamRendering]
+@using BatteryTestingSystem.Models.Entities
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Models.ViewModels
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject IAuditService AuditService
+@inject IBatteryServices BatteryService
+@inject UserManager<ApplicationUser> UserManager
+@inject ToastService Toast
+
+<AuthorizeView Roles="Administrator,Supervisor">
+    <Authorized>
+        <div class="h-full bg-background text-foreground p-6 flex flex-col">
+
+            <!-- Page Header -->
+            <div class="flex mb-4">
+                <PageHeader Title="Audit Logs" Description="All user actions and system events">
+                    <Actions>
+                        <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small" OnClick="RefreshAsync" Disabled="@_loading">
+                            <Blazicon Svg="Lucide.RefreshCw" class="h-4 w-4 mr-2" />
+                            @(_loading ? "Loading..." : "Refresh")
+                        </Button>
+                    </Actions>
+                </PageHeader>
+            </div>
+
+            <!-- Filters -->
+            <div class="flex flex-wrap items-end gap-3 mb-4 p-3 rounded-lg border border-border bg-card">
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-medium text-muted-foreground">Module</label>
+                    <Select Value="@_moduleFilter" ValueChanged="@((string v) => { _moduleFilter = v; })">
+                        <SelectTrigger class="w-[160px] bg-background text-foreground">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">All modules</SelectItem>
+                            @foreach (var module in Enum.GetValues<ModuleName>().Where(m => m != ModuleName.NONE))
+                            {
+                                <SelectItem value="@module.ToString()">@Humanize(module.ToString())</SelectItem>
+                            }
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-medium text-muted-foreground">Action</label>
+                    <Select Value="@_actionFilter" ValueChanged="@((string v) => { _actionFilter = v; })">
+                        <SelectTrigger class="w-[160px] bg-background text-foreground">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">All actions</SelectItem>
+                            @foreach (var action in Enum.GetValues<AuditActionType>().Where(a => a != AuditActionType.NONE).Distinct())
+                            {
+                                <SelectItem value="@action.ToString()">@Humanize(action.ToString())</SelectItem>
+                            }
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-medium text-muted-foreground">User</label>
+                    <input class="h-9 w-[160px] rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+                           placeholder="Filter by user…" @bind="_userFilter" @bind:event="oninput" />
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-medium text-muted-foreground">From</label>
+                    <input type="date" class="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+                           @bind="_fromDate" @bind:format="yyyy-MM-dd" />
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-medium text-muted-foreground">To</label>
+                    <input type="date" class="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+                           @bind="_endDate" @bind:format="yyyy-MM-dd" />
+                </div>
+
+                <Button Variant="ButtonVariant.Default" Size="ButtonSize.Small" OnClick="ApplyFiltersAsync" Disabled="@_loading">
+                    <Blazicon Svg="Lucide.ListFilter" class="h-4 w-4 mr-2" />
+                    Apply Filters
+                </Button>
+                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Small" OnClick="ClearFiltersAsync" Disabled="@_loading">
+                    Clear
+                </Button>
+            </div>
+
+            <!-- Scrollable Table -->
+            <div class="flex-1 overflow-y-auto">
+                <DataTable TItem="AuditLogDto"
+                           Title="Audit Records"
+                           Subtitle="Track all user actions and system events"
+                           Data="@Logs"
+                           IsLoading="@_loading"
+                           Search="true"
+                           ExcelExport="true"
+                           ExcelFileName="audit-logs"
+                           ExcelSheetName="AuditLogs"
+                           PdfExport="true"
+                           PdfFileName="audit-logs"
+                           ExportHeaderText="Audit Log Report"
+                           ExportFooterText="@($"Exported: {DateTime.Now:yyyy-MM-dd HH:mm}")">
+
+                    <Columns>
+                        <!-- Timestamp -->
+                        <ColumnDef TItem="AuditLogDto" Key="timestamp" Header="Timestamp"
+                                   SearchSelector="@(c => c.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"))"
+                                   ExcelValueSelector="@(c => c.Timestamp.ToString())">
+                            <CellTemplate Context="c">
+                                @c.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")
+                            </CellTemplate>
+                        </ColumnDef>
+
+                        <!-- User -->
+                        <ColumnDef TItem="AuditLogDto" Key="user" Header="User"
+                                   SearchSelector="@(c => c.User ?? string.Empty)"
+                                   ExcelValueSelector="@(c => c.User ?? string.Empty)">
+                            <CellTemplate Context="c">
+                                @c.User
+                            </CellTemplate>
+                        </ColumnDef>
+
+                        <!-- Action -->
+                        <ColumnDef TItem="AuditLogDto" Key="action" Header="Action"
+                                   SearchSelector="@(c => c.Action.ToString())"
+                                   ExcelValueSelector="@(c => c.Action.ToString())">
+                            <CellTemplate Context="c">
+                                @Humanize(c.Action.ToString())
+                            </CellTemplate>
+                        </ColumnDef>
+
+                        <!-- Module / Entity -->
+                        <ColumnDef TItem="AuditLogDto" Key="module" Header="Module / Entity"
+                                   SearchSelector="@(c => c.Module.ToString())"
+                                   ExcelValueSelector="@(c => c.Module.ToString())">
+                            <CellTemplate Context="c">
+                                @Humanize(c.Module.ToString())
+                            </CellTemplate>
+                        </ColumnDef>
+
+                        <!-- Entity / Reference -->
+                        <ColumnDef TItem="AuditLogDto" Key="entityId" Header="Entity"
+                                   SearchSelector="@(c => GetEntityLabel(c))"
+                                   ExcelValueSelector="@(c => GetEntityLabel(c))">
+                            <CellTemplate Context="c">
+                                @GetEntityLabel(c)
+                            </CellTemplate>
+                        </ColumnDef>
+
+                        <!-- Status -->
+                        <ColumnDef TItem="AuditLogDto" Key="status" Header="Status"
+                                   SearchSelector="@(c => c.Status.ToString())"
+                                   ExcelValueSelector="@(c => c.Status.ToString())">
+                            <CellTemplate Context="c">
+                                <Badge Variant="@GetStatusVariant(c.Status)" Class="@GetStatusClass(c.Status)">
+                                    @c.Status
+                                </Badge>
+                            </CellTemplate>
+                        </ColumnDef>
+
+                        <!-- IP Address -->
+                        <ColumnDef TItem="AuditLogDto" Key="ip" Header="IP Address"
+                                   SearchSelector="@(c => c.IPAddress ?? string.Empty)"
+                                   ExcelValueSelector="@(c => c.IPAddress ?? string.Empty)">
+                            <CellTemplate Context="c">
+                                @c.IPAddress
+                            </CellTemplate>
+                        </ColumnDef>
+
+                        <!-- Details -->
+                        <ColumnDef TItem="AuditLogDto" Key="details" Header="Details"
+                                   SearchSelector="@(c => c.Details ?? string.Empty)"
+                                   ExcelValueSelector="@(c => c.Details ?? string.Empty)">
+                            <CellTemplate Context="c">
+                                @c.Details
+                            </CellTemplate>
+                        </ColumnDef>
+
+                    </Columns>
+                </DataTable>
+            </div>
+
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="h-full flex items-center justify-center p-6">
+            <div class="text-center max-w-md">
+                <h1 class="text-xl font-semibold text-foreground mb-2">Access Denied</h1>
+                <p class="text-sm text-muted-foreground">
+                    Audit Logs are only visible to Administrator and Supervisor roles. If you believe this is a mistake, please contact your administrator.
+                </p>
+            </div>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<AuditLogDto> Logs = new();
+    private bool _loading;
+
+    private string _moduleFilter = string.Empty;
+    private string _actionFilter = string.Empty;
+    private string _userFilter = string.Empty;
+    private DateTime? _fromDate;
+    private DateTime? _endDate;
+
+    private Dictionary<string, string> _userNames = new();
+    private Dictionary<string, string> _batteryNames = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLookupsAsync();
+        await LoadLogsAsync();
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        _userNames = await UserManager.Users
+            .Select(u => new { u.Id, u.UserName })
+            .ToDictionaryAsync(u => u.Id, u => u.UserName ?? u.Id);
+
+        var batteries = await BatteryService.GetBatteries();
+        if (batteries.Success && batteries.Data != null)
+        {
+            _batteryNames = batteries.Data.ToDictionary(b => b.Id.ToString(), b => b.Name);
+        }
+    }
+
+    private string GetEntityLabel(AuditLogDto log)
+    {
+        if (string.IsNullOrWhiteSpace(log.EntityId)) return string.Empty;
+
+        switch (log.Module)
+        {
+            case ModuleName.USER:
+                return _userNames.TryGetValue(log.EntityId, out var userName) ? userName : log.EntityId;
+
+            case ModuleName.BATTERY:
+                return _batteryNames.TryGetValue(log.EntityId, out var batteryName) ? batteryName : log.EntityId;
+
+            case ModuleName.DBC:
+                var parts = log.EntityId.Split(',');
+                if (parts.Length == 2 && _batteryNames.TryGetValue(parts[0], out var dbcBatteryName))
+                    return $"{dbcBatteryName} (DBC #{parts[1]})";
+                return log.EntityId;
+
+            default:
+                return log.EntityId;
+        }
+    }
+
+    private async Task LoadLogsAsync()
+    {
+        _loading = true;
+
+        var parameters = new AuditLogQueryParameters
+        {
+            Module = Enum.TryParse<ModuleName>(_moduleFilter, out var module) ? module : null,
+            Action = Enum.TryParse<AuditActionType>(_actionFilter, out var action) ? action : null,
+            User = string.IsNullOrWhiteSpace(_userFilter) ? null : _userFilter,
+            FromDate = _fromDate,
+            EndDate = _endDate?.AddDays(1).AddTicks(-1),
+        };
+
+        var response = await AuditService.GetAuditLogsAsync(parameters);
+
+        if (response.Success && response.Data != null)
+        {
+            Logs = response.Data;
+        }
+        else
+        {
+            Logs = new();
+            Toast.Info("No audit logs found", response.Message);
+        }
+
+        _loading = false;
+    }
+
+    private async Task RefreshAsync() => await LoadLogsAsync();
+
+    private async Task ApplyFiltersAsync() => await LoadLogsAsync();
+
+    private async Task ClearFiltersAsync()
+    {
+        _moduleFilter = string.Empty;
+        _actionFilter = string.Empty;
+        _userFilter = string.Empty;
+        _fromDate = null;
+        _endDate = null;
+        await LoadLogsAsync();
+    }
+
+    private static string Humanize(string enumName)
+    {
+        if (string.IsNullOrEmpty(enumName)) return enumName;
+        return string.Concat(enumName[0], enumName[1..].ToLowerInvariant());
+    }
+
+    private static BadgeVariant GetStatusVariant(SeverityLevel status) => status switch
+    {
+        SeverityLevel.ERROR => BadgeVariant.Destructive,
+        SeverityLevel.CRITICAL => BadgeVariant.Destructive,
+        SeverityLevel.WARNING => BadgeVariant.Outline,
+        _ => BadgeVariant.Secondary,
+    };
+
+    private static string GetStatusClass(SeverityLevel status) => status switch
+    {
+        SeverityLevel.WARNING => "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-transparent",
+        _ => string.Empty,
+    };
+}

@@ -1,0 +1,455 @@
+﻿﻿@* BmsChart.razor *@
+@inject IJSRuntime JS
+@inject ISqliteBulkDatabaseManager _dbManager
+@implements IAsyncDisposable
+@namespace BatteryTestingSystem.Components.UI.DataViewer
+@using BatteryTestingSystem.Models.SqliteEntities
+@using BatteryTestingSystem.Models.ViewModels
+@using BatteryTestingSystem.Services.Interfaces
+
+<div class="bms-card flex flex-col h-full">
+
+    @* Controls row *@
+    <div class="flex items-center gap-3 px-3 py-1.5 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] min-w-0 shrink-0">
+
+        @* X Axis *@
+        <div class="flex items-center gap-2 shrink-0">
+            <label class="text-xs font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap">X:</label>
+            <div class="relative">
+                <select class="h-6 pl-2 pr-6 text-xs rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] appearance-none cursor-pointer focus:outline-none"
+                @onchange="OnXChanged">
+                    <option value="DateTime">Time</option>
+                    @foreach (var f in ChartFields)
+                    {
+                        <option value="@f.PropertyName">@f.Label (@f.Unit)</option>
+                    }
+                </select>
+                <Blazicon Svg="Lucide.ChevronDown"
+                class="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-[hsl(var(--muted-foreground))]" />
+            </div>
+        </div>
+
+        <div class="h-4 w-px bg-[hsl(var(--border))] shrink-0"></div>
+
+        @* Y Axis toggles *@
+        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+            <label class="text-xs font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap shrink-0">Y:</label>
+            <div class="flex items-center gap-1 overflow-x-auto min-w-0 flex-1" style="scrollbar-width:none">
+                @foreach (var f in ChartFields.Where(f => f.PropertyName != selectedX))
+                {
+                    var active = selectedY.Contains(f.PropertyName);
+                    <button class="inline-flex items-center shrink-0 h-6 px-2 rounded text-xs font-medium transition-colors whitespace-nowrap border
+                                   @(active ? "text-white border-transparent" : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--background))] hover:bg-[hsl(var(--accent))]")"
+                    style="@(active ? $"background-color:{f.Color}; border-color:{f.Color}" : "")"
+                    @onclick="() => ToggleY(f.PropertyName)">
+                        @f.Label
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="h-4 w-px bg-[hsl(var(--border))] shrink-0"></div>
+
+        @* Ticks toggle *@
+
+        <div class="flex items-center gap-2 shrink-0">
+            <label class="text-xs font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap">
+                Ticks:
+            </label>
+
+            <div class="flex items-center h-6 border border-[hsl(var(--border))] rounded bg-[hsl(var(--background))] overflow-hidden">
+
+                <!-- Decrease -->
+                <button class="h-6 px-2 text-xs text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))]"
+                @onclick="DecreaseTick">
+                    −
+                </button>
+
+                <!-- Input -->
+                <input type="number"
+                step="0.5"
+                min="0.1"
+                max="25.0"
+                class="h-full w-8 text-center text-xs bg-transparent text-[hsl(var(--foreground))] outline-none appearance-none"
+                @bind="TickValue"
+                @onblur='@(async () => await JS.InvokeVoidAsync("BmsChart.tickAmount", chartId, TickValue))'
+                @bind:event="oninput" />
+
+                <!-- Increase -->
+                <button class="h-full px-2 text-xs text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))]"
+                @onclick="IncreaseTick">
+                    +
+                </button>
+            </div>
+        </div>
+
+        @* Fullscreen toggle *@
+        <button class="shrink-0 h-6 w-6 flex items-center justify-center rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))] transition-colors"
+        title="@(IsFullscreen ? "Restore" : "Fullscreen")"
+        @onclick="HandleFullscreenClick">
+            @if (IsFullscreen)
+            {
+
+                <Blazicon Svg="Lucide.Minimize" class="w-3.5 h-3.5" />
+            }
+            else
+            {
+                <Blazicon Svg="Lucide.Maximize" class="w-3.5 h-3.5" />
+            }
+        </button>
+    </div>
+
+    @* Highcharts container *@
+    <div id="@chartId" class="flex-1 min-h-0 w-full"></div>
+</div>
+
+<style>
+    .bms-card {
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    overflow: hidden;
+    }
+</style>
+
+@code {
+
+    [Parameter] public List<MeasurementData> Data { get; set; } = [];
+    [Parameter] public bool IsFullscreen { get; set; }
+    [Parameter] public EventCallback OnFullscreenToggle { get; set; }
+    [Parameter] public bool IsLiveData { get; set; }
+
+    // ── Offline mode params (set by BmsDashboard when IsLiveData=false) ─────
+    /// <summary>Path to the SQLite session file. When set, chart loads its own
+    /// downsampled data via ReadChartSampleAsync instead of using the live buffer.</summary>
+    [Parameter] public string? SessionFilePath { get; set; }
+    [Parameter] public int TotalRows { get; set; }
+    [Parameter] public int? StepFilter { get; set; }
+
+    private static readonly List<ChartField> ChartFields = ChartMetaHelper.GetChartFields();
+    public string SelectedX => selectedX;
+    public IReadOnlyCollection<string> SelectedY => selectedY;
+    public string ChartId => chartId;
+    private string selectedX = "DateTime";
+    private HashSet<string> selectedY = ["Voltage", "Current"];
+    private readonly string chartId = "bms-chart-" + Guid.NewGuid().ToString("N")[..8];
+    private const int MaxPoints = 500;
+    private bool _isRendered = false;
+    private bool _prevIsFullscreen = false;
+    private bool _prevIsLiveData = false;
+    // Flag set in OnParametersSetAsync when fullscreen changed; consumed in OnAfterRenderAsync
+    private bool _needsReflow = false;
+    // Flag set when data/axes changed and a full re-render is needed
+    private bool _needsRender = false;
+    // For live mode: track how many rows already pushed to chart
+    private int _lastRenderedCount = 0;
+    // Offline mode: downsampled data loaded from DB via ReadChartSampleAsync
+    private List<MeasurementData> _offlineData = new();
+    private string? _lastLoadedFilePath;
+    private int?    _lastLoadedStep;
+
+    /// <summary>
+    /// Returns the data to render:
+    /// - Live mode: client-side stride-sample of the bounded live buffer.
+    /// - Offline mode: pre-downsampled data already loaded from DB (ReadChartSampleAsync).
+    /// </summary>
+    private List<MeasurementData> SampledData
+    {
+        get
+        {
+            if (!IsLiveData)
+                return _offlineData;   // already LTTB-downsampled by the DB layer
+
+            if (Data.Count == 0) return [];
+            var step = Math.Max(1, Data.Count / MaxPoints);
+            return Data.Where((_, i) => i % step == 0).ToList();
+        }
+    }
+
+    private async Task HandleFullscreenClick()
+    {   
+        if (IsFullscreen)
+            TickValue = 5;
+        else
+            TickValue = 10;
+
+        // ✅ Call parent callback
+        if (OnFullscreenToggle.HasDelegate)
+        {
+            await OnFullscreenToggle.InvokeAsync();
+        }
+
+        await JS.InvokeVoidAsync("BmsChart.tickAmount", chartId, TickValue);
+
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_isRendered) return;
+
+        if (IsFullscreen != _prevIsFullscreen)
+        {
+            _prevIsFullscreen = IsFullscreen;
+            _needsReflow = true;
+            return;
+        }
+
+        // ── Offline mode ──────────────────────────────────────────────────
+        if (!IsLiveData)
+        {
+            _prevIsLiveData = false;
+            _lastRenderedCount = 0;
+
+            // Re-load from DB only when file path or step filter actually changes.
+            // This prevents a pointless DB call on every innocent parent re-render.
+            bool fileChanged = SessionFilePath != _lastLoadedFilePath;
+            bool stepChanged = StepFilter     != _lastLoadedStep;
+
+            if (!string.IsNullOrEmpty(SessionFilePath) && (fileChanged || stepChanged))
+            {
+                _lastLoadedFilePath = SessionFilePath;
+                _lastLoadedStep     = StepFilter;
+
+                // ReadChartSampleAsync returns LTTB-downsampled ChartPoints.
+                // We need to convert them to MeasurementData for the existing render path.
+                var pts = await _dbManager.ReadChartSampleAsync(SessionFilePath, StepFilter, MaxPoints);
+                _offlineData = MapChartPoints(pts);
+
+                _needsRender = true;
+            }
+            else if (_offlineData.Count == 0 && string.IsNullOrEmpty(SessionFilePath))
+            {
+                // No file provided — nothing to show
+                _offlineData = new();
+            }
+            return;
+        }
+
+        // ── Live mode ─────────────────────────────────────────────────────
+        if (!_prevIsLiveData)
+        {
+            // Switched from offline → live: full re-render
+            _prevIsLiveData = true;
+            _lastRenderedCount = 0;
+            _needsRender = true;
+        }
+        else if (Data.Count > _lastRenderedCount)
+        {
+            // New live rows arrived: incremental append
+            _needsRender = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _isRendered = true;
+            _prevIsFullscreen = IsFullscreen;
+            _prevIsLiveData = IsLiveData;
+            _lastRenderedCount = 0;
+
+            // For offline mode: trigger initial data load now that component is rendered
+            if (!IsLiveData && !string.IsNullOrEmpty(SessionFilePath) && _offlineData.Count == 0)
+            {
+                _lastLoadedFilePath = SessionFilePath;
+                _lastLoadedStep     = StepFilter;
+                var pts = await _dbManager.ReadChartSampleAsync(SessionFilePath, StepFilter, MaxPoints);
+                _offlineData = MapChartPoints(pts);
+            }
+
+            await RenderChart();
+            _lastRenderedCount = Data.Count;
+            return;
+        }
+
+        if (_needsReflow)
+        {
+            _needsReflow = false;
+            // Wait for browser to apply new CSS dimensions, then do a full re-render
+            // (reflow alone fails if Blazor recreated the container element)
+            await Task.Delay(80);
+            await RenderChart();
+            return;
+        }
+
+        if (_needsRender)
+        {
+            _needsRender = false;
+            if (IsLiveData && _lastRenderedCount > 0 && Data.Count > _lastRenderedCount)
+            {
+                await AppendLivePoints();
+            }
+            else
+            {
+                await RenderChart();
+                _lastRenderedCount = Data.Count;
+            }
+        }
+    }
+
+    private async Task OnXChanged(ChangeEventArgs e)
+    {
+        selectedX = e.Value?.ToString() ?? "DateTime";
+        selectedY.Remove(selectedX);
+        await RenderChart();
+    }
+
+    private async Task ToggleY(string key)
+    {
+        if (selectedY.Contains(key)) selectedY.Remove(key);
+        else selectedY.Add(key);
+        await RenderChart();
+    }
+
+    private async Task RenderChart()
+    {
+        // In offline mode, don't bail early — _offlineData may still be loading.
+        // In live mode, bail if there's genuinely no data yet.
+        if (SampledData.Count == 0 && IsLiveData) return;
+        if (SampledData.Count == 0) return;   // offline with no data yet — wait
+
+        var isTimeX = selectedX == "DateTime" || selectedX == "ProgramRunningTime";
+        var activeY = selectedY.Where(k => k != selectedX).ToList();
+        var sample = SampledData;
+
+        var seriesArr = activeY.Select((key, i) =>
+        {
+            var field = ChartFields.First(f => f.PropertyName == key);
+            var points = sample.Select(d =>
+            {
+                var xv = GetXValue(d);
+                var yv = (double)(ChartMetaHelper.GetValue(d, key) ?? 0f);
+                return new[] { xv, yv };
+            }).ToArray();
+
+            return new
+            {
+                name = $"{field.Label} ({field.Unit})",
+                data = points,
+                color = field.Color,
+                yAxis = i,
+                tooltip = new { valueSuffix = $" {field.Unit}" }
+            };
+        }).ToArray<object>();
+
+        var yAxisArr = activeY.Select((key, i) =>
+        {
+            var field = ChartFields.First(f => f.PropertyName == key);
+            return new
+            {
+                title = new { text = $"{field.Label} ({field.Unit})", style = new { color = field.Color } },
+                labels = new { style = new { color = field.Color } },
+                opposite = i % 2 == 1,
+                gridLineColor = "hsl(var(--border))"
+            };
+        }).ToArray<object>();
+
+        var options = new
+        {
+            chartId,
+            isTimeX,
+            xLabel = isTimeX ? null : selectedX,
+            series = seriesArr,
+            yAxis = yAxisArr,
+            theme = new
+            {
+                bg      = "transparent",
+                fg      = "hsl(var(--foreground))",
+                muted   = "hsl(var(--muted-foreground))",
+                card    = "hsl(var(--card))",
+                border  = "hsl(var(--border))",
+                primary = "hsl(var(--primary))",
+            }
+        };
+
+        await JS.InvokeVoidAsync("BmsChart.render", options);
+    }
+
+    private double GetXValue(MeasurementData d) => selectedX switch
+    {
+        "DateTime"           => (double)new DateTimeOffset(d.DateTime).ToUnixTimeMilliseconds(),
+        _                    => (double)(ChartMetaHelper.GetValue(d, selectedX) ?? 0f)
+    };
+
+    /// Appends only the new rows since last render — no full chart destroy/recreate.
+    private async Task AppendLivePoints()
+    {
+        var newRows = Data.Skip(_lastRenderedCount).ToList();
+        if (newRows.Count == 0) return;
+
+        var activeY = selectedY.Where(k => k != selectedX).ToList();
+
+        // Build per-series new points: array of { seriesIndex, points[] }
+        var seriesPoints = activeY.Select((key, i) =>
+        {
+            var pts = newRows.Select(d => new[]
+            {
+                GetXValue(d),
+                (double)(ChartMetaHelper.GetValue(d, key) ?? 0f)
+            }).ToArray();
+            return new { seriesIndex = i, points = pts };
+        }).ToArray<object>();
+
+        try
+        {
+            await JS.InvokeVoidAsync("BmsChart.appendPoints", chartId, seriesPoints);
+            _lastRenderedCount = Data.Count;
+        }
+        catch
+        {
+            // If append fails (e.g. chart was recreated), fall back to full render
+            await RenderChart();
+            _lastRenderedCount = Data.Count;
+        }
+    }
+
+    private double TickValue { get; set; } = 5;
+    private double Step = 0.5;
+
+
+
+    private async Task IncreaseTick()
+    { 
+        
+        TickValue += Step;
+        await JS.InvokeVoidAsync("BmsChart.tickAmount", chartId, TickValue);
+    }
+
+    private async Task DecreaseTick()
+    {
+        if (TickValue > Step)
+            TickValue -= Step;
+
+        await JS.InvokeVoidAsync("BmsChart.tickAmount", chartId, TickValue);
+    }
+
+
+    // ─── Chart-point mapping helper ───────────────────────────────────────────
+    private static List<MeasurementData> MapChartPoints(List<ChartPoint> pts) =>
+        pts.Select(p => new MeasurementData
+        {
+            Id                  = p.Id,
+            DateTime            = p.DateTime,
+            ProgramRunningTime  = (int)p.ProgramRunningTimeMs,
+            StepNumber          = p.StepNumber,
+            Current             = p.Current,
+            Voltage             = p.Voltage,
+            Temperature         = p.Temperature,
+            Power               = p.Power,
+            AccumulatedCapacity = p.AccumulatedCapacity,
+            ChargeCapacity      = p.ChargeCapacity,
+            DischargeCapacity   = p.DischargeCapacity,
+            StepCapacity        = p.StepCapacity,
+            AccumulatedEnergy   = p.AccumulatedEnergy,
+            ChargeEnergy        = p.ChargeEnergy,
+            DischargeEnergy     = p.DischargeEnergy,
+            StepEnergy          = p.StepEnergy,
+        }).ToList();
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("BmsChart.destroy", chartId); } catch { }
+    }
+}

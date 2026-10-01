@@ -1,0 +1,105 @@
+@namespace BatteryTestingSystem.Components.UI
+@inject PopupService PopupService
+
+@* Renders nothing when closed. Fixed-position popup when open. *@
+@if (_isOpen)
+{
+    @* Invisible overlay — click anywhere to close *@
+    <div class="fixed inset-0" style="z-index: @_zIndex" @onclick="Close" @oncontextmenu="Close" @oncontextmenu:preventDefault></div>
+
+    @* Menu *@
+    <div class="fixed min-w-[10rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md
+                animate-in fade-in-0 zoom-in-95 p-1 flex flex-col gap-0.5"
+         style="left: @(_x)px; top: @(_y)px; z-index: @(_zIndex + 1);"
+         @onclick:stopPropagation
+         @oncontextmenu:stopPropagation>
+
+        <button class="@ItemClass()" @onclick="@(() => Invoke(OnAddStep))">
+            <Blazicon Svg="Lucide.Plus" class="mr-2 h-4 w-4 text-green-500" />
+            Add Step
+        </button>
+
+        <button class="@ItemClass(disabled: !CanModify)" disabled="@(!CanModify)" @onclick="@(() => Invoke(OnDuplicateStep))">
+            <Blazicon Svg="Lucide.Copy" class="mr-2 h-4 w-4 text-blue-500" />
+            Duplicate Step
+        </button>
+
+        <button class="@ItemClass(disabled: !CanModify)" disabled="@(!CanModify)" @onclick="@(() => Invoke(OnRemoveStep))">
+            <Blazicon Svg="Lucide.Trash2" class="mr-2 h-4 w-4 text-red-500" />
+            Remove Step
+        </button>
+
+        <div class="-mx-1 my-1 h-px bg-border"></div>
+
+        <button class="@ItemClass(disabled: !CanModify)" disabled="@(!CanModify)" @onclick="@(() => Invoke(OnMoveUp))">
+            <Blazicon Svg="Lucide.ArrowUp" class="mr-2 h-4 w-4 text-muted-foreground" />
+            Move Up
+        </button>
+
+        <button class="@ItemClass(disabled: !CanModify)" disabled="@(!CanModify)" @onclick="@(() => Invoke(OnMoveDown))">
+            <Blazicon Svg="Lucide.ArrowDown" class="mr-2 h-4 w-4 text-muted-foreground" />
+            Move Down
+        </button>
+
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnAddStep { get; set; }
+    [Parameter] public EventCallback OnRemoveStep { get; set; }
+    [Parameter] public EventCallback OnDuplicateStep { get; set; }
+    [Parameter] public EventCallback OnMoveUp { get; set; }
+    [Parameter] public EventCallback OnMoveDown { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+
+    private bool _isOpen = false;
+    private double _x = 0;
+    private double _y = 0;
+    private int _zIndex = 1000;
+    private string _popupId = Guid.NewGuid().ToString();
+    private PopupInstance? _popupInstance;
+
+    public void Open(MouseEventArgs e)
+    {
+        PopupService?.CloseAll();
+        _x = e.ClientX;
+        _y = e.ClientY;
+        _isOpen = true;
+
+        _popupInstance = PopupService.RegisterPopup(_popupId, PopupType.Popover);
+        _popupInstance.CanCloseWithEsc = true;
+        _popupInstance.RequestClose = () => Close();
+        _zIndex = _popupInstance.ZIndex;
+
+        StateHasChanged();
+    }
+
+    public void Close()
+    {
+        _isOpen = false;
+        if (_popupInstance != null)
+        {
+            PopupService.UnregisterPopup(_popupId);
+            _popupInstance = null;
+        }
+        StateHasChanged();
+    }
+
+    private async Task Invoke(EventCallback cb)
+    {
+        Close();
+        await cb.InvokeAsync();
+    }
+
+    private string ItemClass(bool disabled = false) =>
+        $"flex items-center w-full rounded-sm px-2 py-1.5 text-sm outline-none transition-colors text-left " +
+        (disabled
+            ? "opacity-50 pointer-events-none cursor-default"
+            : "cursor-default hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground");
+
+    public void Dispose()
+    {
+        if (_popupInstance != null)
+            PopupService.UnregisterPopup(_popupId);
+    }
+}

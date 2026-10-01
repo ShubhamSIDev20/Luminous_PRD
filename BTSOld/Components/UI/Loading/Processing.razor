@@ -1,0 +1,30 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Loading
+
+@if (IsLoading)
+{
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center">
+            <Blazicon Svg="Lucide.Loader" class="h-8 w-8 mb-4 animate-spin text-blue-600" />
+            <p class="text-lg font-medium text-gray-800">Processing @ActionName...</p>
+            @* ✅ Optional Cancel button *@
+            @if (Cancel.HasDelegate)
+            {
+                <Button Variant="ButtonVariant.Outline" Onclick="Cancel">
+                    <Blazicon Svg="Lucide.CircleStop" class="h-4 w-4"/>
+                    Cancel
+                </Button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public string ActionName { get; set; } = "Action";
+
+    [Parameter]
+    public EventCallback Cancel { get; set; }
+}

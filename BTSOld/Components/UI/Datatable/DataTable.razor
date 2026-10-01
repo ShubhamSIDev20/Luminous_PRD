@@ -1,0 +1,1345 @@
+@* DataTable.razor — Generic, fully self-contained data table component.
+   ─────────────────────────────────────────────────────────────────────────
+
+   FEATURES
+   ─────────────────────────────────────────────────────────────────────────
+   • Generic <TItem> — works with any model type
+   • Client-side mode  (default)   — pass a List<TItem> via Data=
+   • Server-side mode  (ServerSide=true) — pass an async DataSource= func
+   • Built-in search   (Search=true)
+   • Column visibility panel  — checkbox toggle per column
+   • Column reorder           — drag-and-drop rows in the panel (no JS lib)
+   • Built-in Excel export    (ExcelExport=true) — builds a real .xlsx in
+                               C# using Open XML SDK, triggers browser
+                               download via a tiny inline JS snippet.
+                               Exports ALL filtered rows (not just current page).
+   • Fullscreen toggle        — optional, shown only when OnFullscreenToggle
+                               has a delegate
+   • ActionButtons slot       — inject extra icon buttons next to the toolbar
+   • HeaderContent slot       — inject content between title and toolbar
+   • Row click callback
+   • Row selected highlight
+
+   PARAMETERS
+   ─────────────────────────────────────────────────────────────────────────
+   Title            string                             "Data"
+   Subtitle         string?                            null
+   Data             List<TItem>                        [] (client-side)
+   DataSource       Func<DataTableRequest,
+                        Task<DataTableResult<TItem>>>  null (server-side)
+   ServerSide       bool                               false
+   Search           bool                               false
+   IsLoading        bool                               false
+   ExcelExport      bool                               false
+   ExcelFileName    string                             "export"
+   ExcelSheetName   string                             "Sheet1"
+   IsFullscreen     bool                               false
+   OnFullscreenToggle EventCallback                    (none)
+   OnRowClick       EventCallback<TItem>               (none)
+   RowSelected      Func<TItem,bool>?                  null
+   Columns          RenderFragment?                    (required)
+   ActionButtons    RenderFragment?                    null
+   HeaderContent    RenderFragment?                    null
+
+   NUGET REQUIRED (for Excel export)
+   ─────────────────────────────────────────────────────────────────────────
+   <PackageReference Include="DocumentFormat.OpenXml" Version="3.*" />
+
+   MINIMAL USAGE
+   ─────────────────────────────────────────────────────────────────────────
+   @using UI.Components.DataTable
+
+   <DataTable TItem="OrderDto"
+              Title="Orders"
+              Data="@_orders"
+              Search="true"
+              ExcelExport="true"
+              ExcelFileName="orders">
+       <Columns>
+           <ColumnDef TItem="OrderDto" Key="id" Header="#"
+                      SearchSelector="@(r => r.Id.ToString())"
+                      ExcelValueSelector="@(r => r.Id.ToString())">
+               <CellTemplate Context="row">@row.Id</CellTemplate>
+           </ColumnDef>
+           <ColumnDef TItem="OrderDto" Key="name" Header="Customer"
+                      SearchSelector="@(r => r.CustomerName)"
+                      ExcelValueSelector="@(r => r.CustomerName)">
+               <CellTemplate Context="row">@row.CustomerName</CellTemplate>
+           </ColumnDef>
+       </Columns>
+   </DataTable>
+*@
+@namespace BatteryTestingSystem.Components.UI.Datatable
+@* DataTable.razor *@
+@typeparam TItem
+@implements IDisposable
+@inject IJSRuntime JS
+@inject ServerSessionStorageService sStorage
+
+<CascadingValue Value="_ctx" IsFixed="false">
+    <div class="hidden" aria-hidden="true">@Columns</div>
+</CascadingValue>
+
+@* ─────────────────────────────────────────────────────────────────────
+   ROOT: flex column, fills parent height, clips overflow so only
+   the tbody scrolls — toolbar + footer stay pinned.
+   Parent must be a flex/grid container with a defined height.
+──────────────────────────────────────────────────────────────────────── *@
+@* ─── Root: font-size drives ALL em-based sizes inside ─────────────────── *@
+<div class="flex flex-col h-full overflow-hidden bg-[hsl(var(--card,0_0%_100%))] text-[hsl(var(--card-foreground,0_0%_10%))] border border-[hsl(var(--border,0_0%_88%))] rounded-[var(--radius,.5rem)]"
+     style="font-size:@(Fs)px">
+
+    @* ── Toolbar ── *@
+    <div class="flex items-center flex-wrap shrink-0 border-b border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--card,0_0%_100%))] gap-[.4em] px-[.8em] py-[.35em]">
+
+        <span class="font-bold uppercase whitespace-nowrap text-[hsl(var(--muted-foreground,0_0%_50%))] text-[.82em] tracking-[.06em]">
+            @Title
+            <span class="normal-case font-normal tracking-normal ml-[.2em]">
+                (@_totalRows.ToString("N0") rows@(Subtitle != null ? $" — {Subtitle}" : ""))
+            </span>
+        </span>
+
+        @if (IsLoading)
+        {
+            <span class="font-mono text-[hsl(var(--primary,220_90%_55%))] animate-pulse text-[.82em]">● Streaming…</span>
+        }
+        @if (HeaderContent != null)
+        {
+            <div class="flex items-center">@HeaderContent</div>
+        }
+
+        <div class="flex items-center ml-auto gap-[.35em]">
+
+            @* Search *@
+            @if (Search)
+            {
+                <div class="relative flex items-center">
+                    <svg class="absolute text-[hsl(var(--muted-foreground,0_0%_50%))] pointer-events-none left-[.5em] w-[.9em] h-[.9em]"
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                    </svg>
+                    <input class="font-[inherit] rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--foreground,0_0%_10%))] outline-none focus:border-[hsl(var(--primary,220_90%_55%))] transition-[border-color,width] duration-150 h-[1.8em] w-[10em] px-[1.8em] text-[length:inherit]"
+                    type="text" placeholder="Search…"
+                    value="@_search" @oninput="OnSearchInput" />
+                    @if (_search.Length > 0)
+                    {
+                        <button class="absolute bg-transparent border-0 cursor-pointer text-[hsl(var(--muted-foreground,0_0%_50%))] hover:text-[hsl(var(--foreground,0_0%_10%))] right-[.3em] text-[.82em] px-[.2em] py-0"
+                        @onclick="ClearSearch" tabindex="-1">✕</button>
+                    }
+                </div>
+            }
+
+            @* Rows per page *@
+            <label class="whitespace-nowrap text-[hsl(var(--muted-foreground,0_0%_50%))] text-[.82em]">Rows:</label>
+            <div class="relative">
+                <select class="font-[inherit] rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--foreground,0_0%_10%))] appearance-none cursor-pointer outline-none h-[1.8em] pl-[.4em] pr-[1.6em] text-[length:inherit]"
+                @bind="_pageSize" @bind:after="OnPageSizeChanged">
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+                <svg class="absolute top-1/2 -translate-y-1/2 pointer-events-none text-[hsl(var(--muted-foreground,0_0%_50%))] right-[.4em] w-[.6em] h-[.6em]"
+                fill="none" viewBox="0 0 10 6">
+                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                    stroke-width="2" d="m1 1 4 4 4-4" />
+                </svg>
+            </div>
+
+            @* Column panel *@
+            <div class="relative">
+                <button class="dt-tb-btn inline-flex items-center justify-center shrink-0 rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--muted-foreground,0_0%_50%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] disabled:opacity-50 disabled:cursor-not-allowed w-[1.8em] h-[1.8em] @(_showCols ? "!bg-[color-mix(in_srgb,hsl(var(--primary,220_90%_55%))_12%,transparent)] !border-[hsl(var(--primary,220_90%_55%))] !text-[hsl(var(--primary,220_90%_55%))]" : "")"
+                title="Columns · drag to reorder"
+                @onclick="() => _showCols = !_showCols">
+                    <svg class="w-[.85em] h-[.85em]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                </button>
+                @if (_showCols)
+                {
+                    <div class="fixed inset-0 z-[99] bg-transparent" @onclick="() => _showCols = false"></div>
+                    <div class="absolute top-[calc(100%+4px)] right-0 z-[100] bg-[hsl(var(--card,0_0%_100%))] border border-[hsl(var(--border,0_0%_88%))] rounded-[var(--radius,.5rem)] shadow-[0_8px_28px_rgba(0,0,0,.16)] py-1 min-w-[12em] text-[length:inherit]">
+                        <p class="font-bold uppercase text-[hsl(var(--muted-foreground,0_0%_50%))] border-b border-[hsl(var(--border,0_0%_88%))] text-[.75em] tracking-[.06em] px-[.8em] pt-[.3em] pb-[.5em] mb-[.2em]">
+                            Columns · drag to reorder
+                        </p>
+                        @foreach (var col in _ctx.AllOrdered)
+                        {
+                            var k = col.Key;
+                            <div class="flex items-center cursor-grab select-none transition-colors duration-75 hover:bg-[hsl(var(--accent,0_0%_95%))] gap-[.5em] px-[.8em] py-[.3em] @(_dragOver == k ? "border-t-2 border-[hsl(var(--primary,220_90%_55%))] bg-[color-mix(in_srgb,hsl(var(--primary,220_90%_55%))_8%,transparent)]" : "")"
+                            draggable="true"
+                            @ondragstart="()  => _dragFrom = k"
+                            @ondragover:preventDefault="true"
+                            @ondragover="()  => _dragOver = k"
+                            @ondrop="()      => DropCol(k)"
+                            @ondragleave="() => { if (_dragOver == k) _dragOver = null; }">
+                                <span class="text-[hsl(var(--muted-foreground,0_0%_60%))] leading-none shrink-0">⠿</span>
+                                <label class="flex items-center text-[hsl(var(--foreground,0_0%_10%))] cursor-pointer flex-1 gap-[.5em] text-[.9em]" @onclick:stopPropagation>
+                                    <input class="cursor-pointer w-[.8em] h-[.8em]" type="checkbox" checked="@col.Visible"
+                                    @onchange="() => ToggleVisible(col)" />
+                                    <span>@col.Header</span>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            @* Excel export *@
+            @if (ExcelExport)
+            {
+                <button class="dt-tb-btn inline-flex items-center justify-center shrink-0 rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--muted-foreground,0_0%_50%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] disabled:opacity-50 disabled:cursor-not-allowed w-[1.8em] h-[1.8em] @(_exporting ? "opacity-65" : "")"
+                title="Export to Excel (.xlsx)"
+                disabled="@_exporting"
+                @onclick="ExportExcelAsync">
+                    @if (_exporting)
+                    {
+                        <svg class="w-[.85em] h-[.85em] animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1" />
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg class="w-[.85em] h-[.85em]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 2v6h6" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            stroke="#16a34a" d="M8 13l2 3m3-3l-2 3M8 13l2-2.5m3 2.5l-2-2.5" />
+                        </svg>
+                    }
+                </button>
+            }
+
+            @* PDF export *@
+            @if (PdfExport)
+            {
+                <button class="dt-tb-btn inline-flex items-center justify-center shrink-0 rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--muted-foreground,0_0%_50%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] disabled:opacity-50 disabled:cursor-not-allowed w-[1.8em] h-[1.8em] @(_exportingPdf ? "opacity-65" : "")"
+                title="Export to PDF"
+                disabled="@_exportingPdf"
+                @onclick="ExportPdfAsync">
+                    @if (_exportingPdf)
+                    {
+                        <svg class="w-[.85em] h-[.85em] animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1" />
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg class="w-[.85em] h-[.85em]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 2v6h6" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            stroke="#dc2626" d="M8 12h8M8 15h5" />
+                        </svg>
+                    }
+                </button>
+            }
+
+            @if (ActionButtons != null)
+            {
+                @ActionButtons
+            }
+
+            @* ── Font-size slider (8–20 px, step 0.1) ─────────────────────── *@
+          @*   <div class="inline-flex items-center shrink-0 gap-[.4em]" title="Font size: @(Fs)px">
+                <svg class="w-[.9em] h-[.9em] shrink-0 text-[hsl(var(--muted-foreground,0_0%_55%))]" viewBox="0 0 20 16" fill="currentColor">
+                    <text x="0" y="11" font-size="9"  font-family="sans-serif" font-weight="700">A</text>
+                    <text x="9" y="15" font-size="12" font-family="sans-serif" font-weight="700">A</text>
+                </svg>
+                <input type="range" min="10" max="25" step="0.1"
+                value="@(Fs)"
+                @oninput="OnFontSizeInput"
+                class="w-[5em] cursor-pointer outline-none align-middle"
+                style="height:3px;accent-color:hsl(var(--primary,220_90%_55%))" />
+                <span class="font-mono text-[hsl(var(--muted-foreground,0_0%_50%))] select-none tabular-nums text-[.78em] min-w-[3em] text-right">@(Fs)px</span>
+            </div> *@
+            @* ── Font-size controls ─────────────────────────────────────────── *@
+            <div class="inline-flex items-center shrink-0 gap-[.4em]" title="Font size: @(Fs)px">
+                <svg class="w-[.9em] h-[.9em] shrink-0 text-[hsl(var(--muted-foreground,0_0%_55%))]" viewBox="0 0 20 16" fill="currentColor">
+                    <text x="0" y="11" font-size="9" font-family="sans-serif" font-weight="700">A</text>
+                    <text x="9" y="15" font-size="12" font-family="sans-serif" font-weight="700">A</text>
+                </svg>
+
+                @* grouped − value + *@
+                <div class="inline-flex items-center rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] overflow-hidden">
+                    <button class="flex items-center justify-center w-[1.6em] h-[1.6em] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--muted-foreground,0_0%_50%))] hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] disabled:opacity-35 disabled:cursor-not-allowed transition-colors duration-100 border-0"
+                            disabled="@(FsValue <= 10)" @onclick="() => _fontSize = Math.Max(FsValue - 0.1, 10.0)" @onblur="OnFontSizeInput">
+                        <svg class="w-[.85em] h-[.85em]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M20 12H4" />
+                        </svg>
+                    </button>
+                    <span class="font-mono tabular-nums select-none text-[.78em] text-[hsl(var(--foreground,0_0%_10%))] border-x border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--muted,0_0%_96%))] min-w-[2.8em] text-center leading-[1.6em]">
+                        @(Fs)
+                    </span>
+                    <button class="flex items-center justify-center w-[1.6em] h-[1.6em] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--muted-foreground,0_0%_50%))] hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] disabled:opacity-35 disabled:cursor-not-allowed transition-colors duration-100 border-0"
+                            disabled="@(FsValue >= 25)" @onclick="() => _fontSize = Math.Min(FsValue + 0.1, 25.0)" @onblur="OnFontSizeInput">
+                        <svg class="w-[.85em] h-[.85em]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16M4 12h16" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            @if (OnFullscreenToggle.HasDelegate)
+            {
+                <button class="dt-tb-btn inline-flex items-center justify-center shrink-0 rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--muted-foreground,0_0%_50%))] cursor-pointer transition-all duration-100 hover:bg-[hsl(var(--accent,0_0%_95%))] hover:text-[hsl(var(--foreground,0_0%_10%))] w-[1.8em] h-[1.8em]"
+                title="@(IsFullscreen ? "Restore" : "Fullscreen")"
+                @onclick="OnFullscreenToggle">
+                    @if (IsFullscreen)
+                    {
+                        <svg class="w-[.85em] h-[.85em]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 9L4 4m0 0v4m0-4h4M15 9l5-5m0 0v4m0-4h-4M9 15l-5 5m0 0v-4m0 4h4M15 15l5 5m0 0v-4m0 4h-4" />
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg class="w-[.85em] h-[.85em]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 8V4m0 0h4M4 4l5 5M20 8V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5M20 16v4m0 0h-4m4 0l-5-5" />
+                        </svg>
+                    }
+                </button>
+            }
+
+        </div>
+    </div>
+
+    @* ── Table scroll area ── *@
+    <div class="flex-1 overflow-auto min-h-0">
+        @if (_loading)
+        {
+            <div class="flex items-center justify-center gap-2 text-[hsl(var(--muted-foreground,0_0%_50%))] h-[3em] text-[.9em]">
+                <svg class="w-[1em] h-[1em] animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1" />
+                </svg>
+                Loading…
+            </div>
+        }
+        else if (_rows.Count == 0)
+        {
+            <div class="flex items-center justify-center text-[hsl(var(--muted-foreground,0_0%_50%))] h-[3em] text-[.9em]">
+                @if (_search.Length > 0)
+                {
+                    <span>No results for "<b>@_search</b>"</span>
+                }
+                else
+                {
+                    <span>No data</span>
+                }
+            </div>
+        }
+        else
+        {
+            <table class="w-full border-collapse font-mono" style="font-size:inherit">
+                <thead class="sticky top-0 z-[5] bg-[hsl(var(--muted,0_0%_96%))]">
+                    <tr>
+                        @foreach (var col in _ctx.Visible)
+                        {
+                            <th class="font-semibold uppercase text-[hsl(var(--muted-foreground,0_0%_50%))] border-b border-[hsl(var(--border,0_0%_88%))] whitespace-nowrap text-[.85em] tracking-[.04em] px-[.5em] py-[.4em]
+                                       @(col.Align == "right" ? "text-right" : col.Align == "center" ? "text-center" : "text-left")"
+                            style="@(col.HeaderColor != null ? "color:" + col.HeaderColor : "")">
+                                @col.Header
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (GroupBy is IGroupRenderer<TItem>)
+                    {
+                        @BuildGroupedBody()
+                    }
+                    else
+                    {
+                        @* ── Flat mode (original, untouched) ── *@
+                        @foreach (var (row, i) in _rows.Select((r, i) => (r, i)))
+                        {
+                            var sel = RowSelected?.Invoke(row) ?? false;
+                            <tr class="transition-colors duration-75
+                                       @(i % 2 == 1 ? "bg-[hsl(var(--muted,0_0%_97%))]" : "bg-[hsl(var(--background,0_0%_100%))]")
+                                       @(sel ? "!bg-[color-mix(in_srgb,hsl(var(--primary,220_90%_55%))_10%,transparent)]" : "")
+                                       @(OnRowClick.HasDelegate ? "cursor-pointer hover:!bg-[hsl(var(--accent,0_0%_93%))]" : "")"
+                            @onclick="() => OnRowClick.InvokeAsync(row)">
+                                @foreach (var col in _ctx.Visible)
+                                {
+                                    <td class="border border-[hsl(var(--border,0_0%_88%))] align-middle whitespace-nowrap px-[.5em] py-[.2em]
+                                               @(col.Align == "right" ? "text-right" : col.Align == "center" ? "text-center" : "text-left")">
+                                        @col.CellTemplate?.Invoke(row)
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    @* ── Pagination ── *@
+    <div class="flex items-center justify-between shrink-0 border-t border-[hsl(var(--border,0_0%_88%))] px-[.8em] py-[.3em]">
+        <span class="font-mono text-[hsl(var(--muted-foreground,0_0%_50%))] text-[.82em]">
+            @if (_totalRows > 0)
+            {
+                var s = (_page - 1) * _pageSize + 1;
+                var e = Math.Min(_page * _pageSize, _totalRows);
+                @($"{s:N0}–{e:N0} / {_totalRows:N0}")
+            }
+        </span>
+        <div class="flex items-center gap-[.2em]">
+            @{
+                string PagBtn = "font-[inherit] rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))] bg-[hsl(var(--secondary,0_0%_96%))] text-[hsl(var(--secondary-foreground,0_0%_20%))] cursor-pointer transition-all duration-100 hover:not-disabled:bg-[hsl(var(--accent,0_0%_93%))] disabled:opacity-35 disabled:cursor-not-allowed min-w-[1.8em] h-[1.8em] px-[.2em] text-[length:inherit]";
+            }
+            <button class="@PagBtn" disabled="@(_page==1)" @onclick="() => GoTo(1)">«</button>
+            <button class="@PagBtn" disabled="@(_page==1)" @onclick="Prev">‹</button>
+            @foreach (var pn in PageNumbers)
+            {
+                var active = pn == _page;
+                <button class="@PagBtn @(active ? "!bg-[hsl(var(--primary,220_90%_55%))] !text-[hsl(var(--primary-foreground,0_0%_100%))] !border-[hsl(var(--primary,220_90%_55%))] font-semibold" : "")"
+                @onclick="() => GoTo(pn)">@pn</button>
+            }
+            <button class="@PagBtn" disabled="@(_page==TotalPages)" @onclick="Next">›</button>
+            <button class="@PagBtn" disabled="@(_page==TotalPages)" @onclick="() => GoTo(TotalPages)">»</button>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    @@keyframes dt-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+    @@keyframes dt-spin  { to { transform: rotate(360deg) } }
+</style>
+
+@code {
+
+    // ── Parameters ───────────────────────────────────────────────────────────
+
+    [Parameter] public string Title { get; set; } = "Data";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public List<TItem> Data { get; set; } = [];
+    [Parameter] public Func<DataTableRequest, Task<DataTableResult<TItem>>>? DataSource { get; set; }
+    [Parameter] public bool ServerSide { get; set; } = false;
+    [Parameter] public bool Search { get; set; } = false;
+    [Parameter] public bool IsLoading { get; set; } = false;
+
+    // Excel
+    [Parameter] public bool ExcelExport { get; set; } = false;
+    [Parameter] public string ExcelFileName { get; set; } = "export";
+    [Parameter] public string ExcelSheetName { get; set; } = "Sheet1";
+
+    // PDF
+    [Parameter] public bool PdfExport { get; set; } = false;
+    [Parameter] public string PdfFileName { get; set; } = "export";
+
+    // Export header / footer — optional fully-customisable HTML rendered
+    // into a hidden div; the plain-text content is extracted for Excel/PDF.
+    // For Excel: rendered as a merged row above the column headers.
+    // For PDF:   rendered as plain text at the top and bottom of every page.
+    [Parameter] public RenderFragment? ExportHeader { get; set; }
+    [Parameter] public RenderFragment? ExportFooter { get; set; }
+    // Plain-text fallbacks used when the render fragments are set
+    // but you also want a clean string in the file.
+    [Parameter] public string? ExportHeaderText { get; set; }
+    [Parameter] public string? ExportFooterText { get; set; }
+
+    [Parameter] public bool IsFullscreen { get; set; } = false;
+    [Parameter] public EventCallback OnFullscreenToggle { get; set; }
+    [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+    [Parameter] public Func<TItem, bool>? RowSelected { get; set; }
+    [Parameter] public RenderFragment? Columns { get; set; }
+    [Parameter] public RenderFragment? ActionButtons { get; set; }
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    // ── Grouping (optional) ──────────────────────────────────────────────────
+    // When GroupBy is set the table renders grouped header rows + child rows
+    // instead of the normal flat rows. All existing behaviour (search, paging,
+    // export, column visibility) continues to work unchanged when GroupBy is null.
+    [Parameter] public object? GroupBy { get; set; }   // accepts GroupDefinition<TItem,TKey> — typed via helper below
+
+    // ── Group expand state ───────────────────────────────────────────────────
+    private readonly HashSet<string> _expandedGroups = [];
+    private bool _groupsSeeded = false;
+
+    // Called once after Data/DataSource rows are loaded — seeds expand state.
+    private void SeedGroupExpand()
+    {
+        if (GroupBy is not IGroupRenderer<TItem> renderer) return;
+        if (_groupsSeeded) return;
+        _groupsSeeded = true;
+
+        if (_pendingExpandedGroups != null)
+        {
+            // Restore exactly the saved expand state — overrides DefaultExpanded
+            _expandedGroups.Clear();
+            foreach (var k in _pendingExpandedGroups)
+                _expandedGroups.Add(k);
+            _pendingExpandedGroups = null;
+        }
+        else if (renderer.DefaultExpanded)
+        {
+            // No saved state — apply DefaultExpanded
+            foreach (var row in _rows)
+                _expandedGroups.Add(renderer.GetGroupKey(row));
+        }
+    }
+
+    /// Expand all groups — callable via @ref on the DataTable instance.
+    public void ExpandAllGroups()
+    {
+        if (GroupBy is not IGroupRenderer<TItem> renderer) return;
+        foreach (var row in _rows)
+            _expandedGroups.Add(renderer.GetGroupKey(row));
+        SaveViewState();
+        StateHasChanged();
+    }
+
+    /// Collapse all groups — callable via @ref on the DataTable instance.
+    public void CollapseAllGroups()
+    {
+        _expandedGroups.Clear();
+        _groupsSeeded = true; // prevent re-seed on next render
+        SaveViewState();
+        StateHasChanged();
+    }
+
+    private void ToggleGroup(string key)
+    {
+        if (!_expandedGroups.Add(key)) _expandedGroups.Remove(key);
+        SaveViewState();
+    }
+
+    private RenderFragment BuildGroupedBody() => __builder =>
+    {
+        if (GroupBy is not IGroupRenderer<TItem> renderer) return;
+
+        int colCount    = _ctx.Visible.Count();
+        var visibleCols = _ctx.Visible.ToList();
+
+        // Build ordered groups: (hashKey, actualKeyObject, items)
+        // We use an ordered dict to preserve message order from _rows.
+        var groupOrder = new List<string>();
+        var groupItems = new Dictionary<string, List<TItem>>();
+        var groupKeys  = new Dictionary<string, object?>();  // hashKey → actual TKey object
+
+        foreach (var row in _rows)
+        {
+            var hashKey   = renderer.GetGroupKey(row);
+            var actualKey = row; // will resolve actual key below
+            if (!groupItems.ContainsKey(hashKey))
+            {
+                groupOrder.Add(hashKey);
+                groupItems[hashKey] = [];
+                // Store the first row so we can recover the actual key via KeySelector
+                // We store it as object via interface — GroupDefinition stores the typed ref
+                groupKeys[hashKey] = hashKey; // placeholder, replaced next line
+            }
+            groupItems[hashKey].Add(row);
+        }
+
+        // Resolve actual key objects per group using the first item in each group
+        // The interface exposes GetGroupKey(row) — we need the inverse.
+        // Solution: store a parallel "first row" lookup and let RenderGroupHeader
+        // get the key from the row via its own KeySelector.
+        // We pass the first row as a sentinel in RawKey — GroupDefinition extracts TKey itself.
+        var groupFirstRow = new Dictionary<string, TItem>();
+        foreach (var row in _rows)
+        {
+            var hashKey = renderer.GetGroupKey(row);
+            if (!groupFirstRow.ContainsKey(hashKey))
+                groupFirstRow[hashKey] = row;
+        }
+
+        int seq = 0;
+        foreach (var grpKey in groupOrder)
+        {
+            var items    = groupItems[grpKey];
+            var firstRow = groupFirstRow[grpKey];
+
+            bool isExpanded = _expandedGroups.Contains(grpKey);
+
+            // Pass firstRow as RawKey — GroupDefinition calls its own KeySelector
+            // on the first row to recover the actual typed TKey (e.g. DbcMessage)
+            var headerCtx = new GroupHeaderContext<TItem>
+            {
+                RawKey       = firstRow,          // actual row — GroupDefinition extracts key
+                Items        = items,
+                IsExpanded   = isExpanded,
+                ColCount     = colCount,
+                ToggleExpand = () => { ToggleGroup(grpKey); StateHasChanged(); }
+            };
+            __builder.AddContent(seq++, renderer.RenderGroupHeader(headerCtx));
+
+            if (!isExpanded) continue;
+
+            int ri = 0;
+            foreach (var row in items)
+            {
+                var rowCopy = row;
+                var riCopy  = ri;
+                bool sel    = RowSelected?.Invoke(rowCopy) ?? false;
+
+                __builder.OpenElement(seq++, "tr");
+                __builder.AddAttribute(seq++, "class",
+                    "transition-colors duration-75 " +
+                    (riCopy % 2 == 1
+                        ? "bg-[hsl(var(--muted,0_0%_97%))] "
+                        : "bg-[hsl(var(--background,0_0%_100%))] ") +
+                    (sel
+                        ? "!bg-[color-mix(in_srgb,hsl(var(--primary,220_90%_55%))_10%,transparent)] "
+                        : "") +
+                    (OnRowClick.HasDelegate
+                        ? "cursor-pointer hover:!bg-[hsl(var(--accent,0_0%_93%))]"
+                        : ""));
+
+                if (OnRowClick.HasDelegate)
+                    __builder.AddAttribute(seq++, "onclick",
+                        EventCallback.Factory.Create(this, () => OnRowClick.InvokeAsync(rowCopy)));
+
+                foreach (var col in visibleCols)
+                {
+                    __builder.OpenElement(seq++, "td");
+                    __builder.AddAttribute(seq++, "class",
+                        "border border-[hsl(var(--border,0_0%_88%))] align-middle whitespace-nowrap px-[.5em] py-[.2em] " +
+                        (col.Align == "right" ? "text-right" : col.Align == "center" ? "text-center" : "text-left"));
+                    __builder.AddContent(seq++, col.CellTemplate?.Invoke(rowCopy));
+                    __builder.CloseElement();
+                }
+
+                __builder.CloseElement();
+                ri++;
+            }
+        }
+    };
+
+    // ── State ────────────────────────────────────────────────────────────────
+
+    private readonly ColumnContext<TItem> _ctx = new();
+    private string _search = string.Empty;
+    private int _pageSize = 50;
+    private int _page = 1;
+    private int _totalRows;
+    private List<TItem> _rows = [];
+    private List<TItem> _filteredAll = [];
+    private bool _loading;
+    private bool _showCols;
+    private bool _exporting;
+    private bool _exportingPdf;
+    private string? _dragFrom;
+    private string? _dragOver;
+    private bool _jsReady;
+    private bool _firstRenderDone;
+    private System.Timers.Timer? _debounce;
+
+    // Font size state — drives all em-based sizing in the template
+    private double _fontSize = 8.0;
+    // Formatted for HTML style attribute (invariant culture, 1 decimal)
+    private string Fs => _fontSize.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+    private double FsValue => double.TryParse(Fs,
+    System.Globalization.NumberStyles.Any,
+    System.Globalization.CultureInfo.InvariantCulture,
+    out var v) ? v : 13.0;
+
+    // Pending column restore — set during OnInitializedAsync, applied in OnAfterRenderAsync
+    // after ColumnDef children have registered themselves.
+    private List<string>?            _pendingColOrder;
+    private Dictionary<string, bool>? _pendingColVisibility;
+    private HashSet<string>?          _pendingExpandedGroups;  // restored from storage, applied after seed
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+    //
+    //  ROOT CAUSE of client-side empty-on-load:
+    //  OnParametersSetAsync fires BEFORE the first render, so ColumnDef children
+    //  haven't called Register() yet — _ctx.All is empty.
+    //  Fix: for client-side, defer the first data load to OnAfterRenderAsync
+    //  (firstRender=true) when all columns are guaranteed to be registered.
+    //  Subsequent parameter changes (live data, search, etc.) still go through
+    //  OnParametersSetAsync normally because _firstRenderDone is already true.
+
+    protected override async Task OnInitializedAsync()
+    {
+        // ── Restore view state from session storage ───────────────────────────
+        // Try the unified view-state blob first (new format).
+        var raw = sStorage.GetComponentState<string>(StorageKey);
+        if (!string.IsNullOrEmpty(raw))
+        {
+            try
+            {
+                var state = System.Text.Json.JsonSerializer.Deserialize<DataTableViewState>(raw);
+                if (state != null)
+                {
+                    _fontSize = Math.Clamp(state.FontSize, 10.0, 25.0);
+                    _pageSize = state.PageSize is 25 or 50 or 100 or 200 ? state.PageSize : 50;
+                    _pendingColOrder       = state.ColOrder;
+                    _pendingColVisibility  = state.ColVisibility;
+                    _pendingExpandedGroups = state.ExpandedGroups; // null = use DefaultExpanded
+                }
+            }
+            catch { /* corrupt entry — start fresh */ }
+        }
+        else
+        {
+            // Fallback: legacy fontSize-only key
+            var fs = sStorage.GetComponentState<string>($"{CurrentUser.UserName}_fontSize");
+            _fontSize = string.IsNullOrEmpty(fs)
+                ? 13.0
+                : Math.Clamp(double.Parse(fs, System.Globalization.CultureInfo.InvariantCulture), 10.0, 25.0);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await RegisterJsHelperAsync();
+
+        // Read the actual computed font size from the browser
+        var computed = await JS.InvokeAsync<double>("eval",
+            "parseFloat(getComputedStyle(document.documentElement).fontSize)");
+
+        if (_fontSize == 8.0)
+        {
+            _fontSize = computed > 0 ? computed : 13.0;
+        }
+
+        // ── Restore column order + visibility (columns are now registered) ────
+        if (_pendingColOrder is { Count: > 0 })
+        {
+            // Re-apply saved order using the existing Move() primitive.
+            // Walk through the desired order and bubble each column into position.
+            var desired = _pendingColOrder;
+            for (int i = 0; i < desired.Count - 1; i++)
+            {
+                var current = _ctx.AllOrdered.Select(c => c.Key).ToList();
+                var fromKey = desired[i];
+                // Find what's actually sitting at position i
+                var actualAtI = current.ElementAtOrDefault(i);
+                if (actualAtI != null && actualAtI != fromKey && current.Contains(fromKey))
+                {
+                    _ctx.Move(fromKey, actualAtI);
+                }
+            }
+            _pendingColOrder = null;
+        }
+        if (_pendingColVisibility is { Count: > 0 })
+        {
+            foreach (var col in _ctx.AllOrdered)
+            {
+                if (_pendingColVisibility.TryGetValue(col.Key, out var visible))
+                    col.Visible = visible;
+            }
+            _pendingColVisibility = null;
+        }
+
+        // Columns are now registered — safe to do first client-side load
+        if (!ServerSide)
+        {
+            _firstRenderDone = true;
+            await RefreshAsync();
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reset group seed when data changes so new rows get correct defaults
+        if (!ReferenceEquals(_lastData, Data)) { _groupsSeeded = false; _lastData = Data; }
+
+        // Skip the very first call for client-side — handled in OnAfterRenderAsync
+        if (!ServerSide && !_firstRenderDone) return;
+        await RefreshAsync();
+    }
+
+    private List<TItem>? _lastData;
+
+    // ── JS helper (registered once, fixed compile-time string) ───────────────
+
+    private async Task RegisterJsHelperAsync()
+    {
+        if (_jsReady) return;
+        const string js =
+            "window.dtDl=window.dtDl||function(b64,fn,mime){" +
+            "var b=atob(b64),n=b.length,u=new Uint8Array(n);" +
+            "for(var i=0;i<n;i++)u[i]=b.charCodeAt(i);" +
+            "var blob=new Blob([u],{type:mime});" +
+            "var a=document.createElement('a');" +
+            "a.href=URL.createObjectURL(blob);" +
+            "a.download=fn;" +
+            "document.body.appendChild(a);" +
+            "a.click();" +
+            "document.body.removeChild(a);" +
+            "URL.revokeObjectURL(a.href);" +
+            "};";
+        await JS.InvokeVoidAsync("eval", js);
+        _jsReady = true;
+    }
+
+    private async Task TriggerDownloadAsync(byte[] bytes, string fileName, string mime)
+    {
+        await RegisterJsHelperAsync();
+        await JS.InvokeVoidAsync("window.dtDl", Convert.ToBase64String(bytes), fileName, mime);
+    }
+
+    // ── Data refresh ─────────────────────────────────────────────────────────
+
+    private async Task RefreshAsync()
+    {
+        if (ServerSide)
+        {
+            if (DataSource == null) return;
+            _loading = true;
+            StateHasChanged();
+            var res = await DataSource(new DataTableRequest
+                { Page = _page, PageSize = _pageSize, Search = _search });
+            _rows = res.Rows;
+            _totalRows = res.TotalRows;
+            _filteredAll = [];
+            _loading = false;
+        }
+        else
+        {
+            _filteredAll = string.IsNullOrEmpty(_search)
+                ? Data
+                : Data.Where(r => ClientMatch(r, _search)).ToList();
+            _totalRows = _filteredAll.Count;
+            if (_page > TotalPages) _page = Math.Max(1, TotalPages);
+            _rows = _filteredAll.Skip((_page - 1) * _pageSize).Take(_pageSize).ToList();
+        }
+        SeedGroupExpand();
+    }
+
+    private bool ClientMatch(TItem row, string term) =>
+        _ctx.All.Where(c => c.SearchSelector != null)
+            .Any(c => c.SearchSelector!(row).Contains(term, StringComparison.OrdinalIgnoreCase));
+
+    // ── Search ───────────────────────────────────────────────────────────────
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        if (ServerSide)
+        {
+            _debounce?.Stop(); _debounce?.Dispose();
+            _debounce = new System.Timers.Timer(300) { AutoReset = false };
+            _debounce.Elapsed += async (sender, args) =>
+            {
+                _debounce?.Dispose(); _debounce = null;
+                _page = 1;
+                await InvokeAsync(async () => { await RefreshAsync(); StateHasChanged(); });
+            };
+            _debounce.Start();
+        }
+        else { _page = 1; _ = RefreshAsync(); }
+    }
+
+    private async Task ClearSearch() { _search = string.Empty; _page = 1; await RefreshAsync(); }
+
+    // ── Pagination ───────────────────────────────────────────────────────────
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(_totalRows / (double)_pageSize));
+
+    private IEnumerable<int> PageNumbers
+    {
+        get
+        {
+            int start = Math.Max(1, _page - 2);
+            int end = Math.Min(TotalPages, start + 4);
+            start = Math.Max(1, end - 4);
+            for (int i = start; i <= end; i++) yield return i;
+        }
+    }
+
+    private async Task OnPageSizeChanged() { _page = 1; SaveViewState(); await RefreshAsync(); }
+    private async Task GoTo(int p) { _page = p; await RefreshAsync(); }
+    private async Task Prev() { _page = Math.Max(1, _page - 1); await RefreshAsync(); }
+    private async Task Next() { _page = Math.Min(TotalPages, _page + 1); await RefreshAsync(); }
+
+    // ── Column panel ─────────────────────────────────────────────────────────
+
+    private async Task ToggleVisible(ColumnDefinition<TItem> col)
+    { col.Visible = !col.Visible; SaveViewState(); await RefreshAsync(); }
+
+    private async Task DropCol(string toKey)
+    {
+        if (_dragFrom != null && _dragFrom != toKey) _ctx.Move(_dragFrom, toKey);
+        _dragFrom = null; _dragOver = null;
+        SaveViewState();
+        await RefreshAsync();
+    }
+
+    // ── Excel export ─────────────────────────────────────────────────────────
+
+    private async Task ExportExcelAsync()
+    {
+        if (_exporting) return;
+        _exporting = true; StateHasChanged();
+        try
+        {
+            var rows = ServerSide ? _rows : (_filteredAll.Count > 0 ? _filteredAll : Data);
+            var cols = _ctx.Visible.ToList();
+            var hdr = ExportHeaderText ?? (ExportHeader != null ? Title : null);
+            var ftr = ExportFooterText ?? (ExportFooter != null
+                        ? "Exported " + DateTime.Now.ToString("yyyy-MM-dd HH:mm") : null);
+            var bytes = BuildXlsx(rows, cols, ExcelSheetName, hdr, ftr);
+            await TriggerDownloadAsync(bytes,
+                ExcelFileName + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        finally { _exporting = false; StateHasChanged(); }
+    }
+
+    private static byte[] BuildXlsx(
+        List<TItem> rows, List<ColumnDefinition<TItem>> cols,
+        string sheetName, string? header, string? footer)
+    {
+        using var ms = new System.IO.MemoryStream();
+        using (var doc = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument
+                   .Create(ms, DocumentFormat.OpenXml.SpreadsheetDocumentType.Workbook))
+        {
+            var wb = doc.AddWorkbookPart();
+            wb.Workbook = new DocumentFormat.OpenXml.Spreadsheet.Workbook();
+            var wsp = wb.AddNewPart<DocumentFormat.OpenXml.Packaging.WorksheetPart>();
+            var sd = new DocumentFormat.OpenXml.Spreadsheet.SheetData();
+            wsp.Worksheet = new DocumentFormat.OpenXml.Spreadsheet.Worksheet(sd);
+
+            var sheets = wb.Workbook.AppendChild(new DocumentFormat.OpenXml.Spreadsheet.Sheets());
+            var safeName = string.IsNullOrWhiteSpace(sheetName) ? "Sheet1" : sheetName[..Math.Min(31, sheetName.Length)];
+            sheets.Append(new DocumentFormat.OpenXml.Spreadsheet.Sheet
+                { Id = wb.GetIdOfPart(wsp), SheetId = 1, Name = safeName });
+
+            var sp = wb.AddNewPart<DocumentFormat.OpenXml.Packaging.WorkbookStylesPart>();
+            sp.Stylesheet = BuildXlsxStylesheet();
+            sp.Stylesheet.Save();
+
+            uint xlRow = 1;
+
+            // Optional header row (merged across all columns)
+            if (header != null)
+            {
+                var hr = new DocumentFormat.OpenXml.Spreadsheet.Row { RowIndex = xlRow };
+                hr.Append(XlCell(header, "A" + xlRow, 2)); // style 2 = bold+blue fill
+                sd.Append(hr);
+                // Merge cells A1 : <lastCol>1
+                var mc = new DocumentFormat.OpenXml.Spreadsheet.MergeCells();
+                mc.Append(new DocumentFormat.OpenXml.Spreadsheet.MergeCell
+                    { Reference = "A" + xlRow + ":" + ColLetter(cols.Count - 1) + xlRow });
+                wsp.Worksheet.InsertAfter(mc, sd);
+                xlRow++;
+            }
+
+            // Column header row
+            var colHdr = new DocumentFormat.OpenXml.Spreadsheet.Row { RowIndex = xlRow };
+            for (int c = 0; c < cols.Count; c++)
+                colHdr.Append(XlCell(cols[c].Header, ColLetter(c) + xlRow, 1));
+            sd.Append(colHdr); xlRow++;
+
+            // Data rows
+            for (int r = 0; r < rows.Count; r++, xlRow++)
+            {
+                var dataRow = new DocumentFormat.OpenXml.Spreadsheet.Row { RowIndex = xlRow };
+                for (int c = 0; c < cols.Count; c++)
+                {
+                    var v = cols[c].ExcelValueSelector?.Invoke(rows[r])
+                         ?? cols[c].SearchSelector?.Invoke(rows[r]) ?? string.Empty;
+                    dataRow.Append(XlCell(v, ColLetter(c) + xlRow, 0));
+                }
+                sd.Append(dataRow);
+            }
+
+            // Optional footer row
+            if (footer != null)
+            {
+                var fr = new DocumentFormat.OpenXml.Spreadsheet.Row { RowIndex = xlRow };
+                fr.Append(XlCell(footer, "A" + xlRow, 3)); // style 3 = italic grey
+                sd.Append(fr);
+            }
+
+            // Column widths
+            var colsEl = new DocumentFormat.OpenXml.Spreadsheet.Columns();
+            for (int c = 0; c < cols.Count; c++)
+            {
+                int mx = cols[c].Header.Length;
+                foreach (var row in rows.Take(60))
+                {
+                    var v = cols[c].ExcelValueSelector?.Invoke(row)
+                         ?? cols[c].SearchSelector?.Invoke(row) ?? string.Empty;
+                    if (v.Length > mx) mx = v.Length;
+                }
+                colsEl.Append(new DocumentFormat.OpenXml.Spreadsheet.Column
+                    { Min = (uint)(c + 1), Max = (uint)(c + 1), Width = Math.Min(40, mx + 2), CustomWidth = true });
+            }
+            wsp.Worksheet.InsertBefore(colsEl, sd);
+            wb.Workbook.Save();
+        }
+        return ms.ToArray();
+    }
+
+    private static DocumentFormat.OpenXml.Spreadsheet.Cell XlCell(string value, string cellRef, uint style)
+        => new()
+            {
+                CellReference = cellRef,
+                CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(value),
+                DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String,
+                StyleIndex = style,
+            };
+
+    private static DocumentFormat.OpenXml.Spreadsheet.Stylesheet BuildXlsxStylesheet()
+    {
+        // Styles: 0=normal  1=bold(colhdr)  2=bold+blue(header)  3=italic+grey(footer)
+        var fonts = new DocumentFormat.OpenXml.Spreadsheet.Fonts(
+            new DocumentFormat.OpenXml.Spreadsheet.Font(),                    // 0 normal
+            new DocumentFormat.OpenXml.Spreadsheet.Font(                      // 1 bold
+                new DocumentFormat.OpenXml.Spreadsheet.Bold()),
+            new DocumentFormat.OpenXml.Spreadsheet.Font(                      // 2 bold white
+                new DocumentFormat.OpenXml.Spreadsheet.Bold(),
+                new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = "FFFFFFFF" }),
+            new DocumentFormat.OpenXml.Spreadsheet.Font(                      // 3 italic grey
+                new DocumentFormat.OpenXml.Spreadsheet.Italic(),
+                new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = "FF888888" }));
+
+        var fills = new DocumentFormat.OpenXml.Spreadsheet.Fills(
+            new DocumentFormat.OpenXml.Spreadsheet.Fill(new DocumentFormat.OpenXml.Spreadsheet.PatternFill
+                { PatternType = DocumentFormat.OpenXml.Spreadsheet.PatternValues.None }),        // 0
+            new DocumentFormat.OpenXml.Spreadsheet.Fill(new DocumentFormat.OpenXml.Spreadsheet.PatternFill
+                { PatternType = DocumentFormat.OpenXml.Spreadsheet.PatternValues.Gray125 }),     // 1 required
+            new DocumentFormat.OpenXml.Spreadsheet.Fill(new DocumentFormat.OpenXml.Spreadsheet.PatternFill  // 2 blue
+                {
+                    PatternType = DocumentFormat.OpenXml.Spreadsheet.PatternValues.Solid,
+                    ForegroundColor = new DocumentFormat.OpenXml.Spreadsheet.ForegroundColor { Rgb = "FF2D61C8" },
+                    BackgroundColor = new DocumentFormat.OpenXml.Spreadsheet.BackgroundColor { Indexed = 64 },
+                }));
+
+        var borders = new DocumentFormat.OpenXml.Spreadsheet.Borders(
+            new DocumentFormat.OpenXml.Spreadsheet.Border());
+
+        var csf = new DocumentFormat.OpenXml.Spreadsheet.CellStyleFormats(
+            new DocumentFormat.OpenXml.Spreadsheet.CellFormat());
+
+        var cf = new DocumentFormat.OpenXml.Spreadsheet.CellFormats(
+            new DocumentFormat.OpenXml.Spreadsheet.CellFormat { FontId = 0, FillId = 0, BorderId = 0 },  // 0 normal
+            new DocumentFormat.OpenXml.Spreadsheet.CellFormat { FontId = 1, FillId = 0, BorderId = 0 },  // 1 bold hdr
+            new DocumentFormat.OpenXml.Spreadsheet.CellFormat { FontId = 2, FillId = 2, BorderId = 0 },  // 2 blue hdr
+            new DocumentFormat.OpenXml.Spreadsheet.CellFormat { FontId = 3, FillId = 0, BorderId = 0 }); // 3 italic ftr
+
+        return new DocumentFormat.OpenXml.Spreadsheet.Stylesheet(fonts, fills, borders, csf, cf);
+    }
+
+    private static string ColLetter(int idx)
+    {
+        string r = string.Empty; idx++;
+        while (idx > 0) { idx--; r = (char)('A' + idx % 26) + r; idx /= 26; }
+        return r;
+    }
+
+    // ── PDF export ───────────────────────────────────────────────────────────
+    //  Pure C# — no NuGet. PDF 1.4, Helvetica built-in font, A4 landscape.
+    //  FIX: use Tm (text matrix, absolute) instead of Td (relative) for each
+    //  cell so column positions never drift across cells or rows.
+
+    private async Task ExportPdfAsync()
+    {
+        if (_exportingPdf) return;
+        _exportingPdf = true; StateHasChanged();
+        try
+        {
+            var rows = ServerSide ? _rows : (_filteredAll.Count > 0 ? _filteredAll : Data);
+            var cols = _ctx.Visible.ToList();
+            var hdrText = ExportHeaderText ?? (ExportHeader != null ? Title : null);
+            var ftrText = ExportFooterText ?? (ExportFooter != null
+                          ? "Exported " + DateTime.Now.ToString("yyyy-MM-dd HH:mm") : null);
+            var bytes = BuildPdf(rows, cols, hdrText, ftrText);
+            await TriggerDownloadAsync(bytes,
+                PdfFileName + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".pdf",
+                "application/pdf");
+        }
+        finally { _exportingPdf = false; StateHasChanged(); }
+    }
+
+    private static byte[] BuildPdf(
+        List<TItem> rows, List<ColumnDefinition<TItem>> cols,
+        string? headerText, string? footerText)
+    {
+        // ── Layout ───────────────────────────────────────────────────────────
+        const float PW = 842f, PH = 595f;  // A4 landscape (pts)
+        const float ML = 28f, MR = 28f, MT = 28f, MB = 28f;
+        const float CHH = 16f;    // column-header row height
+        const float RH = 13f;    // data row height
+        const float HBH = 14f;    // header/footer band height
+        const float FS = 7f;     // data font size
+        const float HFS = 8f;     // col-header font size
+        const float BFS = 8f;     // banner font size (header/footer text)
+
+        float tw = PW - ML - MR;
+        float cw = cols.Count > 0 ? (float)Math.Round(tw / cols.Count, 2) : tw;
+
+        var enc = System.Text.Encoding.Latin1;
+        var pages = new List<byte[]>();
+        var sb = new System.Text.StringBuilder(8192);
+        float y = 0f;
+
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        // Tm sets an absolute text matrix: scale 1, no rotation, at (x, y)
+        string Tm(float x, float fy) =>
+            F(1) + " 0 0 " + F(1) + " " + F(x) + " " + F(fy) + " Tm";
+
+        void DrawRect(float x, float ry, float w, float h, string rgb, bool fill)
+        {
+            sb.Append(F(x)).Append(' ').Append(F(ry)).Append(' ')
+              .Append(F(w)).Append(' ').Append(F(h)).AppendLine(fill ? " re" : " re S");
+            if (fill) { sb.AppendLine(rgb + " rg"); sb.AppendLine("f"); }
+        }
+
+        void DrawText(string text, float tx, float ty, float size, string rgb, bool bold = false)
+        {
+            sb.AppendLine("BT");
+            if (bold) sb.AppendLine("/F2 " + F(size) + " Tf");
+            else sb.AppendLine("/F1 " + F(size) + " Tf");
+            sb.AppendLine(rgb + " rg");
+            sb.AppendLine(Tm(tx, ty));
+            int maxChars = (int)(cw / (size * 0.52));
+            sb.Append('(').Append(PE(Trunc(text, maxChars))).AppendLine(") Tj");
+            sb.AppendLine("ET");
+        }
+
+        void DrawHeaderText(string text, float tx, float ty, float w, float size, string rgb)
+        {
+            // Header text can span full width
+            sb.AppendLine("BT");
+            sb.AppendLine("/F2 " + F(size) + " Tf");
+            sb.AppendLine(rgb + " rg");
+            sb.AppendLine(F(1) + " 0 0 " + F(1) + " " + F(tx) + " " + F(ty) + " Tm");
+            int maxChars = (int)(w / (size * 0.52));
+            sb.Append('(').Append(PE(Trunc(text, maxChars))).AppendLine(") Tj");
+            sb.AppendLine("ET");
+        }
+
+        void FlushPage() { pages.Add(enc.GetBytes(sb.ToString())); sb.Clear(); }
+
+        float AvailableTop()
+        {
+            float top = PH - MT;
+            if (headerText != null) top -= HBH + 2f;
+            return top;
+        }
+
+        float AvailableBottom() => footerText != null ? MB + HBH + 2f : MB;
+
+        void StartPage()
+        {
+            sb.Clear();
+            y = AvailableTop();
+
+            // Optional header band
+            if (headerText != null)
+            {
+                float by = PH - MT - HBH;
+                DrawRect(ML, by, tw, HBH, "0.18 0.38 0.75", true);
+                DrawHeaderText(headerText, ML + 3f, by + 4f, tw, BFS, "1 1 1");
+                y = by - 2f;
+            }
+
+            // Column headers
+            float cx = ML;
+            for (int c = 0; c < cols.Count; c++)
+            {
+                DrawRect(cx, y - CHH, cw, CHH, "0.22 0.44 0.80", true);
+                // white text, absolute position via Tm
+                sb.AppendLine("BT /F2 " + F(HFS) + " Tf 1 1 1 rg");
+                sb.AppendLine(Tm(cx + 2f, y - CHH + 4f));
+                int mx = (int)(cw / (HFS * 0.52));
+                sb.Append('(').Append(PE(Trunc(cols[c].Header, mx))).AppendLine(") Tj ET");
+                cx += cw;
+            }
+            y -= CHH + 1f;
+        }
+
+        void DrawFooter()
+        {
+            if (footerText == null) return;
+            float fy = MB;
+            DrawRect(ML, fy, tw, HBH, "0.94 0.94 0.96", true);
+            DrawHeaderText(footerText, ML + 3f, fy + 4f, tw, BFS - 1f, "0.4 0.4 0.4");
+        }
+
+        // ── Build pages ───────────────────────────────────────────────────────
+
+        StartPage();
+        int ri = 0;
+
+        foreach (var row in rows)
+        {
+            if (y < AvailableBottom() + RH)
+            {
+                DrawFooter();
+                FlushPage();
+                StartPage();
+            }
+
+            // Alternating row background
+            if (ri % 2 == 1)
+                DrawRect(ML, y - RH, tw, RH, "0.95 0.96 0.98", true);
+
+            // Data cells — each uses absolute Tm so columns never drift
+            for (int c = 0; c < cols.Count; c++)
+            {
+                var v = cols[c].ExcelValueSelector?.Invoke(row)
+                     ?? cols[c].SearchSelector?.Invoke(row) ?? string.Empty;
+                float cx = ML + c * cw;
+                DrawText(v, cx + 2f, y - RH + 3f, FS, "0.1 0.1 0.1");
+            }
+
+            y -= RH;
+            ri++;
+        }
+
+        DrawFooter();
+        FlushPage();
+
+        // ── Assemble PDF binary ───────────────────────────────────────────────
+        //  Object layout:
+        //    1 = Catalog   2 = Pages   3 = Font/Helvetica   4 = Font/Helvetica-Bold
+        //    5 .. 4+N      = Content streams  (N = page count)
+        //    5+N .. 4+2N   = Page objects
+
+        var pdf = new System.IO.MemoryStream(131072);
+        var offsets = new List<long>();
+        int nPages = pages.Count;
+        int fCont = 5;               // first content stream obj id
+        int fPage = fCont + nPages;  // first page obj id
+        int total = fPage + nPages;  // highest obj id
+
+        void Wr(string s) { var b = enc.GetBytes(s); pdf.Write(b, 0, b.Length); }
+        void WrL(string s) => Wr(s + "\n");
+
+        WrL("%PDF-1.4");
+        WrL("%\xe2\xe3\xcf\xd3");
+
+        // obj 1: Catalog
+        offsets.Add(pdf.Position);
+        WrL("1 0 obj"); WrL("<< /Type /Catalog /Pages 2 0 R >>"); WrL("endobj");
+
+        // obj 2: Pages
+        offsets.Add(pdf.Position);
+        WrL("2 0 obj");
+        WrL("<< /Type /Pages /Kids [" +
+            string.Join(" ", Enumerable.Range(fPage, nPages).Select(id => id + " 0 R")) +
+            "] /Count " + nPages + " >>");
+        WrL("endobj");
+
+        // obj 3: Helvetica (regular)
+        offsets.Add(pdf.Position);
+        WrL("3 0 obj");
+        WrL("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+        WrL("endobj");
+
+        // obj 4: Helvetica-Bold
+        offsets.Add(pdf.Position);
+        WrL("4 0 obj");
+        WrL("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+        WrL("endobj");
+
+        // Content streams
+        for (int p = 0; p < nPages; p++)
+        {
+            offsets.Add(pdf.Position);
+            WrL((fCont + p) + " 0 obj");
+            WrL("<< /Length " + pages[p].Length + " >>");
+            WrL("stream");
+            pdf.Write(pages[p]);
+            WrL("\nendstream");
+            WrL("endobj");
+        }
+
+        // Page objects
+        for (int p = 0; p < nPages; p++)
+        {
+            offsets.Add(pdf.Position);
+            WrL((fPage + p) + " 0 obj");
+            WrL("<< /Type /Page /Parent 2 0 R");
+            WrL("   /MediaBox [0 0 " + (int)PW + " " + (int)PH + "]");
+            WrL("   /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >>");
+            WrL("   /Contents " + (fCont + p) + " 0 R >>");
+            WrL("endobj");
+        }
+
+        // xref
+        long xref = pdf.Position;
+        WrL("xref");
+        WrL("0 " + (total + 1));
+        Wr("0000000000 65535 f \n");
+        foreach (var o in offsets) Wr(o.ToString().PadLeft(10, '0') + " 00000 n \n");
+        WrL("trailer");
+        WrL("<< /Size " + (total + 1) + " /Root 1 0 R >>");
+        WrL("startxref");
+        WrL(xref.ToString());
+        Wr("%%EOF");
+
+        return pdf.ToArray();
+    }
+
+    private static string F(float v) =>
+        v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Trunc(string s, int max) =>
+        max <= 0 ? string.Empty : s.Length <= max ? s : s[..max];
+
+    private static string PE(string s)
+    {
+        var b = new System.Text.StringBuilder(s.Length + 4);
+        foreach (char c in s)
+        {
+            if (c == '\\') b.Append("\\\\");
+            else if (c == '(') b.Append("\\(");
+            else if (c == ')') b.Append("\\)");
+            else if (c == '\r' || c == '\n') b.Append(' ');
+            else if (c < 32 || c > 126) b.Append('?');
+            else b.Append(c);
+        }
+        return b.ToString();
+    }
+
+    // ── Font size ─────────────────────────────────────────────────────────────
+
+    // ── View-state persistence ────────────────────────────────────────────────
+
+    // Session-storage key unique per user + table instance
+    private string StorageKey => $"{CurrentUser.UserName}_{Title}_DataTable";
+
+    /// <summary>Minimal serialisable snapshot of user-controlled view settings.</summary>
+    private sealed record DataTableViewState(
+        double FontSize,
+        int PageSize,
+        Dictionary<string, bool> ColVisibility,
+        List<string> ColOrder,
+        HashSet<string>? ExpandedGroups = null);  // null = not saved yet (use DefaultExpanded)
+
+    /// <summary>
+    /// Persists all current view settings (font size, page size, column visibility
+    /// and order) to session storage in one atomic write.
+    /// Call this after any user-driven view change.
+    /// </summary>
+    private void SaveViewState()
+    {
+        var state = new DataTableViewState(
+            FontSize:       _fontSize,
+            PageSize:       _pageSize,
+            ColVisibility:  _ctx.AllOrdered.ToDictionary(c => c.Key, c => c.Visible),
+            ColOrder:       _ctx.AllOrdered.Select(c => c.Key).ToList(),
+            ExpandedGroups: GroupBy is IGroupRenderer<TItem> ? new HashSet<string>(_expandedGroups) : null);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(state);
+        sStorage.SetComponentState(StorageKey, json, true);
+    }
+
+    private void OnFontSizeInput()
+    {
+        SaveViewState();
+    }
+
+    // ── Dispose ──────────────────────────────────────────────────────────────
+
+    public void Dispose() { _debounce?.Stop(); _debounce?.Dispose(); }
+}

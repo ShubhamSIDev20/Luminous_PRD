@@ -1,0 +1,130 @@
+﻿@page "/example-form"
+@using Microsoft.AspNetCore.Components.Forms
+@using BatteryTestingSystem.Components.UI.Form
+@using System.ComponentModel.DataAnnotations
+
+
+<div class="container mx-auto max-w-2xl p-6">
+    <h1 class="text-3xl font-bold mb-6">Blazor Form Example</h1>
+
+    <EditForm Model="@_model" OnValidSubmit="@HandleValidSubmit" class="space-y-6">
+        <DataAnnotationsValidator />
+
+        <FormField TValue="string" For="@(() => _model.Name)" Context="field">
+            <FormInputText TValue="string"
+                           FieldId="@field.FieldId"
+                           Value="@field.Value"
+                           ValueChanged="@field.ValueChanged"
+                           IsInvalid="@field.IsInvalid"
+                           Label="Name"
+                           Placeholder="John Doe"
+                           Description="Enter your full name" />
+        </FormField>
+
+        <FormField TValue="string" For="@(() => _model.Email)" Context="field">
+            <FormInputText TValue="string"
+                           FieldId="@field.FieldId"
+                           Value="@field.Value"
+                           ValueChanged="@field.ValueChanged"
+                           IsInvalid="@field.IsInvalid"
+                           Label="Email"
+                           Placeholder="john@example.com" />
+        </FormField>
+
+        <FormField TValue="int" For="@(() => _model.Age)" Context="field">
+            <FormInputNumber TValue="int"
+                             FieldId="@field.FieldId"
+                             Value="@field.Value"
+                             ValueChanged="@field.ValueChanged"
+                             IsInvalid="@field.IsInvalid"
+                             Label="Age"
+                             Placeholder="25" />
+        </FormField>
+
+        <FormField TValue="string" For="@(() => _model.Bio)" Context="field">
+            <FormTextArea TValue="string"
+                          FieldId="@field.FieldId"
+                          Value="@field.Value"
+                          ValueChanged="@field.ValueChanged"
+                          IsInvalid="@field.IsInvalid"
+                          Label="Bio"
+                          Placeholder="Tell us about yourself..."
+                          Rows="5" />
+        </FormField>
+
+        <FormField TValue="string" For="@(() => _model.Country)" Context="field">
+            <FormSelect TValue="string" TItem="string"
+                        FieldId="@field.FieldId"
+                        Value="@field.Value"
+                        ValueChanged="@field.ValueChanged"
+                        IsInvalid="@field.IsInvalid"
+                        Label="Country"
+                        Items="@_countries"
+                        Placeholder="Select your country" />
+        </FormField>
+
+        <FormField TValue="bool" For="@(() => _model.AcceptTerms)" Context="field">
+            <FormCheckbox TValue="bool"
+                          FieldId="@field.FieldId"
+                          Value="@field.Value"
+                          ValueChanged="@field.ValueChanged"
+                          IsInvalid="@field.IsInvalid"
+                          Label="I accept the terms and conditions"
+                          Description="You must agree to continue" />
+        </FormField>
+
+        <button type="submit" class="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md">
+            Submit
+        </button>
+    </EditForm>
+
+    @if (_submitted)
+    {
+        <div class="mt-6 p-4 bg-green-100 border border-green-400 rounded-md">
+            <h3 class="font-bold">Form Submitted Successfully!</h3>
+            <p>Name: @_model.Name</p>
+            <p>Email: @_model.Email</p>
+            <p>Age: @_model.Age</p>
+            <p>Country: @_model.Country</p>
+        </div>
+    }
+</div>
+
+@code {
+    private UserFormModel _model = new();
+    private bool _submitted = false;
+    private List<string> _countries = new() { "USA", "Canada", "UK", "Germany", "France", "India", "Australia" };
+
+    private void HandleValidSubmit()
+    {
+        _submitted = true;
+        // Process form data
+        Console.WriteLine($"Form submitted: {_model.Name}, {_model.Email}");
+    }
+
+
+    public class UserFormModel
+    {
+        [Required(ErrorMessage = "Name is required")]
+        [StringLength(50, MinimumLength = 2, ErrorMessage = "Name must be between 2 and 50 characters")]
+        public string Name { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Age is required")]
+        [Range(18, 120, ErrorMessage = "Age must be between 18 and 120")]
+        public int Age { get; set; }
+
+        [Required(ErrorMessage = "Bio is required")]
+        [StringLength(500, ErrorMessage = "Bio cannot exceed 500 characters")]
+        public string Bio { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "You must accept the terms")]
+        public bool AcceptTerms { get; set; }
+
+        [Required(ErrorMessage = "Please select a country")]
+        public string Country { get; set; } = string.Empty;
+    }
+}

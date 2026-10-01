@@ -1,0 +1,13 @@
+@namespace BatteryTestingSystem.Components.UI.Dialog
+
+@code {
+    [CascadingParameter] public Dialog? Dialog { get; set; }
+
+    public async Task Close()
+    {
+        if (Dialog != null)
+        {
+            await Dialog.Close();
+        }
+    }
+}

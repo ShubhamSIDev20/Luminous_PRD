@@ -1,0 +1,91 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+
+@* Left dock. Program and DBC are channel properties (spec D5), so the pickers only appear for a
+   channel node — the same rule WorkflowGraphValidator.CanAttach enforces server-side. *@
+
+@if (Node is null)
+{
+    <p class="opacity-60">Select a node to see its properties.</p>
+}
+else
+{
+    <div class="wf-dock__title">@Node.Kind</div>
+
+    @if (IsStale)
+    {
+        <p class="wf-warning">
+            This hardware no longer exists in the database. The node is kept so nothing is lost,
+            but it shows no live data.
+        </p>
+    }
+
+    <dl class="wf-dock__grid">
+        <dt>Node</dt><dd class="truncate" title="@Node.Id">@Node.Id</dd>
+        <dt>Entity</dt><dd>@(Node.EntityId?.ToString() ?? "-")</dd>
+        <dt>Position</dt><dd>@((int)Node.X), @((int)Node.Y)</dd>
+    </dl>
+
+    @if (Node.Kind == NodeKind.Channel)
+    {
+        @* The dock used to duplicate every measurement here as "Live data" - now that the
+           channel node IS a battery cell showing all 28 fields on its own face, that block was
+           pure duplication and was removed. The dock keeps only what the cell face cannot show:
+           attaching a program/DBC, opening full details, and removing the node. *@
+        <label class="wf-dock__label" for="wf-program">Program</label>
+        <select id="wf-program" class="wf-select" data-role="program"
+                value="@(Node.Attach?.ProgramId?.ToString() ?? "")"
+                @onchange="OnProgramChanged">
+            <option value="">(none)</option>
+            @foreach (var program in Catalog.Programs)
+            {
+                <option value="@program.Id">@program.Name</option>
+            }
+        </select>
+
+        <label class="wf-dock__label" for="wf-dbc">DBC file (optional)</label>
+        <select id="wf-dbc" class="wf-select" data-role="dbc"
+                value="@(Node.Attach?.DbcFileId?.ToString() ?? "")"
+                @onchange="OnDbcChanged">
+            <option value="">(none)</option>
+            @foreach (var dbc in Catalog.DbcFiles)
+            {
+                <option value="@dbc.Id">@dbc.Name</option>
+            }
+        </select>
+    }
+
+    @if (Node.Kind == NodeKind.Channel)
+    {
+        <button class="wf-btn mt-3" data-action="open-details"
+                @onclick="() => OnOpenDetails.InvokeAsync(Node.Id)">
+            All details…
+        </button>
+    }
+
+    <button class="wf-btn wf-btn--danger mt-3" @onclick="() => OnDeleteNode.InvokeAsync(Node.Id)">
+        Remove from canvas
+    </button>
+}
+
+@code {
+    [Parameter] public WorkflowNode? Node { get; set; }
+    [Parameter, EditorRequired] public PaletteCatalog Catalog { get; set; } = PaletteCatalog.Empty;
+    [Parameter] public bool IsStale { get; set; }
+    [Parameter] public EventCallback<NodeAttachment?> OnAttachmentChanged { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteNode { get; set; }
+
+    /// <summary>Opens the multi-tab channel detail dialog (C2/C3) for this node.</summary>
+    [Parameter] public EventCallback<string> OnOpenDetails { get; set; }
+
+    private NodeAttachment Current => Node?.Attach ?? new NodeAttachment(null, null, null);
+
+    private Task OnProgramChanged(ChangeEventArgs e) =>
+        OnAttachmentChanged.InvokeAsync(Current with { ProgramId = ParseId(e.Value) });
+
+    private Task OnDbcChanged(ChangeEventArgs e) =>
+        OnAttachmentChanged.InvokeAsync(Current with { DbcFileId = ParseId(e.Value) });
+
+    private static int? ParseId(object? value) =>
+        int.TryParse(value?.ToString(), out var id) ? id : null;
+}

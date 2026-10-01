@@ -1,0 +1,22 @@
+@namespace BatteryTestingSystem.Components.UI.Sheet
+
+<div class="@GetClasses()" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetClasses()
+    {
+        var baseClasses = "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2";
+        return string.IsNullOrWhiteSpace(Class) ? baseClasses : $"{baseClasses} {Class}";
+    }
+}

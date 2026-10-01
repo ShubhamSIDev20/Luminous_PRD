@@ -1,0 +1,2027 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Dashboard
+@implements IDisposable
+@inject IDeviceChannelServices DcServices
+@inject IProgramServices PgServices
+@inject TabService tbService
+@inject ToastService Toast
+@inject BatteryTestingSystem.Services.Implementations.DashboardRenderBatcher Batcher
+@inject IJSRuntime JS
+
+@using BatteryTestingSystem.Components.UI.DataViewer
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Services.Interfaces
+@using Blazicons
+
+<div class="h-full flex flex-col" style="font-size: @(FontSize)px;" 
+@ondblclick="OnDoubleClick">
+    @switch (Mode)
+    {
+        case DisplayMode.Mini:
+            @RenderMini()
+            break;
+        case DisplayMode.Compact:
+            @RenderCompact()
+            break;
+        case DisplayMode.Normal:
+            @RenderNormal()
+            break;
+        case DisplayMode.Chart:
+            @RenderChart()
+            break;
+        case DisplayMode.List:
+            @RenderList()
+            break;
+    }
+</div>
+
+<Dialog @bind-Open="@dialogOpen">
+    <DialogContent Size="DialogSize.Full">
+        <section class="space-y-4" @oncontextmenu:stopPropagation>
+            <h2 class="text-xl font-semibold">@Channel.Channel.DeviceName : @Channel.Channel.DeviceID-@Channel.Channel.SecondaryBoardNumber-@Channel.Channel.ChannelNumber</h2>
+            <Tabs DefaultValue="Overview">
+                <TabsList>
+                    <TabsTrigger Value="Overview">Overview</TabsTrigger>
+                    <TabsTrigger Value="DigitalSignals">DigitalSignals</TabsTrigger>
+                    <TabsTrigger Value="Manufacturing">Manufacturing</TabsTrigger>
+                    <TabsTrigger Value="Factory">Factory</TabsTrigger>
+                    <TabsTrigger Value="Battery">Battery</TabsTrigger>
+                </TabsList>
+                <TabsContent Value="Overview">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>
+                                @Channel.Channel.DeviceName : @Channel.Channel.DeviceID-@Channel.Channel.SecondaryBoardNumber-@Channel.Channel.ChannelNumber
+                            </CardTitle>
+                            <CardDescription>
+                                Channel Type: @Channel.Channel.ChannelType
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent Class="space-y-6">
+                            <!-- Row 1: Program + Battery -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                                <!-- Program Information -->
+                                <div>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <Blazicon Svg="Lucide.FileCode" class="w-[1.2em] h-[1.2em]" />
+                                        <h4 class="font-semibold">Program</h4>
+                                    </div>
+
+                                    <div class="space-y-1 text-sm pl-6">
+                                        <p>
+                                            <span class="text-muted-foreground">Name:</span>
+                                            <span class="font-medium">@Channel.Program.ProgramName</span>
+                                        </p>
+                                        <p>
+                                            <span class="text-muted-foreground">Steps:</span>
+                                            <span class="font-medium">@Channel.Program.ProgramSteps</span>
+                                        </p>
+                                        <p>
+                                            <span class="text-muted-foreground">Created:</span>
+                                            @Channel.Program.CreatedAt.ToString("MMM dd, yyyy HH:mm")
+                                            by @(Channel.Program.CreatedBy ?? "N/A")
+                                        </p>
+                                        <p>
+                                            <span class="text-muted-foreground">Updated:</span>
+                                            @Channel.Program.UpdatedAt.ToString("MMM dd, yyyy HH:mm")
+                                            by @(Channel.Program.UpdatedBy ?? "N/A")
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Battery Information -->
+                                <div>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <Blazicon Svg="Lucide.Battery" class="w-[1.2em] h-[1.2em]" />
+                                        <h4 class="font-semibold">Battery</h4>
+                                    </div>
+
+                                    <div class="space-y-1 text-sm pl-6">
+                                        <p>
+                                            <span class="text-muted-foreground">Name:</span>
+                                            <span class="font-medium">@Channel.Battery.Name</span>
+                                        </p>
+                                        <p>
+                                            <span class="text-muted-foreground">Producer:</span>
+                                            <span class="font-medium">@Channel.Battery.Producer</span>
+                                        </p>
+                                        <p>
+                                            <span class="text-muted-foreground">Capacity:</span>
+                                            <span class="font-medium">@Channel.Battery.NominalCapacity Ah</span>
+                                        </p>
+                                        <p>
+                                            <span class="text-muted-foreground">Created:</span>
+                                            @Channel.Battery.CreatedAt.ToString("MMM dd, yyyy HH:mm")
+                                            by @(Channel.Battery.CreatedBy ?? "N/A")
+                                        </p>
+                                        <p>
+                                            <span class="text-muted-foreground">Updated:</span>
+                                            @Channel.Battery.UpdatedAt.ToString("MMM dd, yyyy HH:mm")
+                                            by @(Channel.Battery.UpdatedBy ?? "N/A")
+                                        </p>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                            <!-- Row 2: Session (Full width) -->
+                            <div>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <Blazicon Svg="Lucide.Activity" class="w-[1.2em] h-[1.2em]" />
+                                    <h4 class="font-semibold">Session</h4>
+                                </div>
+
+                                <div class="space-y-1 text-sm pl-6">
+                                    <p>
+                                        <span class="text-muted-foreground">Name:</span>
+                                        <span class="font-medium">
+                                            @(Channel.Session.SessionName ?? "N/A")
+                                        </span>
+                                    </p>
+
+                                    <p>
+                                        <span class="text-muted-foreground">Duration:</span>
+                                        <span class="font-medium">@(Channel?.RealTime?.RealTimeRecord?.ProgramStatus == ProgramRunningStatus.Running ? "in Process" : Channel?.Session?.Duration)</span>
+                                    </p>
+
+                                    <p>
+                                        <span class="text-muted-foreground">Started:</span>
+                                        @Channel?.Session?.StartTime.ToString("MMM dd, yyyy HH:mm")
+                                    </p>
+
+                                    @if (Channel?.Session?.EndTime != null)
+                                    {
+                                        <p>
+                                            <span class="text-muted-foreground">Ended:</span>
+                                            @Channel?.Session?.EndTime.Value.ToString("MMM dd, yyyy HH:mm")
+                                        </p>
+                                    }
+
+                                    <p>
+                                        <span class="text-muted-foreground">Created:</span>
+                                        @Channel?.Session?.CreatedAt.ToString("MMM dd, yyyy HH:mm")
+                                        by @(Channel?.Session?.CreatedBy ?? "N/A")
+                                    </p>
+                                </div>
+                            </div>
+
+                        </CardContent>
+
+                    </Card>
+                </TabsContent>
+                <TabsContent Value="DigitalSignals">
+                    <div class="mt-3">
+                        @if (!_isInitialized && isLoading)
+                        {
+                            <div class="w-full h-48 flex items-center justify-center text-[1em] text-muted-foreground">
+                                Loading...
+                            </div>                            
+                        }
+                        else
+                        {
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                @foreach (var board in Channel?.RealTime?.IOStatus?.Select(s => s.Board).Distinct())
+                                {
+                                    <Card Class="@(board == "Primary" ? "md:col-span-1" : "md:col-span-2")">
+                                        <CardHeader Class="py-3">
+                                            <CardTitle Class="text-sm">@board Board</CardTitle>
+                                        </CardHeader>
+                                        <CardContent Class="space-y-3">
+                                            @foreach (var type in new[] { "DI", "DO" })
+                                            {
+                                                var signals = Channel.RealTime?.IOStatus?.Where(s => s.Board == board && s.Type == type).ToList();
+
+                                                if (signals.Any())
+                                                {
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                                                            Digital @(type == "DI" ? "Input" : "Output")
+                                                        </div>
+                                                        <div class="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                            @foreach (var s in signals)
+                                                            {
+                                                                <div class="flex flex-col items-center gap-1 p-1.5 rounded-md border border-border bg-muted/30">
+                                                                    <div class="w-3 h-3 rounded-full @(s.Value == 1 ? "bg-green-500" : "bg-muted-foreground/30")"></div>
+                                                                    <div class="text-[10px] font-mono text-muted-foreground">@($"{s.Type}-{s.Id}")</div>
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                }
+                                            }
+                                        </CardContent>
+                                    </Card>
+                                }
+                            </div>
+                        }
+
+                    </div>
+                </TabsContent>
+                <TabsContent Value="Manufacturing">
+                    @if (!_isInitialized && isLoading)
+                    {
+                        <div class="w-full h-48 flex items-center justify-center text-[1em] text-muted-foreground">
+                            <Blazicon Svg="Lucide.Loader" class="w-[1.5em] h-[1.5em] animate-spin mr-2" />
+                            Loading...
+                        </div>
+                    }
+                    else if (manufacturingDetailDTO != null)
+                    {
+                        <div class="space-y-4 p-4">
+                            @* Sync status + actions *@
+                            <div class="flex items-center justify-between">
+                                <div class="text-[0.85em] text-muted-foreground flex items-center gap-1.5">
+                                    <Blazicon Svg="Lucide.History" class="w-[0.9em] h-[0.9em]" />
+                                    @(manufacturingDetailDTO.LastSyncedAt is { } syncedM
+                                        ? $"Last synced from device: {syncedM:MMM dd, yyyy HH:mm}"
+                                        : "Never synced from device")
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    @if (CanFetchFromDevice)
+                                    {
+                                        <Button variant="ButtonVariant.Outline" size="ButtonSize.Small" Class="gap-2"
+                                                OnClick="@FetchManufacturingFromDevice" disabled="@_fetchingManufacturing">
+                                            <Blazicon Svg="@(_fetchingManufacturing ? Lucide.Loader : Lucide.RefreshCw)" class="@($"w-[0.9em] h-[0.9em] {(_fetchingManufacturing ? "animate-spin" : "")}")" />
+                                            Fetch from device
+                                        </Button>
+                                    }
+                                </div>
+                            </div>
+
+                            <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                            @* Software Versions *@
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                    <Blazicon Svg="Lucide.Code" class="w-[0.7em] h-[0.7em]" />
+                                    <span>Software Versions</span>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pl-6">
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Master SW</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                            @Val(manufacturingDetailDTO.MasterSWVersion)
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Communication SW</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                            @Val(manufacturingDetailDTO.ComSWVersion)
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Secondary SW</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                            @Val(manufacturingDetailDTO.SecondarySWVersion)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                            @* Serial Numbers *@
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                    <Blazicon Svg="Lucide.Hash" class="w-[0.7em] h-[0.7em]" />
+                                    <span>Serial Numbers</span>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Primary Serial</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                            @Val(manufacturingDetailDTO.PrimarySerialNumber)
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Secondary Serial</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                            @Val(manufacturingDetailDTO.SecondarySerialNumber)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                            @* Date & Time Information *@
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                    <Blazicon Svg="Lucide.Calendar" class="w-[0.7em] h-[0.7em]" />
+                                    <span>Timestamps</span>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Manufacture Date</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded">
+                                            @manufacturingDetailDTO.ManufactureDateTime.ToString("MMM dd, yyyy HH:mm")
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Commissioning Date</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded">
+                                            @manufacturingDetailDTO.CommissioningDateTime.ToString("MMM dd, yyyy HH:mm")
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Primary PCB Assembly</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded">
+                                            @manufacturingDetailDTO.PrimaryPCBAssemblyDateTime.ToString("MMM dd, yyyy HH:mm")
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Secondary PCB Assembly</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded">
+                                            @manufacturingDetailDTO.SecondaryPCBAssemblyDateTime.ToString("MMM dd, yyyy HH:mm")
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="w-full h-48 flex items-center justify-center text-[1em] text-muted-foreground">
+                            <div class="text-center space-y-2">
+                                <Blazicon Svg="Lucide.CircleAlert" class="w-[2em] h-[2em] mx-auto" />
+                                <p>No manufacturing data available</p>
+                            </div>
+                        </div>
+                    }
+                </TabsContent>
+                <TabsContent Value="Factory">
+                    @if (!_isInitialized && isLoading)
+                    {
+                        <div class="w-full h-48 flex items-center justify-center text-[1em] text-muted-foreground">
+                            <Blazicon Svg="Lucide.Loader" class="w-[1.5em] h-[1.5em] animate-spin mr-2" />
+                            Loading...
+                        </div>
+                    }
+                    else if (factoryDetailDTO != null)
+                    {
+
+                        <div class="p-4 max-w-7xl mx-auto space-y-4">
+                            @* Sync status + actions *@
+                            <div class="flex items-center justify-between">
+                                <div class="text-[0.85em] text-muted-foreground flex items-center gap-1.5">
+                                    <Blazicon Svg="Lucide.History" class="w-[0.9em] h-[0.9em]" />
+                                    @(factoryDetailDTO.LastSyncedAt is { } syncedF
+                                        ? $"Last synced from device: {syncedF:MMM dd, yyyy HH:mm}"
+                                        : "Never synced from device")
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    @if (CanFetchFromDevice)
+                                    {
+                                        <Button variant="ButtonVariant.Outline" size="ButtonSize.Small" Class="gap-2"
+                                                OnClick="@FetchFactoryFromDevice" disabled="@_fetchingFactory">
+                                            <Blazicon Svg="@(_fetchingFactory ? Lucide.Loader : Lucide.RefreshCw)" class="@($"w-[0.9em] h-[0.9em] {(_fetchingFactory ? "animate-spin" : "")}")" />
+                                            Fetch from device
+                                        </Button>
+                                    }
+                                </div>
+                            </div>
+
+                            <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                            <div class="flex gap-6">
+
+                                <!-- LEFT SIDE -->
+                                <div class="flex-1 space-y-4 flex flex-col">
+                                    @* Network Configuration *@
+                                    <div class="space-y-3 flex-1">
+                                        <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                            <Blazicon Svg="Lucide.Network" class="w-[0.7em] h-[0.7em]" />
+                                            <span>Network Settings</span>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pl-6">
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">MAC Address</div>
+                                                <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                                    @Val(factoryDetailDTO.MacID)
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">Device IP Address</div>
+                                                <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                                    @Val(factoryDetailDTO.DeviceIPAddress)
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">TCP Port</div>
+                                                <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                                    @factoryDetailDTO.TcpClientRemotePort
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">UDP Port</div>
+                                                <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                                    @factoryDetailDTO.UdpClientRemotePort
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground flex items-center gap-1">
+                                                    DHCP Status
+                                                    @if (factoryDetailDTO.DhcpEnabled)
+                                                    {
+                                                        <Blazicon Svg="Lucide.CircleCheck" class="w-[0.6em] h-[0.6em] text-green-600" />
+                                                    }
+                                                </div>
+                                                <div class="text-[1em] bg-muted px-3 py-1.5 rounded">
+                                                    @(factoryDetailDTO.DhcpEnabled ? "Enabled" : "Disabled")
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                                    @* Channel Configuration *@
+                                    <div class="space-y-3">
+                                        <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                            <Blazicon Svg="Lucide.Zap" class="w-[0.7em] h-[0.7em]" />
+                                            <span>Channel Parameters</span>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">Channel Type</div>
+                                                <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                                    @Val(factoryDetailDTO.CircuitType)
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">Channel Number</div>
+                                                <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">
+                                                    @factoryDetailDTO.CircuitNumber
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <!-- VERTICAL SEPARATOR -->
+                                <Separator Orientation="SeparatorOrientation.Vertical" />
+
+                                <!-- RIGHT SIDE -->
+                                <div class="flex-1 space-y-4 flex flex-col">
+                                    @* Voltage Specifications *@
+
+                                    <div class="space-y-3 flex-1">
+                                        <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                            <Blazicon Svg="Lucide.Gauge" class="w-[0.7em] h-[0.7em]" />
+                                            <span>Voltage Specifications</span>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">ZNT Max Voltage</div>
+                                                <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                                    <span>@factoryDetailDTO.ZntMaxVoltage.ToString("F2")</span>
+                                                    <span class="text-[0.85em] text-muted-foreground">V</span>
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">LNT Max Voltage</div>
+                                                <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                                    <span>@factoryDetailDTO.LntMaxVoltage.ToString("F2")</span>
+                                                    <span class="text-[0.85em] text-muted-foreground">V</span>
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">Channel Max Voltage</div>
+                                                <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                                    <span>@factoryDetailDTO.CircuitMaxVoltage.ToString("F2")</span>
+                                                    <span class="text-[0.85em] text-muted-foreground">V</span>
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">Channel Min Voltage</div>
+                                                <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                                    <span>@factoryDetailDTO.CircuitMinVoltage.ToString("F2")</span>
+                                                    <span class="text-[0.85em] text-muted-foreground">V</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                    <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                                    @* Current Specifications *@
+                                    <div class="space-y-3">
+                                        <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                            <Blazicon Svg="Lucide.Activity" class="w-[0.7em] h-[0.7em]" />
+                                            <span>Current Specifications</span>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">Max Discharge Current</div>
+                                                <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                                    <span>@factoryDetailDTO.CircuitMaxDischargeCurrent.ToString("F2")</span>
+                                                    <span class="text-[0.85em] text-muted-foreground">A</span>
+                                                </div>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <div class="text-[0.9em] text-muted-foreground">Max Charge Current</div>
+                                                <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                                    <span>@factoryDetailDTO.CircuitMaxChargeCurrent.ToString("F2")</span>
+                                                    <span class="text-[0.85em] text-muted-foreground">A</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="w-full h-48 flex items-center justify-center text-[1em] text-muted-foreground">
+                            <div class="text-center space-y-2">
+                                <Blazicon Svg="Lucide.CircleAlert" class="w-[2em] h-[2em] mx-auto" />
+                                <p>No factory configuration data available</p>
+                            </div>
+                        </div>
+                    }
+                </TabsContent>
+                <TabsContent Value="Battery">
+                    @if (!_isInitialized && isLoading)
+                    {
+                        <div class="w-full h-48 flex items-center justify-center text-[1em] text-muted-foreground">
+                            Loading...
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="space-y-4 p-4">
+                            @* Basic Info *@
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                    <Blazicon Svg="Lucide.Battery" class="w-[0.7em] h-[0.7em]" />
+                                    <span>Battery Details</span>
+                                </div>
+                                <div class="grid grid-cols-4 gap-4 pl-6">
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Name</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">@Val(Channel.Battery.Name)</div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Producer</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">@Val(Channel.Battery.Producer)</div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Quantity</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">@Channel.Battery.Quantity</div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Number of Cells</div>
+                                        <div class="text-[1em] font-mono bg-muted px-3 py-1.5 rounded">@Channel.Battery.NumberOfCells</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                            @* Voltage *@
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                    <Blazicon Svg="Lucide.Zap" class="w-[0.7em] h-[0.7em]" />
+                                    <span>Voltage</span>
+                                </div>
+                                <div class="grid grid-cols-4 gap-4 pl-6">
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Nominal</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.NominalVoltage</span>
+                                            <span class="text-[0.85em] text-muted-foreground">V</span>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Maximum</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.MaximumVoltage</span>
+                                            <span class="text-[0.85em] text-muted-foreground">V</span>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Gassing</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.GassingVoltage</span>
+                                            <span class="text-[0.85em] text-muted-foreground">V</span>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Break</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.BreakVoltage</span>
+                                            <span class="text-[0.85em] text-muted-foreground">V</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                            @* Current & Capacity + Physical Properties *@
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                    <Blazicon Svg="Lucide.Gauge" class="w-[0.7em] h-[0.7em]" />
+                                    <span>Current, Capacity &amp; Properties</span>
+                                </div>
+                                <div class="grid grid-cols-3 gap-4 pl-6">
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Nominal Current</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.NominalCurrent</span>
+                                            <span class="text-[0.85em] text-muted-foreground">A</span>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Capacity</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.NominalCapacity</span>
+                                            <span class="text-[0.85em] text-muted-foreground">Ah</span>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">CCA</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.ColdCrankingCurrent</span>
+                                            <span class="text-[0.85em] text-muted-foreground">A</span>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Charge Factor</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded">@Channel.Battery.ChargeFactor</div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Impedance</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.Impedance</span>
+                                            <span class="text-[0.85em] text-muted-foreground">Ω</span>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Energy Density</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                            <span>@Channel.Battery.EnergyDensity</span>
+                                            <span class="text-[0.85em] text-muted-foreground">Wh/kg</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                            @* Metadata *@
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                    <Blazicon Svg="Lucide.Calendar" class="w-[0.7em] h-[0.7em]" />
+                                    <span>Metadata</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 pl-6">
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Created</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded">
+                                            @Channel.Battery.CreatedAt.ToString("MMM dd, yyyy HH:mm")
+                                            by @(Channel.Battery.CreatedBy ?? "N/A")
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="text-[0.9em] text-muted-foreground">Updated</div>
+                                        <div class="text-[1em] bg-muted px-3 py-1.5 rounded">
+                                            @Channel.Battery.UpdatedAt.ToString("MMM dd, yyyy HH:mm")
+                                            by @(Channel.Battery.UpdatedBy ?? "N/A")
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(Channel.Battery.Comments))
+                            {
+                                <Separator Orientation="SeparatorOrientation.Horizontal" />
+
+                                <div class="space-y-3">
+                                    <div class="flex items-center gap-2 text-[1.1em] font-medium text-muted-foreground">
+                                        <Blazicon Svg="Lucide.MessageSquare" class="w-[0.7em] h-[0.7em]" />
+                                        <span>Comments</span>
+                                    </div>
+                                    <div class="text-[1em] pl-6">@Channel.Battery.Comments</div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </TabsContent>
+            </Tabs>
+        </section>
+        <DialogFooter>
+            <Button Variant="ButtonVariant.Outline" OnClick="@(() => OpenDialog(false))">Close</Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+@* 
+<Dialog @bind-Open="@dialogRealTimeDataOpen">
+    <DialogContent Size="DialogSize.FullScreen">
+        <div @oncontextmenu:stopPropagation>
+            <RegisteredDataView SQLFilePath="@Channel.Session?.SessionFilePath" IsStepRunning="@Channel?.RealTime?.RealTimeRecord?.StepNumber" />
+        </div>
+    </DialogContent>
+</Dialog> *@
+
+@code {
+    #region Parameters
+    [Parameter, EditorRequired] public IChannelCommandHandler Channel { get; set; } = null!;
+    [Parameter] public DisplayMode Mode { get; set; } = DisplayMode.Normal;
+    [Parameter] public EventCallback<(int DeviceId, int BoardNumber, int ChannelId, bool Selected)> OnSelected { get; set; }
+
+    [Parameter] public bool Selected { get; set; } = false;
+    [Parameter] public int MaxDigit { get; set; } = 2;
+    [Parameter] public int ChartMaxDataPoints { get; set; } = 100;
+    [Parameter] public int RefreshRate { get; set; }
+    [Parameter] public double FontSize { get; set; } = 10.0; // Base font size in pixels
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private IChannelCommandHandler? _previousChannel;
+
+    [Parameter]
+    public List<string> VisibleProperties { get; set; } = new();
+
+    #endregion
+
+    #region Private Fields
+
+    private DateTime _lastUiUpdate = DateTime.MinValue;
+
+    private List<ChartDataPoint> chartData = new();
+
+    private bool dialogOpen = false;
+    private bool triggerPopover = false;
+    private bool _isInitialized { get; set; } = false;
+    private bool isLoading = true;
+
+    private ManufacturingDetailDTO manufacturingDetailDTO = new();
+    private FactoryConfigDetailDTO factoryDetailDTO = new();
+    private BatteryDTO batteryDto = new();
+
+    private bool _fetchingManufacturing = false;
+    private bool _fetchingFactory = false;
+
+    #endregion
+
+    #region ClickEvents
+    // private bool dialogRealTimeDataOpen = false;
+
+
+    private void OnDoubleClick()
+    {
+        // dialogRealTimeDataOpen = true;
+        tbService.AddTab(new NavMenuItem
+        {
+            Title = $"Realtime: {Channel?.Channel?.DeviceID}-{Channel?.Channel?.SecondaryBoardNumber}-{Channel?.Channel?.ChannelNumber}",
+            Icon = Lucide.ChartLine,
+            // ComponentType = typeof(RegisteredDataView),
+            ComponentType = typeof(BmsDashboard),
+            Parameters = new Dictionary<string, object?>
+            {
+                ["SQLFilePath"] = Channel?.Session?.SessionFilePath ?? string.Empty,
+                ["Key"] = $"{Channel?.Channel?.DeviceID}-{Channel?.Channel?.SecondaryBoardNumber}-{Channel?.Channel?.ChannelNumber}"
+            },
+            Unique = true,
+            keepAlive = true
+        });
+
+        // Console.WriteLine("Div double-clicked");
+    }
+    #endregion
+
+    #region Tabs
+
+
+    #endregion
+
+    #region Lifecycle Methods
+    protected override Task OnInitializedAsync()
+    {
+        Channel.RealTime.OnDataChanged += OnRealTimeChanged;
+        Channel.OnChannelChanged += OnChannelChanged;
+
+        // Manufacturing/Factory/Program detail is only shown in the "..." detail
+        // dialog, not on the card face - loading it eagerly here for every card
+        // means every one of up to 64 channels/device hits the DB at mount time.
+        // LoadData() now runs lazily, only when the dialog is actually opened
+        // (see OpenDialog).
+        isLoading = false;
+        return Task.CompletedTask;
+    }
+
+    private bool _detailsLoaded = false;
+
+    private async Task LoadData()
+    {
+        var M = await DcServices.GetManufacturingAsync(Channel.Channel);
+        if (M.Success)
+            manufacturingDetailDTO = M.Data!;
+        var f = await DcServices.GetFactoryAsync(Channel.Channel);
+        if (f.Success)
+            factoryDetailDTO = f.Data!;
+
+        var b = await PgServices.GetProgramAsync(Channel.Program.ProgramId);
+        if (b.Success)
+            Channel.Program = b.Data!;
+
+        _detailsLoaded = true;
+    }
+
+    /// <summary>Same gating the removed "Download Details" context-menu item used - only let a
+    /// live device fetch happen when the circuit is idle and reachable.</summary>
+    private bool CanFetchFromDevice =>
+        Channel?.RealTime?.RealTimeRecord?.CircuitStatus == CircuitStatus.Idle &&
+        Channel?.RealTime?.RealTimeRecord?.ProgramStatus == ProgramRunningStatus.Stop &&
+        Channel?.IsConnected == true;
+
+    private async Task FetchManufacturingFromDevice()
+    {
+        if (_fetchingManufacturing) return;
+        _fetchingManufacturing = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var result = await Channel.GetManufacturingDetails();
+            if (!result.Success)
+            {
+                Toast.Error(result.Message ?? "Failed to fetch manufacturing details from device.");
+                return;
+            }
+
+            // GetManufacturingDetails() already persisted the fresh values (incl. LastSyncedAt) to
+            // the DB - reload from there so the dialog reflects exactly what was saved.
+            var refreshed = await DcServices.GetManufacturingAsync(Channel.Channel);
+            if (refreshed.Success)
+                manufacturingDetailDTO = refreshed.Data!;
+            Toast.Success("Manufacturing details fetched from device.");
+        }
+        finally
+        {
+            _fetchingManufacturing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task FetchFactoryFromDevice()
+    {
+        if (_fetchingFactory) return;
+        _fetchingFactory = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var result = await Channel.GetFactoryConfigDetails();
+            if (!result.Success)
+            {
+                Toast.Error(result.Message ?? "Failed to fetch factory configuration from device.");
+                return;
+            }
+
+            var refreshed = await DcServices.GetFactoryAsync(Channel.Channel);
+            if (refreshed.Success)
+                factoryDetailDTO = refreshed.Data!;
+            Toast.Success("Factory configuration fetched from device.");
+        }
+        finally
+        {
+            _fetchingFactory = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>A value box with no text content collapses to just its padding height (no
+    /// line-height contribution), making it visibly shorter than a sibling box that has text -
+    /// a non-breaking space keeps the box's height consistent regardless of whether the field is populated.</summary>
+    private static string Val(string? s) => string.IsNullOrWhiteSpace(s) ? " " : s;
+
+
+    protected override void OnParametersSet()
+    {
+        if (_previousChannel == Channel)
+            return;
+
+        // unsubscribe old
+        if (_previousChannel != null)
+        {
+            Channel.RealTime.OnDataChanged -= OnRealTimeChanged;
+            Channel.OnChannelChanged -= OnChannelChanged;
+        }
+
+        // subscribe new
+        Channel.RealTime.OnDataChanged += OnRealTimeChanged;
+        Channel.OnChannelChanged += OnChannelChanged;
+
+        _previousChannel = Channel;
+    }
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_isInitialized)
+        {
+            _isInitialized = true;
+
+        }
+
+    }
+
+    public void Dispose()
+    {
+        Channel.RealTime.OnDataChanged -= OnRealTimeChanged;
+        Channel.OnChannelChanged -= OnChannelChanged;
+    }
+
+    #endregion
+
+    #region Event Handlers
+    private void OnChannelChanged()
+    {
+        // Routed through the shared batcher instead of InvokeAsync(StateHasChanged)
+        // directly - with up to 64 cards on screen, each dispatching its own render
+        // independently is what causes the dashboard to feel like it's freezing.
+        Batcher.RequestRender(StateHasChanged);
+    }
+
+    private void OnRealTimeChanged()
+    {
+        var record = Channel?.RealTime?.RealTimeRecord;
+        if (record == null)
+            return;
+
+        if (Mode == DisplayMode.Chart)
+        {
+            chartData.Add(new ChartDataPoint
+            {
+                TimeStamp = record.TimeStamp,
+                Voltage = record.Voltage,
+                Current = record.Current,
+                Temperature = record.Temperature
+            });
+
+            if (chartData.Count > ChartMaxDataPoints)
+                chartData.RemoveAt(0);
+        }
+
+        var now = DateTime.Now;
+
+        if (_lastUiUpdate == DateTime.MinValue || (now - _lastUiUpdate).TotalMilliseconds >= RefreshRate)
+        {
+            _lastUiUpdate = now;
+            Batcher.RequestRender(StateHasChanged); // 🔥 UI refresh, batched with every other dirty card
+        }
+    }
+
+
+    private async Task ToggleSelected()
+    {
+        Selected = !Selected;
+        if (OnSelected.HasDelegate)
+        {
+            await OnSelected.InvokeAsync((Channel.Channel.DeviceID, Channel.Channel.SecondaryBoardNumber, Channel.Channel.ChannelNumber, Selected));
+        }
+    }
+
+    private async void OpenDialog(bool value)
+    {
+        dialogOpen = value;
+
+        if (value && !_detailsLoaded)
+        {
+            isLoading = true;
+            await InvokeAsync(StateHasChanged);
+            await LoadData();
+            isLoading = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ResetSystem()
+    {
+        var r = await Channel?.ResetSystem();
+
+        var title = r.Success ? "System Reset" : "Reset Error";
+
+        if (r.Success)
+            Toast.Success(title, r.Message);
+        else
+            Toast.Error(title, r.Message);
+    }
+
+    private string GetErrorText(int errorId)
+    {
+        List<string> errorList = new List<string>();
+
+        foreach (SystemError error in Enum.GetValues(typeof(SystemError)))
+        {
+            if ((errorId & (int)error) != 0)
+            {
+                errorList.Add(error.ToString());
+            }
+        }
+
+        return string.Join(", ", errorList);
+    }
+
+    #endregion
+
+    #region Render Methods
+    private bool ShouldRenderProperty(string propertyName)
+    {
+        return VisibleProperties == null ||
+               VisibleProperties.Count == 0 ||
+               VisibleProperties.Contains(propertyName);
+    }
+
+    // Mini/Compact hover-detail popover: flips upward when the card sits near the
+    // bottom of the viewport/scroll container so the popover never bleeds into the
+    // next virtualized row.
+    private bool _flipPopoverUp = false;
+
+    private class BoundingRect
+    {
+        public double Bottom { get; set; }
+        public double ViewportHeight { get; set; }
+    }
+
+    private string CardDataId => $"{Channel?.Channel?.DeviceID}-{Channel?.Channel?.SecondaryBoardNumber}-{Channel?.Channel?.ChannelNumber}";
+
+    private async Task OnCardMouseEnter()
+    {
+        try
+        {
+            var rect = await JS.InvokeAsync<BoundingRect>("eval", $@"
+                (function() {{
+                    var el = document.querySelector('[data-card-id=""{CardDataId}""]');
+                    if (!el) return {{ bottom: 0, viewportHeight: window.innerHeight }};
+                    var r = el.getBoundingClientRect();
+                    return {{ bottom: r.bottom, viewportHeight: window.innerHeight }};
+                }})()
+            ");
+            _flipPopoverUp = rect.Bottom > rect.ViewportHeight - 260; // 260px ~= popover height + margin
+        }
+        catch
+        {
+            _flipPopoverUp = false; // fail safe: default to opening downward as before
+        }
+    }
+
+    private string HoverPopoverPositionClass => _flipPopoverUp
+        ? "absolute left-0 bottom-full mb-1 z-50 hidden group-hover:block"
+        : "absolute left-0 top-full mt-1 z-50 hidden group-hover:block";
+
+    // Inline styles here (not Tailwind utility classes) because wwwroot/css/app.min.css is a
+    // pre-built static file with no rebuild step wired into `dotnet build` - any brand-new
+    // Tailwind class referenced only from .razor markup never gets compiled in and silently
+    // fails to render (this bit the border-t-8/border-x-8/border-x-transparent/w-0/h-0
+    // classes previously used here for this arrow).
+    private string HoverPopoverArrowStyle => _flipPopoverUp
+        ? "position:absolute; left:1rem; top:100%; width:0; height:0; border-left:8px solid transparent; border-right:8px solid transparent; border-top:8px solid hsl(var(--primary) / 0.4);"
+        : "position:absolute; left:1rem; bottom:100%; width:0; height:0; border-left:8px solid transparent; border-right:8px solid transparent; border-bottom:8px solid hsl(var(--primary) / 0.4);";
+
+
+    private RenderFragment RenderMini() => __builder =>
+    {
+        <div @onclick="ToggleSelected" @onmouseenter="OnCardMouseEnter"
+             data-card-id="@CardDataId"
+             class="@GetCardClasses() flex flex-col h-full group">
+            @RenderHeader()
+            @RenderFooter()
+
+            <div class="@HoverPopoverPositionClass">
+                <div class="bg-popover border-2 border-primary/40 rounded-md shadow-xl p-3 w-64 relative"
+                     style="background-color: hsl(var(--popover)); opacity: 1;">
+                    <div style="@HoverPopoverArrowStyle"></div>
+                    <div class="space-y-3">
+                        <div>
+                            <div class="text-[1.2em] font-semibold mb-1.5 flex items-center gap-1">
+                                <Blazicon Svg=Lucide.Gauge class="w-[0.3em] h-[0.3em]" />
+                                Primary Data
+                            </div>
+                            @RenderPrimaryDataCompact()
+                        </div>
+                        <div>
+                            <div class="text-[1.2em] font-semibold mb-1.5 flex items-center gap-1">
+                                <Blazicon Svg=Lucide.Settings class="w-[0.3em] h-[0.3em]" />
+                                Configuration
+                            </div>
+                            @RenderConfigDataCompact()
+                        </div>
+                        <div>
+                            <div class="text-[1.2em] font-semibold mb-1.5 flex items-center gap-1">
+                                <Blazicon Svg=Lucide.Cpu class="w-[0.3em] h-[0.3em]" />
+                                Program Running
+                            </div>
+                            @RenderProgramDataCompact()
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    private RenderFragment RenderCompact() => __builder =>
+    {
+        <div @onclick="ToggleSelected" @onmouseenter="OnCardMouseEnter"
+             data-card-id="@CardDataId"
+             class="@GetCardClasses() flex flex-col h-full group">
+            @RenderHeader()
+            <div class="flex-1 overflow-hidden py-2">
+                @RenderPrimaryDataCompact()
+            </div>
+            @RenderFooter()
+
+            <div class="@HoverPopoverPositionClass">
+                <div class="bg-popover border-2 border-primary/40 rounded-md shadow-xl p-3 w-64 relative"
+                     style="background-color: hsl(var(--popover)); opacity: 1;">
+                    <div style="@HoverPopoverArrowStyle"></div>
+                    <div class="space-y-2">
+                        <div>
+                            <div class="text-[1.2em] font-semibold mb-1 flex items-center gap-1">
+                                <Blazicon Svg=Lucide.Settings class="w-[0.3em] h-[0.3em]" />
+                                Configuration
+                            </div>
+                            @RenderConfigDataCompact()
+                        </div>
+                        <div>
+                            <div class="text-[1.2em] font-semibold mb-1 flex items-center gap-1">
+                                <Blazicon Svg=Lucide.Cpu class="w-[0.3em] h-[0.3em]" />
+                                Program Running
+                            </div>
+                            @RenderProgramDataCompact()
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    private RenderFragment RenderNormal() => __builder =>
+    {
+        <div @onclick="ToggleSelected" class="@GetCardClasses() flex flex-col h-full">
+            @RenderHeader()
+            <ScrollArea Class="flex-1">
+                <div class="py-2 space-y-3">
+                    <div>
+                        <div class="text-[1.2em] font-semibold mb-1.5 px-2 flex items-center gap-1">
+                            <Blazicon Svg=Lucide.Gauge class="w-[0.3em] h-[0.3em]" />
+                            Primary Data
+                        </div>
+                        @RenderPrimaryDataCompact()
+                    </div>
+                    <div>
+                        <div class="text-[1.2em] font-semibold mb-1.5 px-2 flex items-center gap-1">
+                            <Blazicon Svg=Lucide.Settings class="w-[0.3em] h-[0.3em]" />
+                            Configuration
+                        </div>
+                        @RenderConfigDataCompact()
+                    </div>
+                    <div>
+                        <div class="text-[1.2em] font-semibold mb-1.5 px-2 flex items-center gap-1">
+                            <Blazicon Svg=Lucide.Cpu class="w-[0.3em] h-[0.3em]" />
+                            Program Data
+                        </div>
+                        @RenderProgramDataCompact()
+                    </div>
+                </div>
+            </ScrollArea>
+            @RenderFooter()
+        </div>
+    };
+
+    private RenderFragment RenderChart() => __builder =>
+    {
+        <div @onclick="ToggleSelected" class="@GetCardClasses() flex flex-col h-full group">
+            @RenderHeader()
+
+            <div class="flex-1 overflow-hidden py-2 px-1">
+                @if (chartData.Count > 0)
+                {
+                    @RenderMiniChart()
+                }
+                else
+                {
+                    <div class="w-full h-full flex items-center justify-center text-[1em] text-muted-foreground">
+                        Waiting for data...
+                    </div>
+                }
+            </div>
+
+            @RenderFooter()
+
+            <div class="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
+                <div class="bg-popover border border-border rounded-md shadow-lg p-3 w-64">
+                    <div class="space-y-2">
+                        <div>
+                            <div class="text-[1.2em] font-semibold mb-1 flex items-center gap-1">
+                                <Blazicon Svg=Lucide.Settings class="w-[0.3em] h-[0.3em]" />
+                                Configuration
+                            </div>
+                            @RenderConfigDataCompact()
+                        </div>
+                        <div>
+                            <div class="text-[1.2em] font-semibold mb-1 flex items-center gap-1">
+                                <Blazicon Svg=Lucide.Cpu class="w-[0.3em] h-[0.3em]" />
+                                Program Running
+                            </div>
+                            @RenderProgramDataCompact()
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    private RenderFragment RenderList() => __builder =>
+    {
+        <div @onclick="ToggleSelected" class="@GetCardClasses() flex flex-col h-full">
+            @RenderHeader()
+            <ScrollArea Class="flex-1">
+                <div class="py-2 space-y-2">
+                    @RenderPrimaryDataCompact()
+                    @RenderConfigDataCompact()
+                    @RenderProgramDataCompact()
+                </div>
+            </ScrollArea>
+            @RenderFooter()
+        </div>
+    };
+  
+    #endregion
+
+    #region Component Fragments
+    private RenderFragment RenderHeader() => __builder =>
+    {
+        <div class="@GetBackground50Class() px-2 py-1.5 -mx-2 -mt-2 mb-0 rounded-t-lg">
+            <div class="flex items-center justify-between gap-1">
+                <div class="flex items-center gap-1 min-w-0 flex-1">
+                    @if (Selected)
+                    {
+                        <Blazicon Svg=Lucide.CircleCheck class="w-[0.25em] h-[0.25em] flex-shrink-0" />
+                    }
+                    <span class="font-bold text-[1em] truncate">
+                        @Channel.Channel.DeviceID-@Channel.Channel.SecondaryBoardNumber-@Channel.Channel.ChannelNumber
+                    </span>
+
+                    <Tooltip>
+                        <TooltipTrigger>
+                            <span class="@(
+                                (Channel.IsConnected)
+                                ? "flex inline-block w-[0.50em] h-[0.50em] rounded-full bg-green-500 animate-pulse"
+                                : "flex inline-block w-[0.50em] h-[0.50em] rounded-full bg-red-500 animate-pulse"
+                                )"></span>
+                        </TooltipTrigger>
+                        <TooltipContent Side="TooltipSide.Top">
+                            <span>TCP Status</span>
+                        </TooltipContent>
+                    </Tooltip>
+
+                </div>
+
+                <div class="flex items-center gap-1 mt-1">
+                    <Blazicon Svg="@GetCircuitStatusIcon()" class="w-[0.25em] h-[0.25em] flex-shrink-0" />
+                    <span class="text-[0.9em] truncate">@GetCircuitStatusText()</span>
+                </div>
+
+                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Auto" StopPropagation="true"
+                    Class="p-0 hover:bg-primary-foreground/20 flex-shrink-0"
+                    OnClick="@(() => OpenDialog(true))">
+                    <Blazicon Svg=Lucide.Ellipsis class="w-[0.3em] h-[0.3em]" />
+                </Button>
+            </div>           
+        </div>
+    };
+
+    private RenderFragment RenderFooter() => __builder =>
+    {
+        var errorId = Channel?.RealTime?.RealTimeRecord?.SystemErrorId ?? 0;
+
+        <div class="@GetBackground50Class() px-2 py-1 -mx-2 -mb-2 mt-0 rounded-b-lg flex items-center justify-between gap-1">
+            <div class="text-[0.9em] font-medium text-center flex items-center justify-center gap-1">
+                <Blazicon Svg="Lucide.Clock" class="w-[0.25em] h-[0.25em]" />
+                @Channel?.RealTime?.RealTimeRecord?.TimeStamp.ToString("HH:mm:ss")
+            </div>
+
+            <div class="flex items-center gap-1 mt-0.5">
+                <div class="w-[0.15em] h-[0.15em] rounded-full @GetProgramStatusColor() flex-shrink-0"></div>
+                <Blazicon Svg="@GetProgramStatusIcon()" class="w-[0.25em] h-[0.25em] flex-shrink-0" />
+                <span class="text-[0.9em] truncate">@GetProgramStatusText()</span>
+            </div>
+            <!-- RIGHT: Reset Button (only if error) -->
+            @if (errorId > 0)
+            {
+                <div class="flex items-center gap-1 mt-0.5">
+                    <button class="p-1 rounded bg-red-500 text-white hover:bg-red-600 flex items-center justify-center animate-pulse"
+                            style="width: 1.5em; height: 1.5em;"
+                            title="@GetErrorText(errorId)"
+                            @onclick="ResetSystem">
+                        <Blazicon Svg="Lucide.RotateCcw" class="w-[0.8em] h-[0.8em]" />
+                    </button>
+                </div>
+            }
+        </div>
+
+       
+
+    };
+
+    private RenderFragment RenderPrimaryDataCompact() => __builder =>
+    {
+        <div class="space-y-0.5 text-[1em] px-2">
+            @if (ShouldRenderProperty("Voltage"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Zap" class="w-[0.25em] h-[0.25em]" />
+                        V:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.Voltage)<small class="ml-1">V</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("Current"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Activity" class="w-[0.25em] h-[0.25em]" />
+                        A:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.Current)<small class="ml-1">A</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("Temperature"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Thermometer" class="w-[0.25em] h-[0.25em]" />
+                        T:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.Temperature)<small class="ml-1">°C</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("Power"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Battery" class="w-[0.25em] h-[0.25em]" />
+                        P:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.Power)<small class="ml-1">W</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("AccumulatedCapacity"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Gauge" class="w-[0.25em] h-[0.25em]" />
+                        Acc Cap:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.AccumulatedCapacity)<small class="ml-1">Ah</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("ChargeCapacity"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.BatteryCharging" class="w-[0.25em] h-[0.25em]" />
+                        Chg Cap:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.ChargeCapacity)<small class="ml-1">Ah</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("DischargeCapacity"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.BatteryLow" class="w-[0.25em] h-[0.25em]" />
+                        Dis Cap:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.DischargeCapacity)<small class="ml-1">Ah</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("StepCapacity"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.ArrowRight" class="w-[0.25em] h-[0.25em]" />
+                        Step Cap:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.StepCapacity)<small class="ml-1">Ah</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("AccumulatedEnergy"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Gauge" class="w-[0.25em] h-[0.25em]" />
+                        Acc Energy:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.AccumulatedEnergy)<small class="ml-1">Wh</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("ChargeEnergy"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.BatteryCharging" class="w-[0.25em] h-[0.25em]" />
+                        Chg Energy:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.ChargeEnergy)<small class="ml-1">Wh</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("DischargeEnergy"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.BatteryLow" class="w-[0.25em] h-[0.25em]" />
+                        Dis Energy:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.DischargeEnergy)<small class="ml-1">Wh</small></span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("StepEnergy"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.ArrowRight" class="w-[0.25em] h-[0.25em]" />
+                        Step Energy:
+                    </span>
+                    <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.StepEnergy)<small class="ml-1">Wh</small></span>
+                </div>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderConfigDataCompact() => __builder =>
+    {
+        <div class="space-y-0.5 text-[1em] px-2">
+            @if (ShouldRenderProperty("BatteryID"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.BatteryCharging" class="w-[0.25em] h-[0.25em]" />
+                        Battery:
+                    </span>
+                    <span class="font-medium">@Channel?.Battery?.Name</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("ProgramID"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.FileCode" class="w-[0.25em] h-[0.25em]" />
+                        Program:
+                    </span>
+                    <span class="font-medium">@Channel?.Program?.ProgramName</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("SessionID"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Hash" class="w-[0.25em] h-[0.25em]" />
+                        Session:
+                    </span>
+                    <span class="font-medium">@Channel?.Session?.SessionID</span>
+                </div>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderProgramDataCompact() => __builder =>
+    {
+        <div class="space-y-0.5 text-[1em] px-2">
+            @if (ShouldRenderProperty("CycleNumber"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Repeat" class="w-[0.25em] h-[0.25em]" />
+                        Cycle:
+                    </span>
+                    <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.CycleNumber</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("CycleStatus"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.CircleDot" class="w-[0.25em] h-[0.25em]" />
+                        Cycle Status:
+                    </span>
+                    @{
+                        var cycleStatus = Channel?.RealTime?.RealTimeRecord?.CycleStatus;
+                    }
+                    <span class="font-medium @(cycleStatus == 1 ? "text-green-500" : "text-muted-foreground")">
+                        @(cycleStatus == 1 ? "Running" : "Stopped")
+                    </span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("CycleRunIteration"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.RefreshCw" class="w-[0.25em] h-[0.25em]" />
+                        Iteration:
+                    </span>
+                    <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.CycleRunIteration</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("TableStepNumber"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Table" class="w-[0.25em] h-[0.25em]" />
+                        Table Step:
+                    </span>
+                    <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.TableStepNumber</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("TableTotalRowNumber"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Rows4" class="w-[0.25em] h-[0.25em]" />
+                        Table Rows:
+                    </span>
+                    <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.TableTotalRowNumber</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("StepNumber"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.ListOrdered" class="w-[0.25em] h-[0.25em]" />
+                        Step:
+                    </span>
+                    <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.StepNumber</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("OperatorCode"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.ChevronRight" class="w-[0.25em] h-[0.25em]" />
+                        Operator:
+                    </span>
+                    <span class="font-medium">@OperatorConstants.ToName(
+                        (Channel?.ExpandedProgramSteps?.Count > 0
+                            ? Channel.ExpandedProgramSteps
+                            : Channel?.Program?.ProgramStepModel)
+                        ?.FirstOrDefault(e => e.StepNumber == Channel?.RealTime?.RealTimeRecord?.StepNumber)
+                        ?.OperatorCode)</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("StepRunningTime"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Clock" class="w-[0.25em] h-[0.25em]" />
+                        Step Time:
+                    </span>
+                    <span class="font-medium">@FormatTimeSpan(Channel?.RealTime?.RealTimeRecord?.StepRunningTime)</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("RunningTime"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Timer" class="w-[0.25em] h-[0.25em]" />
+                        Total:
+                    </span>
+                    <span class="font-medium">@FormatTimeSpan(Channel?.RealTime?.RealTimeRecord?.RunningTime)</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("Storerecordcount"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.Download" class="w-[0.25em] h-[0.25em]" />
+                        Save:
+                    </span>
+                    <span class="font-medium">@Channel?.Session?.Storerecordcount</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("Unstorerecordcount"))
+            {
+                <div class="flex justify-between items-center">
+                    <span class="text-muted-foreground flex items-center gap-0.5">
+                        <Blazicon Svg="Lucide.SaveOff" class="w-[0.25em] h-[0.25em]" />
+                        UnSave:
+                    </span>
+                    <span class="font-medium">@Channel?.Session?.Unstorerecordcount</span>
+                </div>
+            }
+
+            @if (ShouldRenderProperty("Error"))
+            {
+                <div class="flex items-center gap-2">
+
+                    @if (Channel?.RealTime?.RealTimeRecord?.ErrorId > 0
+                        && Channel?.RealTime?.RealTimeRecord?.CircuitStatus == CircuitStatus.Error)
+                    {
+                        <span class="text-muted-foreground flex items-center gap-1 shrink-0">
+                            <Blazicon Svg="Lucide.TriangleAlert" class="w-3 h-3 text-red-500" />
+                            Error :
+                        </span>
+
+                        <div class="flex-1 overflow-hidden">
+                            <span class="inline-block whitespace-nowrap animate-marquee font-medium">
+                                @ErrorMessages.Errors.FirstOrDefault(x => x.Index == Channel.RealTime.RealTimeRecord.ErrorId)?.Message
+                            </span>
+                        </div>
+                    }
+                    else if (Channel?.RealTime?.RealTimeRecord?.ErrorId > 0)
+                    {
+                        <span class="text-muted-foreground flex items-center gap-1 shrink-0">
+                            <Blazicon Svg="Lucide.Info" class="w-3 h-3 text-blue-500" />
+                            Message :
+                        </span>
+
+                        <div class="flex-1 overflow-hidden">
+                            <span class="inline-block whitespace-nowrap animate-marquee font-medium">
+                                @ErrorMessages.Messages.FirstOrDefault(x => x.Index == Channel.RealTime.RealTimeRecord.ErrorId)?.Message
+                            </span>
+                        </div>
+                    }
+                    else
+                    {
+                        <span class="text-muted-foreground flex items-center gap-1 shrink-0">
+                            <Blazicon Svg="Lucide.Info" class="w-3 h-3" />
+                            Error / Message :
+                        </span>
+
+                        <span class="font-medium">-</span>
+                    }
+
+                </div>
+            }
+
+            @if (ShouldRenderProperty("SystemError"))
+            {
+                <div class="flex items-center gap-2">
+
+                    <span class="text-muted-foreground flex items-center gap-1 shrink-0">
+                        <Blazicon Svg="Lucide.Cpu" class="w-3 h-3 text-orange-500" />
+                        System Error :
+                    </span>
+
+                    @if (Channel?.RealTime?.RealTimeRecord?.SystemErrorId > 0)
+                    {
+                        <div class="flex-1 overflow-hidden">
+                            <span class="inline-block whitespace-nowrap animate-marquee font-medium">
+                                @if (Channel?.RealTime?.RealTimeRecord?.ProgramStatus == ProgramRunningStatus.Running && Channel?.IsConnected == false)
+                                {
+                                    var err = (int)(Channel?.RealTime?.RealTimeRecord?.SystemErrorId ?? 0)
+                                    | (int)SystemError.en_ERR_NETWORK_CONN_FAIL;
+                                    @GetErrorText(err)
+                                }
+                                else
+                                {
+                                    @GetErrorText(Channel?.RealTime?.RealTimeRecord?.SystemErrorId ?? 0)
+                                }
+                            </span>
+                        </div>
+                    }
+                    else
+                    {
+                        <span class="font-medium">-</span>
+                    }
+
+                </div>
+            }
+
+        </div>
+    };
+
+    // private RenderFragment RenderPrimaryDataList() => __builder =>
+    // {
+    //     <div class="space-y-2 text-[1.4em]">
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.Zap" class="w-[0.35em] h-[0.35em]" />
+    //                 Voltage:
+    //             </span>
+    //             <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.Voltage) V</span>
+    //         </div>
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.Activity" class="w-[0.35em] h-[0.35em]" />
+    //                 Current:
+    //             </span>
+    //             <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.Current) A</span>
+    //         </div>
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.Battery" class="w-[0.35em] h-[0.35em]" />
+    //                 Capacity:
+    //             </span>
+    //             <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.Power) Wh</span>
+    //         </div>
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.Thermometer" class="w-[0.35em] h-[0.35em]" />
+    //                 Temperature:
+    //             </span>
+    //             <span class="font-medium">@FormatValue(Channel?.RealTime?.RealTimeRecord?.Temperature)°C</span>
+    //         </div>
+    //     </div>
+    // };
+
+    // private RenderFragment RenderConfigDataList() => __builder =>
+    // {
+    //     <div class="space-y-2 text-[1.4em]">
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.BatteryCharging" class="w-[0.35em] h-[0.35em]" />
+    //                 Battery ID:
+    //             </span>
+    //             <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.BatteryID</span>
+    //         </div>
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.FileCode" class="w-[0.35em] h-[0.35em]" />
+    //                 Program ID:
+    //             </span>
+    //             <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.ProgramID</span>
+    //         </div>
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.Hash" class="w-[0.35em] h-[0.35em]" />
+    //                 Session ID:
+    //             </span>
+    //             <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.SessionID</span>
+    //         </div>
+    //     </div>
+    // };
+
+    // private RenderFragment RenderProgramDataList() => __builder =>
+    // {
+    //     <div class="space-y-2 text-[1.4em]">
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.ListOrdered" class="w-[0.35em] h-[0.35em]" />
+    //                 Step Number:
+    //             </span>
+    //             <span class="font-medium">@Channel?.RealTime?.RealTimeRecord?.StepNumber</span>
+    //         </div>
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.Clock" class="w-[0.35em] h-[0.35em]" />
+    //                 Step Time:
+    //             </span>
+    //             <span class="font-medium">@FormatTimeSpan(Channel?.RealTime?.RealTimeRecord?.StepRunningTime)</span>
+    //         </div>
+    //         <div class="flex justify-between items-center">
+    //             <span class="text-muted-foreground flex items-center gap-1.5">
+    //                 <Blazicon Svg="Lucide.Timer" class="w-[0.35em] h-[0.35em]" />
+    //                 Program Time:
+    //             </span>
+    //             <span class="font-medium">@FormatTimeSpan(Channel?.RealTime?.RealTimeRecord?.RunningTime)</span>
+    //         </div>
+    //     </div>
+    // };
+
+    private RenderFragment RenderMiniChart() => __builder =>
+    {
+        var voltageValues = chartData.Select(d => (double)d.Voltage).ToList();
+        var currentValues = chartData.Select(d => (double)d.Current).ToList();
+        var latest = chartData[^1];
+
+        // Both lines share one Y-axis scale instead of each being normalized to its own
+        // min/max - independent scaling made two unrelated wiggles look the same size,
+        // so equal vertical movement now means equal magnitude change for either series.
+        double axisMin = 0, axisMax = 1;
+        if (chartData.Count > 1)
+        {
+            axisMin = Math.Min(voltageValues.Min(), currentValues.Min());
+            axisMax = Math.Max(voltageValues.Max(), currentValues.Max());
+        }
+
+        <div class="w-full h-full flex flex-col">
+            <div class="relative flex-1 min-h-0">
+                <svg class="w-full h-full" viewBox="0 0 150 80" preserveAspectRatio="none">
+                    @if (chartData.Count > 1)
+                    {
+                        var voltagePoints = GetChartPoints(voltageValues, 80, axisMin, axisMax);
+                        <polyline points="@voltagePoints" fill="none" stroke="hsl(var(--chart-1))" stroke-width="1.5" opacity="0.9" />
+
+                        var currentPoints = GetChartPoints(currentValues, 80, axisMin, axisMax);
+                        <polyline points="@currentPoints" fill="none" stroke="hsl(var(--chart-2))" stroke-width="1.5" opacity="0.7" />
+                    }
+                </svg>
+                @if (chartData.Count > 1)
+                {
+                    <span class="absolute left-0 top-0 text-[0.6em] leading-none text-muted-foreground">@FormatValue((float)axisMax)</span>
+                    <span class="absolute left-0 bottom-0 text-[0.6em] leading-none text-muted-foreground">@FormatValue((float)axisMin)</span>
+                }
+            </div>
+            <div class="flex justify-around text-[0.8em] text-muted-foreground mt-1">
+                <div class="flex items-center gap-0.5">
+                    <Blazicon Svg="Lucide.Zap" class="w-[0.2em] h-[0.2em] text-chart-1" />
+                    <span class="text-chart-1 font-semibold">@FormatValue(latest.Voltage)</span>
+                    <span>V</span>
+                </div>
+                <div class="flex items-center gap-0.5">
+                    <Blazicon Svg="Lucide.Activity" class="w-[0.2em] h-[0.2em] text-chart-2" />
+                    <span class="text-chart-2 font-semibold">@FormatValue(latest.Current)</span>
+                    <span>A</span>
+                </div>
+            </div>
+        </div>
+    };
+
+    #endregion
+
+    #region Helper Methods
+
+    private CircuitStatus GetCircuitStatus()
+    {
+        CircuitStatus? circuitStatus = Channel.IsConnected ? Channel?.RealTime?.RealTimeRecord?.CircuitStatus : (Channel?.RealTime?.RealTimeRecord?.ProgramStatus == ProgramRunningStatus.Running ? CircuitStatus.Error : CircuitStatus.Offline);
+
+       return circuitStatus ??= CircuitStatus.Offline;
+    }
+    private string GetCardClasses()
+    {
+        var bg = GetStatusBackgroundClass();
+        var border = GetStatusBorderClass();
+        var selectedRing = Selected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "";
+
+        // No filter/opacity/transform utility here: any of those create a new CSS stacking
+        // context on the card, which traps the hover popover's z-50 inside it instead of
+        // letting it escape above sibling cards - the popover then loses to whichever card
+        // comes later in DOM order and appears to render "behind" its translucent background.
+        return $"p-2 rounded-lg border transition-all cursor-pointer {bg} {border} {selectedRing} relative";
+    }
+
+    private string GetCircuitStatusColor() =>  GetCircuitStatus() switch
+    {
+        CircuitStatus.Idle => "bg-status-idle",
+        CircuitStatus.Charge => "bg-status-charge",
+        CircuitStatus.Discharging => "bg-status-discharging",
+        CircuitStatus.Pause => "bg-status-pause",
+        CircuitStatus.Countinue => "bg-status-continue",
+        CircuitStatus.Interrupt => "bg-status-interrupt",
+        CircuitStatus.Error => "bg-status-error",
+        CircuitStatus.Msg => "bg-status-msg",
+        _ => "bg-status-offline"
+    };
+    
+
+    private string GetBackground50Class() => GetCircuitStatus() switch
+    {
+            CircuitStatus.Idle => "bg-status-idle/50",
+            CircuitStatus.Charge => "bg-status-charge/50",
+            CircuitStatus.Discharging => "bg-status-discharging/50",
+            CircuitStatus.Pause => "bg-status-pause/50",
+            CircuitStatus.Countinue => "bg-status-continue/50",
+            CircuitStatus.Interrupt => "bg-status-interrupt/50",
+            CircuitStatus.Error => "bg-status-error/50",
+            CircuitStatus.Msg => "bg-status-msg/50",
+            _ => "bg-status-offline/50"
+    };
+    
+
+    private string GetProgramStatusColor()
+    {
+        var status = Channel?.RealTime?.RealTimeRecord?.ProgramStatus;
+
+        return status switch
+        {
+            ProgramRunningStatus.Running => GetCircuitStatusColor(),
+            ProgramRunningStatus.Stop => "bg-red-500",
+            _ => "bg-status-offline"
+        };
+    }
+
+    private string GetCircuitStatusText() => GetCircuitStatus() switch
+    {
+        CircuitStatus.Idle => "Stop",
+        CircuitStatus.Charge => "Charging",
+        CircuitStatus.Discharging => "Discharging",
+        CircuitStatus.Pause => "Paused",
+        CircuitStatus.Countinue => "Continue",
+        CircuitStatus.Interrupt => "Interrupt",
+        CircuitStatus.Error => "Error",
+        CircuitStatus.Msg => "Message",
+        _ => "Offline"
+    };
+
+    private SvgIcon GetCircuitStatusIcon() => GetCircuitStatus() switch
+    {
+        CircuitStatus.Idle => Lucide.PowerOff,
+        CircuitStatus.Charge => Lucide.BatteryCharging,
+        CircuitStatus.Discharging => Lucide.Battery,
+        CircuitStatus.Pause => Lucide.Pause,
+        CircuitStatus.Countinue => Lucide.Play,
+        CircuitStatus.Interrupt => Lucide.TriangleAlert,
+        CircuitStatus.Error => Lucide.CircleX,
+        CircuitStatus.Msg => Lucide.MessageSquare,
+        _ => Lucide.Power
+    };
+
+    private string GetProgramStatusText() => Channel?.RealTime?.RealTimeRecord?.ProgramStatus switch
+    {
+        ProgramRunningStatus.Running => "Running",
+        ProgramRunningStatus.Stop => "Stop",
+        _ => "Stop"
+    };
+
+    private SvgIcon GetProgramStatusIcon() => Channel?.RealTime?.RealTimeRecord?.ProgramStatus switch
+    {
+        ProgramRunningStatus.Running => Lucide.CirclePlay,
+        ProgramRunningStatus.Stop => Lucide.CircleStop,
+        _ => Lucide.Circle
+    };
+
+    private string GetStatusBackgroundClass() => GetCircuitStatus() switch
+    {
+        CircuitStatus.Idle => "bg-status-idle/20",
+        CircuitStatus.Charge => "bg-status-charge/20",
+        CircuitStatus.Discharging => "bg-status-discharging/20",
+        CircuitStatus.Pause => "bg-status-pause/20",
+        CircuitStatus.Countinue => "bg-status-continue/20",
+        CircuitStatus.Interrupt => "bg-status-interrupt/20",
+        CircuitStatus.Error => "bg-status-error/20",
+        CircuitStatus.Msg => "bg-status-msg/20",
+        _ => "bg-status-offline/20"
+    };
+
+    private string GetStatusBorderClass() => GetCircuitStatus() switch
+    {
+        CircuitStatus.Idle => "border-status-idle/30",
+        CircuitStatus.Charge => "border-status-charge/30",
+        CircuitStatus.Discharging => "border-status-discharging/30",
+        CircuitStatus.Pause => "border-status-pause/30",
+        CircuitStatus.Countinue => "border-status-continue/30",
+        CircuitStatus.Interrupt => "border-status-interrupt/30",
+        CircuitStatus.Error => "border-status-error/30",
+        CircuitStatus.Msg => "border-status-msg/30",
+        _ => "border-status-offline/30"
+    };
+
+    private string FormatValue(float? value)
+    {
+        if (!value.HasValue)
+            return $"0.{new string('0', MaxDigit)}";
+        return value.Value.ToString($"F{MaxDigit}");
+    }
+
+    private string FormatTimeSpan(TimeSpan? timeSpan)
+    {
+        if (!timeSpan.HasValue)
+            return "00:00:00";
+        return $"{(int)timeSpan.Value.TotalHours:D2}:{timeSpan.Value.Minutes:D2}:{timeSpan.Value.Seconds:D2}";
+    }
+
+    private string GetChartPoints(List<double> data, double height, double min, double max)
+    {
+        if (data.Count < 2) return "";
+
+        var range = max - min;
+        if (range == 0) range = 1;
+
+        var points = new List<string>();
+        var width = 150.0;
+        var step = width / (data.Count - 1);
+
+        for (int i = 0; i < data.Count; i++)
+        {
+            var x = i * step;
+            var normalized = (data[i] - min) / range;
+            var y = height - (normalized * height * 0.85) - (height * 0.075);
+            points.Add($"{x},{y}");
+        }
+
+        return string.Join(" ", points);
+    }
+    #endregion
+
+}

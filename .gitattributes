@@ -1,0 +1,1 @@
+WebAppME/docs/exe[[:space:]]file[[:space:]]tracker/**/*.exe filter=lfs diff=lfs merge=lfs -text

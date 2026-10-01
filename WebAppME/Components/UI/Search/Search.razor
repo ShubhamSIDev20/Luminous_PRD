@@ -1,0 +1,250 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Search
+@typeparam TItem
+
+<div class="relative w-full @Class">
+    <div class="relative">
+        <input type="text"
+               class="@GetInputClasses()"
+               placeholder="@Placeholder"
+               value="@SearchTerm"
+               @oninput="OnSearchInput"
+               @onfocus="OnFocus"
+               @onblur="OnBlur"
+               disabled="@Disabled" />
+
+        @if (IsLoading)
+        {
+            <div class="absolute right-3 top-1/2 -translate-y-1/2">
+                <svg class="animate-spin h-5 w-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            <button type="button"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    @onclick="ClearSearch">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        }
+    </div>
+
+    @if (ShowDropdown && (FilteredItems.Any() || ShowNoResults))
+    {
+        <div class="absolute z-50 w-full mt-1 bg-popover border border-border rounded-md shadow-lg max-h-[300px] overflow-y-auto">
+            @if (FilteredItems.Any())
+            {
+                @foreach (var item in FilteredItems)
+                {
+                    <div class="px-3 py-2 hover:bg-accent cursor-pointer transition-colors"
+                         @onclick="() => SelectItem(item)"
+                         @onclick:stopPropagation="true">
+                        @ItemTemplate(item)
+                    </div>
+                }
+
+                @if (HasMoreItems)
+                {
+                    <div class="px-3 py-2 text-center border-t border-border">
+                        @if (IsLoadingMore)
+                        {
+                            <span class="text-sm text-muted-foreground">Loading more...</span>
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    class="text-sm text-primary hover:underline"
+                                    @onclick="LoadMoreItems"
+                                    @onclick:stopPropagation="true">
+                                Load more results
+                            </button>
+                        }
+                    </div>
+                }
+            }
+            else if (ShowNoResults)
+            {
+                <div class="px-3 py-4 text-center text-sm text-muted-foreground">
+                    @NoResultsMessage
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? SearchTerm { get; set; }
+
+    [Parameter]
+    public EventCallback<string> SearchTermChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<TItem> OnItemSelected { get; set; }
+
+    [Parameter]
+    public Func<string, int, int, Task<(List<TItem> Items, bool HasMore)>>? SearchFunction { get; set; }
+
+    [Parameter]
+    public RenderFragment<TItem>? ItemTemplate { get; set; }
+
+    [Parameter]
+    public string Placeholder { get; set; } = "Search...";
+
+    [Parameter]
+    public string NoResultsMessage { get; set; } = "No results found";
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public int PageSize { get; set; } = 20;
+
+    [Parameter]
+    public int DebounceMs { get; set; } = 300;
+
+    [Parameter]
+    public int MinSearchLength { get; set; } = 2;
+
+    private List<TItem> FilteredItems { get; set; } = new();
+    private bool IsLoading { get; set; }
+    private bool IsLoadingMore { get; set; }
+    private bool ShowDropdown { get; set; }
+    private bool HasMoreItems { get; set; }
+    private int CurrentPage { get; set; } = 0;
+    private bool ShowNoResults { get; set; }
+    private System.Threading.Timer? _debounceTimer;
+    private bool _isFocused;
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        SearchTerm = e.Value?.ToString() ?? string.Empty;
+        await SearchTermChanged.InvokeAsync(SearchTerm);
+
+        _debounceTimer?.Dispose();
+
+        if (string.IsNullOrWhiteSpace(SearchTerm) || SearchTerm.Length < MinSearchLength)
+        {
+            FilteredItems.Clear();
+            ShowDropdown = false;
+            ShowNoResults = false;
+            StateHasChanged();
+            return;
+        }
+
+        IsLoading = true;
+        StateHasChanged();
+
+        _debounceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await PerformSearch(true);
+            });
+        }, null, DebounceMs, System.Threading.Timeout.Infinite);
+    }
+
+    private async Task PerformSearch(bool resetPage = false)
+    {
+        if (SearchFunction == null) return;
+
+        try
+        {
+            if (resetPage)
+            {
+                CurrentPage = 0;
+                FilteredItems.Clear();
+            }
+
+            IsLoading = resetPage;
+            IsLoadingMore = !resetPage;
+
+            var (items, hasMore) = await SearchFunction(SearchTerm ?? string.Empty, CurrentPage, PageSize);
+
+            if (resetPage)
+            {
+                FilteredItems = items;
+            }
+            else
+            {
+                FilteredItems.AddRange(items);
+            }
+
+            HasMoreItems = hasMore;
+            ShowDropdown = _isFocused;
+            ShowNoResults = !FilteredItems.Any() && !string.IsNullOrWhiteSpace(SearchTerm);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Search error: {ex.Message}");
+            ShowNoResults = true;
+        }
+        finally
+        {
+            IsLoading = false;
+            IsLoadingMore = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadMoreItems()
+    {
+        CurrentPage++;
+        await PerformSearch(false);
+    }
+
+    private async Task SelectItem(TItem item)
+    {
+        await OnItemSelected.InvokeAsync(item);
+        ShowDropdown = false;
+        StateHasChanged();
+    }
+
+    private async Task ClearSearch()
+    {
+        SearchTerm = string.Empty;
+        await SearchTermChanged.InvokeAsync(SearchTerm);
+        FilteredItems.Clear();
+        ShowDropdown = false;
+        ShowNoResults = false;
+        CurrentPage = 0;
+        StateHasChanged();
+    }
+
+    private void OnFocus()
+    {
+        _isFocused = true;
+        if (FilteredItems.Any() || ShowNoResults)
+        {
+            ShowDropdown = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnBlur()
+    {
+        _isFocused = false;
+        await Task.Delay(200); // Delay to allow click events to fire
+        ShowDropdown = false;
+        StateHasChanged();
+    }
+
+    private string GetInputClasses()
+    {
+        var baseClasses = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+        var paddingClass = IsLoading || !string.IsNullOrWhiteSpace(SearchTerm) ? "pr-10" : "";
+        return $"{baseClasses} {paddingClass}";
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+}

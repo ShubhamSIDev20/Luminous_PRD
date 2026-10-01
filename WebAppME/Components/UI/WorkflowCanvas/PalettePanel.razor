@@ -1,0 +1,142 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+
+@* Right rail. Lists real DB entities. Dropping a device does NOT dump all of its channels —
+   each device expands to a channel picker so the operator takes only what needs to work
+   (spec 5.2). Auto-import is the bulk shortcut. *@
+
+<div class="wf-palette-inner">
+    <div class="wf-palette__tabs">
+        @foreach (var tab in new[] { "Devices", "Batteries", "Programs", "DBC" })
+        {
+            <button class="wf-tab @(_tab == tab ? "wf-tab--active" : "")"
+                    @onclick="() => _tab = tab">@tab</button>
+        }
+    </div>
+
+    @if (_tab == "Devices")
+    {
+        @foreach (var device in PlaceableDevices)
+        {
+            var placed = IsPlaced(device);
+            <div class="wf-palette__item">
+                <div class="flex items-center justify-between gap-2">
+                    <button class="truncate text-left flex-1"
+                            @onclick="() => Toggle(device.DeviceId)"
+                            title="Show channels">
+                        @device.DeviceName
+                    </button>
+                    <button class="wf-btn wf-btn--sm"
+                            disabled="@placed"
+                            title="@(placed ? "Already fully placed" : "Place every channel")"
+                            @onclick="() => OnPlaceDevice.InvokeAsync((device, (IReadOnlyCollection<long>?)null))">
+                        All
+                    </button>
+                </div>
+
+                @if (_expanded.Contains(device.DeviceId))
+                {
+                    <div class="wf-palette__channels">
+                        @foreach (var board in device.Boards)
+                        {
+                            <div class="opacity-60 mt-1">Board @board.BoardNumber</div>
+                            <div class="flex flex-wrap gap-1">
+                                @foreach (var channel in board.Channels)
+                                {
+                                    var onCanvas = IsChannelPlaced(channel.ChannelId);
+                                    var claimedBy = ClaimedChannels.TryGetValue(channel.ChannelId, out var owner) ? owner : null;
+                                    <button class="wf-chip @(onCanvas || claimedBy is not null ? "wf-chip--on" : "")"
+                                            disabled="@(onCanvas || claimedBy is not null)"
+                                            title="@(claimedBy is not null ? $"Already placed in workflow '{claimedBy}'" : null)"
+                                            @onclick="() => PlaceOne(device, channel.ChannelId)">
+                                        @channel.ChannelNumber
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (PlaceableDevices.Count == 0)
+        {
+            <p class="opacity-60">No devices registered yet.</p>
+        }
+    }
+    else if (_tab == "Batteries")
+    {
+        @foreach (var battery in Catalog.BatteryTypes)
+        {
+            <button class="wf-palette__item w-full text-left"
+                    @onclick="() => OnPlaceBattery.InvokeAsync(battery.Id)">
+                @battery.Name
+            </button>
+        }
+
+        @if (Catalog.BatteryTypes.Count == 0)
+        {
+            <p class="opacity-60">No battery types configured.</p>
+        }
+    }
+    else if (_tab == "Programs")
+    {
+        <p class="opacity-60 mb-2">Select a channel, then attach a program from the properties panel.</p>
+        @foreach (var program in Catalog.Programs)
+        {
+            <div class="wf-palette__item">@program.Name</div>
+        }
+    }
+    else
+    {
+        <p class="opacity-60 mb-2">Select a channel, then attach a DBC from the properties panel.</p>
+        @foreach (var dbc in Catalog.DbcFiles)
+        {
+            <div class="wf-palette__item">@dbc.Name</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TopologySnapshot Topology { get; set; } = TopologySnapshot.Empty;
+    [Parameter, EditorRequired] public PaletteCatalog Catalog { get; set; } = PaletteCatalog.Empty;
+    [Parameter, EditorRequired] public WorkflowGraph Graph { get; set; } = WorkflowGraph.Empty;
+    [Parameter] public EventCallback<(TopologyDevice Device, IReadOnlyCollection<long>? Channels)> OnPlaceDevice { get; set; }
+    [Parameter] public EventCallback<int> OnPlaceBattery { get; set; }
+    [Parameter] public IReadOnlyDictionary<long, string> ClaimedChannels { get; set; } =
+        new Dictionary<long, string>();
+
+    private string _tab = "Devices";
+    private readonly HashSet<int> _expanded = new();
+
+    /// <summary>Rebuilt once per parameter change, never per channel. Scanning Graph.Nodes inside
+    /// IsChannelPlaced made the palette O(devices x channels x nodes) on EVERY render - ~450k
+    /// comparisons at 640 channels - and the palette re-renders on every telemetry tick.</summary>
+    /// <summary>Only devices that still have channels. A device whose circuits were all deleted
+    /// stays in the Devices table, so without this the palette offers empty devices to drag.
+    /// Recomputed in OnParametersSet rather than per render — this component re-renders on every
+    /// telemetry tick.</summary>
+    private IReadOnlyList<TopologyDevice> PlaceableDevices = Array.Empty<TopologyDevice>();
+
+    private HashSet<long> _placedChannelIds = new();
+
+    protected override void OnParametersSet()
+    {
+        _placedChannelIds = BatteryTestingSystem.Services.Implementations.Workflow
+            .WorkflowGraphBuilder.PlacedChannelIds(Graph);
+        PlaceableDevices = Topology.WithPlaceableDevicesOnly().Devices;
+    }
+
+    private void Toggle(int deviceId)
+    {
+        if (!_expanded.Add(deviceId)) _expanded.Remove(deviceId);
+    }
+
+    private Task PlaceOne(TopologyDevice device, long channelId) =>
+        OnPlaceDevice.InvokeAsync((device, (IReadOnlyCollection<long>?)new[] { channelId }));
+
+    private bool IsChannelPlaced(long channelId) => _placedChannelIds.Contains(channelId);
+
+    private bool IsPlaced(TopologyDevice device) =>
+        device.Boards.SelectMany(b => b.Channels).All(c => IsChannelPlaced(c.ChannelId));
+}

@@ -1,0 +1,57 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Services.Implementations.Workflow
+
+@* Colours resolve through WorkflowTelemetryBridge.HslFor(status, overrides) - the same call every
+   node face, filter chip and board pin uses - so a swatch here can never disagree with what the
+   canvas actually paints. Each row states what the status MEANS operationally, not just its name:
+   a colour key nobody can interpret is decoration, not information. *@
+
+@if (Open)
+{
+    <div class="wf-legend">
+        <div class="wf-dock__title">Status colors</div>
+        <p class="opacity-60 text-xs">Click a swatch to recolour it. Yours only — this never changes anyone else's canvas.</p>
+        @foreach (CircuitStatus status in Enum.GetValues(typeof(CircuitStatus)))
+        {
+            var name = WorkflowStatusCss.Name(status);
+            <div class="wf-legend__row">
+                <input class="wf-legend__swatch" type="color"
+                       value="@WorkflowColorConversion.HslToHex(WorkflowTelemetryBridge.HslFor(status, StatusColors))"
+                       title="Recolour @name"
+                       @onchange="@(e => RaiseColorChanged(name, e.Value?.ToString()))" />
+                <div class="wf-legend__text">
+                    <span class="wf-legend__name">@name</span>
+                    <span class="wf-legend__meaning">@Meaning(status)</span>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? StatusColors { get; set; }
+
+    /// <summary>Raises (statusName, hslTriplet).</summary>
+    [Parameter] public EventCallback<(string StatusName, string Hsl)> OnStatusColorChanged { get; set; }
+
+    private Task RaiseColorChanged(string statusName, string? hex) =>
+        OnStatusColorChanged.InvokeAsync((statusName, WorkflowColorConversion.HexToHsl(hex)));
+
+    /// <summary>What the status actually tells an operator. Mirrors the meanings the dashboard's
+    /// own badges carry — wording kept short enough to sit in the legend panel.</summary>
+    private static string Meaning(CircuitStatus status) => status switch
+    {
+        CircuitStatus.Idle => "Connected, no program running",
+        CircuitStatus.Charge => "Program running, charging",
+        CircuitStatus.Discharging => "Program running, discharging",
+        CircuitStatus.Pause => "Program paused, can be continued",
+        CircuitStatus.Countinue => "Resumed after a pause",
+        CircuitStatus.Interrupt => "Stopped early by a fault or limit",
+        CircuitStatus.Error => "Faulted — see the error text on the node",
+        CircuitStatus.Msg => "Hardware reported an informational message",
+        CircuitStatus.Offline => "No connection to the board",
+        _ => "Unknown state",
+    };
+}

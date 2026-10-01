@@ -1,0 +1,1051 @@
+@page "/battery/list"
+@attribute [Authorize]
+
+@inject IBatteryServices BServices
+@inject IDbcService DbcService
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+@using BatteryTestingSystem.Models.DTOs
+@using BatteryTestingSystem.Components.UI.Datatable
+@using BatteryTestingSystem.Models.ViewModels
+@using BatteryTestingSystem.Services.Interfaces
+@using Microsoft.AspNetCore.Components.Forms
+@using Newtonsoft.Json
+
+<PageHeader Title="Battery Management" Description="Configure and manage battery parameters">
+    <Actions>
+        <AuthorizeView Roles="Administrator,Supervisor">
+            <Button Variant="ButtonVariant.Default" Size="ButtonSize.Small" OnClick="OpenAdd">
+                <Blazicon Svg="Lucide.Plus" class="h-4 w-4 mr-2" />
+                Add Battery
+            </Button>
+        </AuthorizeView>
+    </Actions>
+</PageHeader>
+
+<div class="h-[80%] flex flex-col">
+    <DataTable TItem="BatteryDTO"
+               Title="Batteries"
+               Subtitle="All configured battery packs"
+               Data="@_batteries"
+               Search="true"
+               ExcelExport="true" ExcelFileName="batteries" ExcelSheetName="Batteries"
+               PdfExport="true" PdfFileName="batteries"
+               ExportHeaderText="Battery Registry"
+               ExportFooterText="@("Exported: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"))">
+        <Columns>
+
+            <ColumnDef TItem="BatteryDTO" Key="name" Header="Name"
+                       SearchSelector="@(b => b.Name ?? "")" ExcelValueSelector="@(b => b.Name ?? "")">
+                <CellTemplate Context="b"><span class="font-medium">@b.Name</span></CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="producer" Header="Producer"
+                       SearchSelector="@(b => b.Producer ?? "")" ExcelValueSelector="@(b => b.Producer ?? "")">
+                <CellTemplate Context="b">@b.Producer</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="typeId" Header="Type ID" Align="center"
+                       SearchSelector="@(b => b.BatteryTypeId.ToString())" ExcelValueSelector="@(b => b.BatteryTypeId.ToString())">
+                <CellTemplate Context="b">@b.BatteryTypeId</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="nomVoltage" Header="Voltage (V)" Align="right"
+                       SearchSelector="@(b => b.NominalVoltage.ToString("F2"))" ExcelValueSelector="@(b => b.NominalVoltage.ToString("F2"))">
+                <CellTemplate Context="b">@b.NominalVoltage V</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="maxVoltage" Header="Max V" Align="right" Visible="false"
+                       SearchSelector="@(b => b.MaximumVoltage.ToString("F2"))" ExcelValueSelector="@(b => b.MaximumVoltage.ToString("F2"))">
+                <CellTemplate Context="b">@b.MaximumVoltage V</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="gassingVoltage" Header="Gassing V" Align="right" Visible="false"
+                       SearchSelector="@(b => b.GassingVoltage.ToString("F2"))" ExcelValueSelector="@(b => b.GassingVoltage.ToString("F2"))">
+                <CellTemplate Context="b">@b.GassingVoltage V</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="breakVoltage" Header="Break V" Align="right" Visible="false"
+                       SearchSelector="@(b => b.BreakVoltage.ToString("F2"))" ExcelValueSelector="@(b => b.BreakVoltage.ToString("F2"))">
+                <CellTemplate Context="b">@b.BreakVoltage V</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="nomCurrent" Header="Current (A)" Align="right"
+                       SearchSelector="@(b => b.NominalCurrent.ToString("F2"))" ExcelValueSelector="@(b => b.NominalCurrent.ToString("F2"))">
+                <CellTemplate Context="b">@b.NominalCurrent A</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="capacity" Header="Capacity (Ah)" Align="right"
+                       SearchSelector="@(b => b.NominalCapacity.ToString("F2"))" ExcelValueSelector="@(b => b.NominalCapacity.ToString("F2"))">
+                <CellTemplate Context="b">@b.NominalCapacity Ah</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="cca" Header="CCA (A)" Align="right" Visible="false"
+                       SearchSelector="@(b => b.ColdCrankingCurrent.ToString("F2"))" ExcelValueSelector="@(b => b.ColdCrankingCurrent.ToString("F2"))">
+                <CellTemplate Context="b">@b.ColdCrankingCurrent A</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="chargeFactor" Header="Charge Factor" Align="right" Visible="false"
+                       SearchSelector="@(b => b.ChargeFactor.ToString("F2"))" ExcelValueSelector="@(b => b.ChargeFactor.ToString("F2"))">
+                <CellTemplate Context="b">@b.ChargeFactor</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="impedance" Header="Impedance (&#x3A9;)" Align="right" Visible="false"
+                       SearchSelector="@(b => b.Impedance.ToString("F3"))" ExcelValueSelector="@(b => b.Impedance.ToString("F3"))">
+                <CellTemplate Context="b">@b.Impedance &#x3A9;</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="energyDensity" Header="Energy Density" Align="right" Visible="false"
+                       SearchSelector="@(b => b.EnergyDensity.ToString("F2"))" ExcelValueSelector="@(b => b.EnergyDensity.ToString("F2"))">
+                <CellTemplate Context="b">@b.EnergyDensity Wh/kg</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="cells" Header="Cells" Align="center"
+                       SearchSelector="@(b => b.NumberOfCells.ToString())" ExcelValueSelector="@(b => b.NumberOfCells.ToString())">
+                <CellTemplate Context="b">@b.NumberOfCells</CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="qty" Header="Qty" Align="center"
+                       SearchSelector="@(b => b.Quantity.ToString())" ExcelValueSelector="@(b => b.Quantity.ToString())">
+                <CellTemplate Context="b">@b.Quantity</CellTemplate>
+            </ColumnDef>
+
+            @* ── DBC column — single button for both upload and edit ── *@
+            <ColumnDef TItem="BatteryDTO" Key="dbc" Header="DBC Files" Align="center"
+                       SearchSelector="@(b => DbcCount(b.Id).ToString())"
+                       ExcelValueSelector="@(b => $"{DbcCount(b.Id)} DBC(s)")">
+                <CellTemplate Context="b">
+                    @{
+                        var count = DbcCount(b.Id);
+                    }
+                    @if (count > 0)
+                    {
+                        <button @onclick="async () => await OpenDbcManager(b)"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                       bg-primary/10 text-primary border border-primary/20
+                                       hover:bg-primary/20 transition-colors cursor-pointer">
+                            <Blazicon Svg="Lucide.Pencil" class="w-2.5 h-2.5" />
+                            @count DBC@(count > 1 ? "s" : "")
+                        </button>
+                    }
+                    else
+                    {
+                        <button @onclick="async () => await OpenDbcManager(b)"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium
+                                       bg-muted text-muted-foreground border border-dashed border-border
+                                       hover:bg-muted/70 hover:text-foreground transition-colors cursor-pointer">
+                            <Blazicon Svg="Lucide.Plus" class="w-2.5 h-2.5" />
+                            Upload DBC
+                        </button>
+                    }
+                </CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="comments" Header="Comments" Visible="false"
+            SearchSelector="@(b => b.Comments ?? "")" ExcelValueSelector="@(b => b.Comments ?? "")">
+                <CellTemplate Context="b">
+                    <span class="text-xs text-muted-foreground italic truncate max-w-xs block">
+                        @(string.IsNullOrWhiteSpace(b.Comments) ? "&#x2014;" : b.Comments)
+                    </span>
+                </CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="createdAt" Header="Created At" Visible="false"
+            SearchSelector="@(b => b.CreatedAt.ToString("yyyy-MM-dd"))"
+            ExcelValueSelector="@(b => b.CreatedAt.ToString("yyyy-MM-dd HH:mm"))">
+                <CellTemplate Context="b">
+                    <span class="text-xs text-muted-foreground">@b.CreatedAt.ToString("dd MMM yyyy")</span>
+                </CellTemplate>
+            </ColumnDef>
+
+            <ColumnDef TItem="BatteryDTO" Key="actions" Header="Actions" Align="right"
+            ExcelValueSelector="@(b => "")">
+                <CellTemplate Context="b">
+                    <div class="flex items-center justify-end gap-1">
+                        <Tooltip>
+                            <TooltipTrigger>
+                                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon" @onclick="() => OpenView(b)">
+                                    <Blazicon Svg="Lucide.Eye" class="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent Side="TooltipSide.Top">View</TooltipContent>
+                        </Tooltip>
+                        <AuthorizeView Roles="Administrator,Supervisor,Maintenance">
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon" @onclick="() => OpenEdit(b)">
+                                        <Blazicon Svg="Lucide.Pencil" class="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent Side="TooltipSide.Top">Edit</TooltipContent>
+                            </Tooltip>
+                        </AuthorizeView>
+                        <AuthorizeView Roles="Administrator,Supervisor">
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon" @onclick="() => ShowDeleteConfirm(b.Id)">
+                                        <Blazicon Svg="Lucide.Trash2" class="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent Side="TooltipSide.Top">Delete</TooltipContent>
+                            </Tooltip>
+                        </AuthorizeView>
+                    </div>
+                </CellTemplate>
+            </ColumnDef>
+
+        </Columns>
+        <ActionButtons>
+            <button class="inline-flex items-center justify-center w-6 h-6 rounded
+               border border-border bg-background text-muted-foreground
+               hover:bg-muted hover:text-foreground
+               transition-colors cursor-pointer text-xs"
+            title="Refresh data"
+            @onclick="LoadAsync">
+                &#x21BA;
+            </button>
+        </ActionButtons>
+    </DataTable>
+</div>
+
+
+@* ════════════════════════════════════════════════════════════════════
+   UNIFIED DBC DIALOG
+   Left (190px): compact file list + "Upload New DBC" button at top
+   Right (flex-1): Upload form  |  DBC signal/message editor
+   ════════════════════════════════════════════════════════════════════ *@
+
+<Dialog @bind-Open="@_isDbcOpen">
+
+    @* overflow-hidden added so the flex children cannot punch through max-h *@
+    <DialogContent Size="DialogSize.Full" Class="flex flex-col h-[80vh] overflow-hidden">
+
+        <DialogHeader class="shrink-0">
+            <DialogTitle class="flex items-center gap-2 text-sm">
+                <Blazicon Svg="Lucide.FileCode2" class="w-4 h-4 text-primary" />
+                DBC Files &#x2014; @_dbcBattery?.Name
+            </DialogTitle>
+            <DialogDescription class="text-xs">
+                @_dbcBattery?.Producer &#xB7; Type @_dbcBattery?.BatteryTypeId &#xB7;
+                @DbcCount(_dbcBattery?.Id ?? 0) file@(DbcCount(_dbcBattery?.Id ?? 0) != 1 ? "s" : "") uploaded
+            </DialogDescription>
+        </DialogHeader>
+
+        @* ─── BODY ───────────────────────────────────────────────────────────
+           flex-1      → takes all remaining height between header and footer
+           min-h-0     → CRITICAL: tells the browser the flex child may shrink
+                         below its natural content height (without this the child
+                         ignores max-h-[80vh] and the editor overflows the dialog)
+           overflow-hidden → clips any child that still tries to escape
+        ─────────────────────────────────────────────────────────────────────── *@
+        <div class="flex gap-0 mt-2 flex-1 min-h-0 overflow-hidden">
+
+            @* ── LEFT PANEL: file list ── *@
+            <div class="flex flex-col border-r border-border shrink-0" style="width:190px;">
+
+                @* Upload button pinned at top of list *@
+                <div class="shrink-0 px-2 py-2 border-b border-border">
+                    <button @onclick="SwitchToUpload"
+                    class="@("w-full flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors " +
+                                     (_dbcRightMode == DbcRightMode.Upload
+                                         ? "bg-primary text-primary-foreground"
+                                         : "border border-dashed border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground"))">
+                        <Blazicon Svg="Lucide.Upload" class="w-3 h-3" />
+                        Upload New DBC
+                    </button>
+                </div>
+
+                @* Scrollable file list *@
+                <div class="flex-1 overflow-y-auto min-h-0">
+                    @if (!DbcFilesForBattery(_dbcBattery?.Id ?? 0).Any())
+                    {
+                        <div class="flex flex-col items-center justify-center gap-1.5 py-8 px-3 text-center h-full">
+                            <Blazicon Svg="Lucide.FileX2" class="w-6 h-6 text-muted-foreground/30" />
+                            <p class="text-[10px] text-muted-foreground">No DBC files yet.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var dbc in DbcFilesForBattery(_dbcBattery?.Id ?? 0))
+                        {
+                            var isActive = _dbcSelected?.Id == dbc.Id && _dbcRightMode == DbcRightMode.Editor;
+                            <div class="@("group relative flex items-center gap-1.5 px-2 py-2 cursor-pointer border-b border-border transition-colors " +
+                                         (isActive ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"))"
+                            @onclick="() => SelectDbcForEditor(dbc)">
+                                <Blazicon Svg="Lucide.FileCode" class="@("w-3.5 h-3.5 shrink-0 " + (isActive ? "text-primary" : "text-muted-foreground"))" />
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-[11px] font-medium text-foreground truncate">@dbc.Name</p>
+                                    <p class="text-[9px] text-muted-foreground">v@dbc.Version &#xB7; @dbc.FileSizeKb KB</p>
+                                </div>
+                                @* Hover actions — download + delete *@
+                                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 top-1/2 -translate-y-1/2 bg-background/80 rounded">
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <button @onclick:stopPropagation @onclick="() => DownloadDbc(dbc)"
+                                            class="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+                                                <Blazicon Svg="Lucide.Download" class="w-3 h-3" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent Side="TooltipSide.Right">Download</TooltipContent>
+                                    </Tooltip>
+                                    <AuthorizeView Roles="Administrator,Supervisor">
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <button @onclick:stopPropagation @onclick="() => ConfirmDeleteDbc(dbc)"
+                                                class="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive">
+                                                    <Blazicon Svg="Lucide.Trash2" class="w-3 h-3" />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent Side="TooltipSide.Right">Delete</TooltipContent>
+                                        </Tooltip>
+                                    </AuthorizeView>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ── DIVIDER ── *@
+            <div class="w-px bg-border shrink-0"></div>
+
+            @* ── RIGHT PANEL: Upload form  |  DBC editor  |  empty state ──
+               flex-1      → takes remaining width
+               min-w-0     → prevents flex blowout on wide content
+               min-h-0     → CRITICAL: same reason as body div above — lets the
+                             panel shrink so DataTable's h-full resolves correctly
+               overflow-hidden flex flex-col → constrains DbcDatabaseEditor
+            ── *@
+            <div class="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
+
+                @if (_dbcRightMode == DbcRightMode.Upload)
+                {
+                    @* ── UPLOAD / META-EDIT FORM ────────────────────── *@
+                    <div class="flex-1 overflow-y-auto p-4">
+
+                        <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-3">
+                            @if (_dbcUploadEditTarget is null)
+                            {
+                                <Blazicon Svg="Lucide.Upload" class="w-3 h-3" />
+                                <span>Upload New DBC</span>
+                            }
+                            else
+                            {
+                                <Blazicon Svg="Lucide.FilePen" class="w-3 h-3" />
+                                <span>Edit Metadata &#x2014; @_dbcUploadEditTarget.Name</span>
+                            }
+                        </p>
+
+                        <EditForm EditContext="@_dbcEditContext" OnValidSubmit="SaveDbc">
+                            <DataAnnotationsValidator />
+
+                            <div class="space-y-3 max-w-sm">
+
+                                @* Name *@
+                                <div class="flex flex-col gap-0.5">
+                                    <label class="text-[10px] font-medium text-foreground/80">Name</label>
+                                    <InputText @bind-Value="_dbcForm.Name" class="@Inp()"
+                                    placeholder="e.g. Victron SmartBMS v2" />
+                                    <span class="text-[9px] text-destructive leading-none">
+                                        <ValidationMessage For="@(() => _dbcForm.Name)" />
+                                    </span>
+                                </div>
+
+                                @* Version *@
+                                <div class="flex flex-col gap-0.5">
+                                    <label class="text-[10px] font-medium text-foreground/80">Version</label>
+                                    <InputText @bind-Value="_dbcForm.Version" class="@Inp()"
+                                    placeholder="e.g. 2.1.0" />
+                                    <span class="text-[9px] text-destructive leading-none">
+                                        <ValidationMessage For="@(() => _dbcForm.Version)" />
+                                    </span>
+                                </div>
+
+                                @* Description *@
+                                <div class="flex flex-col gap-0.5">
+                                    <label class="text-[10px] font-medium text-foreground/80">
+                                        Description <span class="text-muted-foreground font-normal">(optional)</span>
+                                    </label>
+                                    <InputText @bind-Value="_dbcForm.Description" class="@Inp()"
+                                    placeholder="Short notes..." />
+                                </div>
+
+                                @* File picker — only shown for new upload *@
+                                @if (_dbcUploadEditTarget is null)
+                                {
+                                    <div class="flex flex-col gap-0.5">
+                                        <label class="text-[10px] font-medium text-foreground/80">DBC File</label>
+                                        <label class="@("flex items-center gap-2 rounded-md border border-dashed px-3 py-2 cursor-pointer text-xs transition-colors " +
+                                                       (_dbcFile is null ? "border-border text-muted-foreground hover:bg-muted/30" : "border-primary/40 bg-primary/5 text-primary"))">
+                                            <Blazicon Svg="Lucide.Paperclip" class="w-3.5 h-3.5 shrink-0" />
+                                            <span class="truncate">
+                                                @(_dbcFile is null ? "Click to select .dbc file" : _dbcFile.Name)
+                                            </span>
+                                            <InputFile OnChange="OnDbcFileSelected" accept=".dbc" class="hidden" />
+                                        </label>
+                                        @if (_dbcFile is not null)
+                                        {
+                                            <span class="text-[9px] text-muted-foreground">
+                                                @(Math.Round(_dbcFile.Size / 1024.0, 1)) KB
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="rounded-md bg-muted/30 border border-border px-3 py-2 flex items-center gap-2">
+                                        <Blazicon Svg="Lucide.FileCode" class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                        <div class="min-w-0">
+                                            <p class="text-[10px] font-medium text-foreground truncate">@_dbcUploadEditTarget.OriginalFileName</p>
+                                            <p class="text-[9px] text-muted-foreground">@_dbcUploadEditTarget.FileSizeKb KB &#xB7; file cannot be changed</p>
+                                        </div>
+                                    </div>
+                                }
+
+                            </div>
+
+                            <div class="flex items-center gap-2 mt-4 pt-3 border-t border-border max-w-sm">
+                                @if (_dbcUploadEditTarget is not null)
+                                {
+                                    <Button Type="button" Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                    class="text-xs" @onclick="ClearDbcSelection">
+                                        <Blazicon Svg="Lucide.X" class="w-3 h-3 mr-1" />
+                                        Cancel
+                                    </Button>
+                                }
+                                <Button Type="submit" Size="ButtonSize.Small" class="ml-auto text-xs" Disabled="@_dbcSaving">
+                                    @if (_dbcSaving)
+                                    {
+                                        <span class="w-3 h-3 mr-1.5 animate-spin rounded-full border border-current border-t-transparent inline-block"></span>
+                                    }
+                                    else
+                                    {
+                                        <Blazicon Svg="@(_dbcUploadEditTarget is null ? Lucide.Upload : Lucide.Save)" class="w-3 h-3 mr-1.5" />
+                                    }
+                                    @(_dbcUploadEditTarget is null ? "Upload" : "Save Changes")
+                                </Button>
+                            </div>
+
+                        </EditForm>
+                    </div>
+                }
+                else if (_dbcRightMode == DbcRightMode.Editor && _dbcSelected is not null)
+                {
+                    @* ── DBC DATABASE EDITOR ────────────────────────────────────
+                       flex-1  → fills the right panel vertically
+                       min-h-0 → lets DataTable's h-full resolve to a finite px value
+                                 (without this the editor grows to natural height and
+                                 the DataTable tbody never gets a scroll container)
+                       overflow-hidden → final safety clip
+                    ── *@
+                    <div class="flex-1 min-h-0 overflow-hidden">
+                        <DbcDatabaseEditor Database="@_dbcSelected.dbcDatabase"
+                        DbFileId="@_dbcSelected.Id"
+                        OnSave="@HandleDbcSave" />
+                    </div>
+                }
+                else
+                {
+                    @* ── Empty state ── *@
+                    <div class="flex-1 flex flex-col items-center justify-center gap-2 text-center p-8">
+                        <Blazicon Svg="Lucide.FileCode2" class="w-10 h-10 text-muted-foreground/20" />
+                        <p class="text-sm text-muted-foreground">Select a file to edit its signals</p>
+                        <p class="text-[10px] text-muted-foreground/60">or click &#x201C;Upload New DBC&#x201D; to add one</p>
+                    </div>
+                }
+
+            </div>
+        </div>
+
+        <DialogFooter class="shrink-0 pt-2 border-t border-border mt-2">
+            <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small"
+            OnClick="@(() => _isDbcOpen = false)">
+                Close
+            </Button>
+        </DialogFooter>
+
+    </DialogContent>
+</Dialog>
+
+@* ════════════════════════════════════════════
+   ADD / EDIT BATTERY DIALOG
+   ════════════════════════════════════════════ *@
+<Dialog @bind-Open="@_isAddOpen">
+    <DialogContent Size="DialogSize.XLarge">
+        <EditForm EditContext="@_editContext" OnValidSubmit="HandleAdd">
+            <DataAnnotationsValidator />
+
+            <DialogHeader>
+                <DialogTitle class="flex items-center gap-2 text-sm">
+                    <Blazicon Svg="Lucide.BatteryCharging" class="w-4 h-4 text-primary" />
+                    @(_formData.Id <= 0 ? "Add New Battery" : $"Edit &#x2014; {_formData.Name}")
+                </DialogTitle>
+                <DialogDescription class="text-xs">
+                    @(_formData.Id <= 0
+                            ? "Fill in battery specifications grouped by category."
+                            : "Update the specs below and save.")
+                </DialogDescription>
+            </DialogHeader>
+
+            <div class="space-y-2 py-1">
+
+                @* ── Identity ── *@
+                <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-2">
+                        <Blazicon Svg="Lucide.Tag" class="w-3 h-3" /> Identity
+                    </p>
+                    <div class="grid grid-cols-3 gap-x-3 gap-y-2">
+                        @Field("Name", "battery pack name", "col-span-1", @<InputText @bind-Value="_formData.Name" class="@Inp()" placeholder="e.g. Tesla 48V Pack" />, @<ValidationMessage For="@(() => _formData.Name)" />)
+                        @Field("Producer", "manufacturer", "col-span-1", @<InputText @bind-Value="_formData.Producer" class="@Inp()" placeholder="e.g. Tesla" />, @<ValidationMessage For="@(() => _formData.Producer)" />)
+                        @Field("Type ID", "battery type ref", "col-span-1", @<InputNumber @bind-Value="_formData.BatteryTypeId" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.BatteryTypeId)" />)
+                        @Field("Quantity", "pack count", "col-span-1", @<InputNumber @bind-Value="_formData.Quantity" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.Quantity)" />)
+                        @Field("Cells", "cell count", "col-span-1", @<InputNumber @bind-Value="_formData.NumberOfCells" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.NumberOfCells)" />)
+                    </div>
+                </div>
+
+                @* ── Voltage ── *@
+                <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-2">
+                        <Blazicon Svg="Lucide.Zap" class="w-3 h-3" /> Voltage
+                    </p>
+                    <div class="grid grid-cols-4 gap-x-3 gap-y-2">
+                        @Field("Nominal (V)", null, "col-span-1", @<InputNumber @bind-Value="_formData.NominalVoltage" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.NominalVoltage)" />)
+                        @Field("Maximum (V)", null, "col-span-1", @<InputNumber @bind-Value="_formData.MaximumVoltage" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.MaximumVoltage)" />)
+                        @Field("Gassing (V)", null, "col-span-1", @<InputNumber @bind-Value="_formData.GassingVoltage" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.GassingVoltage)" />)
+                        @Field("Break (V)", null, "col-span-1", @<InputNumber @bind-Value="_formData.BreakVoltage" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.BreakVoltage)" />)
+                    </div>
+                </div>
+
+                @* ── Current & Capacity ── *@
+                <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-2">
+                        <Blazicon Svg="Lucide.Gauge" class="w-3 h-3" /> Current &amp; Capacity
+                    </p>
+                    <div class="grid grid-cols-4 gap-x-3 gap-y-2">
+                        @Field("Nom. Current (A)", null, "col-span-1", @<InputNumber @bind-Value="_formData.NominalCurrent" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.NominalCurrent)" />)
+                        @Field("Capacity (Ah)", null, "col-span-1", @<InputNumber @bind-Value="_formData.NominalCapacity" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.NominalCapacity)" />)
+                        @Field("CCA (A)", null, "col-span-1", @<InputNumber @bind-Value="_formData.ColdCrankingCurrent" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.ColdCrankingCurrent)" />)
+                        @Field("Charge Factor", null, "col-span-1", @<InputNumber @bind-Value="_formData.ChargeFactor" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.ChargeFactor)" />)
+                    </div>
+                </div>
+
+                @* ── Properties + Comments ── *@
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                        <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-2">
+                            <Blazicon Svg="Lucide.Layers" class="w-3 h-3" /> Properties
+                        </p>
+                        <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+                            @Field("Impedance (&#x3A9;)", null, "col-span-1", @<InputNumber @bind-Value="_formData.Impedance" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.Impedance)" />)
+                            @Field("Energy Density (Wh/kg)", null, "col-span-1", @<InputNumber @bind-Value="_formData.EnergyDensity" class="@Inp()" />, @<ValidationMessage For="@(() => _formData.EnergyDensity)" />)
+                        </div>
+                    </div>
+                    <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                        <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-2">
+                            <Blazicon Svg="Lucide.MessageSquare" class="w-3 h-3" /> Comments
+                        </p>
+                        @Field(null, null, "col-span-1", @<InputText @bind-Value="_formData.Comments" class="@Inp()" placeholder="Optional notes..." />, null)
+                    </div>
+                </div>
+
+            </div>
+
+            <DialogFooter class="pt-3 border-t border-border mt-1">
+                <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small" @onclick="Cancel">Cancel</Button>
+                <Button Type="submit" Size="ButtonSize.Small">
+                    <Blazicon Svg="@(_formData.Id <= 0 ? Lucide.Plus : Lucide.Save)" class="w-3.5 h-3.5 mr-1.5" />
+                    @(_formData.Id <= 0 ? "Add Battery" : "Update Battery")
+                </Button>
+            </DialogFooter>
+        </EditForm>
+    </DialogContent>
+</Dialog>
+
+
+@* ════════════════════════════════════════════
+   VIEW DIALOG
+   ════════════════════════════════════════════ *@
+<Dialog @bind-Open="@_isViewOpen">
+    <DialogContent Size="DialogSize.Large">
+        <DialogHeader>
+            <DialogTitle class="flex items-center gap-2 text-sm">
+                <Blazicon Svg="Lucide.Battery" class="w-4 h-4" />
+                @_viewData.Name
+            </DialogTitle>
+            <DialogDescription class="text-xs">
+                @_viewData.Producer &#xB7; Type @_viewData.BatteryTypeId &#xB7; Qty @_viewData.Quantity &#xB7; @_viewData.NumberOfCells cells
+            </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-2 py-1">
+            <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1.5">
+                    <Blazicon Svg="Lucide.Zap" class="w-3 h-3" /> Voltage
+                </p>
+                <div class="grid grid-cols-4 gap-2">
+                    @Stat("Nominal", $"{_viewData.NominalVoltage} V")
+                    @Stat("Maximum", $"{_viewData.MaximumVoltage} V")
+                    @Stat("Gassing", $"{_viewData.GassingVoltage} V")
+                    @Stat("Break", $"{_viewData.BreakVoltage} V")
+                </div>
+            </div>
+
+            <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1.5">
+                    <Blazicon Svg="Lucide.Gauge" class="w-3 h-3" /> Current &amp; Capacity
+                </p>
+                <div class="grid grid-cols-4 gap-2">
+                    @Stat("Nom. Current", $"{_viewData.NominalCurrent} A")
+                    @Stat("Capacity", $"{_viewData.NominalCapacity} Ah")
+                    @Stat("CCA", $"{_viewData.ColdCrankingCurrent} A")
+                    @Stat("Charge Factor", _viewData.ChargeFactor.ToString("F2"))
+                </div>
+            </div>
+
+            <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1.5">
+                    <Blazicon Svg="Lucide.Layers" class="w-3 h-3" /> Properties
+                </p>
+                <div class="grid grid-cols-4 gap-2">
+                    @Stat("Impedance", $"{_viewData.Impedance} &#x3A9;")
+                    @Stat("Energy Density", $"{_viewData.EnergyDensity} Wh/kg")
+                </div>
+            </div>
+
+            <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1.5">
+                    <Blazicon Svg="Lucide.Info" class="w-3 h-3" /> Metadata
+                </p>
+                <div class="grid grid-cols-4 gap-2">
+                    @Stat("Created At", _viewData.CreatedAt.ToString("dd MMM yy"))
+                    @Stat("Created By", _viewData.CreatedBy ?? "&#x2014;")
+                    @Stat("Updated At", _viewData.UpdatedAt.ToString("dd MMM yy"))
+                    @Stat("Updated By", _viewData.UpdatedBy ?? "&#x2014;")
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_viewData.Comments))
+            {
+                <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1">
+                        <Blazicon Svg="Lucide.MessageSquare" class="w-3 h-3" /> Comments
+                    </p>
+                    <p class="text-xs text-foreground">@_viewData.Comments</p>
+                </div>
+            }
+        </div>
+
+        <DialogFooter class="pt-2">
+            <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small"
+            OnClick="@(() => _isViewOpen = false)">
+                Close
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+
+@* ── Confirm Delete Battery ── *@
+<ConfirmDialog IsOpen="@_isConfirmOpen"
+IsOpenChanged="@(v => _isConfirmOpen = v)"
+Title="@_confirmTitle"
+Message="@_confirmMsg"
+OnConfirm="ExecuteDelete" />
+
+@* ── Confirm Delete DBC ── *@
+<ConfirmDialog IsOpen="@_isDbcConfirmOpen"
+IsOpenChanged="@(v => _isDbcConfirmOpen = v)"
+Title="Delete DBC File"
+Message="@($"Delete \"{_dbcToDelete?.Name}\"? This cannot be undone.")"
+OnConfirm="ExecuteDeleteDbc" />
+
+
+@code {
+
+
+
+    // ══════════════════════════════════════════════
+    // Battery state
+    // ══════════════════════════════════════════════
+    private List<BatteryDTO> _batteries = new();
+
+    private bool _isAddOpen;
+    private BatteryDTO _formData = new();
+    private EditContext _editContext = new EditContext(new BatteryDTO());
+
+    private bool _isViewOpen;
+    private BatteryDTO _viewData = new();
+
+    private bool _isConfirmOpen;
+    private string _confirmTitle = string.Empty;
+    private string _confirmMsg   = string.Empty;
+    private long   _deleteId;
+
+    // ══════════════════════════════════════════════
+    // DBC state
+    // ══════════════════════════════════════════════
+
+    // Right-panel mode enum
+    private enum DbcRightMode { None, Upload, Editor }
+
+    // Loaded per-battery on demand, keyed by BatteryId
+    private Dictionary<long, List<DbcFileRecordDto>> _dbcCache  = new();
+    private HashSet<long>                             _dbcLoaded = new();
+
+    private bool              _isDbcOpen;
+    private BatteryDTO?       _dbcBattery;
+
+    // _dbcSelected   = file currently loaded in the Editor panel
+    // _dbcUploadEditTarget = file whose metadata is being edited in the Upload panel (null = new upload)
+    private DbcFileRecordDto? _dbcSelected;
+    private DbcFileRecordDto? _dbcUploadEditTarget;
+
+    private DbcRightMode _dbcRightMode = DbcRightMode.None;
+
+    private DbcFileRequest _dbcForm        = new();
+    private EditContext    _dbcEditContext  = new EditContext(new DbcFileRequest());
+    private IBrowserFile?  _dbcFile;
+    private bool           _dbcSaving;
+
+    private bool              _isDbcConfirmOpen;
+    private DbcFileRecordDto? _dbcToDelete;
+
+    // ── helpers ──────────────────────────────────
+    private int DbcCount(long batteryId) =>
+        _dbcCache.TryGetValue(batteryId, out var list) ? list.Count : 0;
+
+    private List<DbcFileRecordDto> DbcFilesForBattery(long batteryId) =>
+        _dbcCache.TryGetValue(batteryId, out var list) ? list : new();
+
+    // ══════════════════════════════════════════════
+    // Lifecycle
+    // ══════════════════════════════════════════════
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var r = await BServices.GetBatteries();
+        if (r.Success) _batteries = r.Data;
+
+        foreach (var battery in _batteries)
+            await LoadDbcForBatteryAsync(battery.Id);
+    }
+
+    // ══════════════════════════════════════════════
+    // Battery CRUD
+    // ══════════════════════════════════════════════
+    private void OpenAdd()
+    {
+        _formData     = new BatteryDTO();
+        _editContext  = new EditContext(_formData);
+        _isAddOpen    = true;
+    }
+
+    public void OpenEdit(BatteryDTO b)
+    {
+        _formData = new BatteryDTO
+            {
+                Id                  = b.Id,
+                Name                = b.Name,
+                Producer            = b.Producer,
+                BatteryTypeId       = b.BatteryTypeId,
+                Quantity            = b.Quantity,
+                NumberOfCells       = b.NumberOfCells,
+                NominalVoltage      = b.NominalVoltage,
+                MaximumVoltage      = b.MaximumVoltage,
+                GassingVoltage      = b.GassingVoltage,
+                BreakVoltage        = b.BreakVoltage,
+                NominalCurrent      = b.NominalCurrent,
+                NominalCapacity     = b.NominalCapacity,
+                ColdCrankingCurrent = b.ColdCrankingCurrent,
+                ChargeFactor        = b.ChargeFactor,
+                Impedance           = b.Impedance,
+                EnergyDensity       = b.EnergyDensity,
+                Comments            = b.Comments,
+                CreatedAt           = b.CreatedAt,
+                CreatedBy           = b.CreatedBy,
+                UpdatedAt           = b.UpdatedAt,
+                UpdatedBy           = b.UpdatedBy,
+            };
+        _editContext = new EditContext(_formData);
+        _isAddOpen   = true;
+    }
+
+    private void OpenView(BatteryDTO b) { _viewData = b; _isViewOpen = true; }
+    private void Cancel() => _isAddOpen = false;
+
+    private async Task HandleAdd()
+    {
+        var r = await BServices.CreateOrUpdateBattery(_formData);
+        if (r.Success)
+        {
+            Toast.Success(r.Message);
+            var idx = _batteries.FindIndex(b => b.Id == _formData.Id);
+            if (idx >= 0) _batteries[idx] = r.Data; else _batteries.Add(r.Data);
+            _isAddOpen = false;
+        }
+        else Toast.Error(r.Message);
+    }
+
+    private void ShowDeleteConfirm(long id)
+    {
+        _deleteId     = id;
+        _confirmTitle = "Delete Battery";
+        _confirmMsg   = "Are you sure? This will also remove all associated DBC files.";
+        _isConfirmOpen = true;
+    }
+
+    private async Task ExecuteDelete()
+    {
+        var r = await BServices.BatteryDelete(_deleteId);
+        if (r.Success) { Toast.Success(r.Message); _batteries.RemoveAll(b => b.Id == _deleteId); _dbcCache.Remove(_deleteId); }
+        else Toast.Error(r.Message);
+    }
+
+    // ══════════════════════════════════════════════
+    // DBC — unified manager
+    // ══════════════════════════════════════════════
+
+    private async Task OpenDbcManager(BatteryDTO b)
+    {
+        _dbcBattery          = b;
+        _dbcSelected         = null;
+        _dbcUploadEditTarget = null;
+        _dbcFile             = null;
+        _dbcForm             = new DbcFileRequest { BatteryId = b.Id };
+        _dbcEditContext      = new EditContext(_dbcForm);
+
+        await LoadDbcForBatteryAsync(b.Id);
+
+        // If battery already has files open the editor on the first one,
+        // otherwise start on the Upload form.
+        var files = DbcFilesForBattery(b.Id);
+        if (files.Any())
+        {
+            _dbcSelected  = files[0];
+            _dbcRightMode = DbcRightMode.Editor;
+        }
+        else
+        {
+            _dbcRightMode = DbcRightMode.Upload;
+        }
+
+        _isDbcOpen = true;
+        StateHasChanged();
+    }
+
+    private async Task LoadDbcForBatteryAsync(long batteryId)
+    {
+        var r = await DbcService.GetByBatteryIdAsync(batteryId);
+        if (r.Success)
+        {
+            _dbcCache[batteryId] = r.Data ?? new();
+            _dbcLoaded.Add(batteryId);
+        }
+    }
+
+    // Click a file in the left list -> open in editor
+    private void SelectDbcForEditor(DbcFileRecordDto dbc)
+    {
+        _dbcSelected  = dbc;
+        _dbcRightMode = DbcRightMode.Editor;
+        StateHasChanged();
+    }
+
+    // "Upload New DBC" button
+    private void SwitchToUpload()
+    {
+        _dbcUploadEditTarget = null;
+        _dbcFile             = null;
+        _dbcForm             = new DbcFileRequest { BatteryId = _dbcBattery?.Id ?? 0 };
+        _dbcEditContext      = new EditContext(_dbcForm);
+        _dbcRightMode        = DbcRightMode.Upload;
+        StateHasChanged();
+    }
+
+    private void ClearDbcSelection()
+    {
+        _dbcUploadEditTarget = null;
+        _dbcFile             = null;
+        _dbcForm             = new DbcFileRequest { BatteryId = _dbcBattery?.Id ?? 0 };
+        _dbcEditContext      = new EditContext(_dbcForm);
+        // Stay on Upload panel but clear the edit target
+        StateHasChanged();
+    }
+
+    private void OnDbcFileSelected(InputFileChangeEventArgs e)
+    {
+        _dbcFile = e.File;
+        if (_dbcForm is not null && string.IsNullOrEmpty(_dbcForm.Name))
+            _dbcForm.Name = Path.GetFileNameWithoutExtension(e.File.Name);
+    }
+
+    private async Task SaveDbc()
+    {
+        if (_dbcBattery is null) return;
+        _dbcSaving = true;
+
+        if (_dbcUploadEditTarget is null)
+        {
+            // ── Upload new ──────────────────────────────────────────────
+            if (_dbcFile is null) { Toast.Error("Please select a .dbc file."); _dbcSaving = false; return; }
+
+            _dbcForm.BatteryId = _dbcBattery.Id;
+            var r = await DbcService.UploadAsync(_dbcForm, _dbcFile);
+
+            if (r.Success)
+            {
+                _dbcCache.TryGetValue(_dbcBattery.Id, out var list);
+                list ??= new List<DbcFileRecordDto>();
+                list.Insert(0, r.Data!);
+                _dbcCache[_dbcBattery.Id] = list;
+                Toast.Success(r.Message);
+                // After upload, open the new file in the editor
+                _dbcSelected  = r.Data;
+                _dbcRightMode = DbcRightMode.Editor;
+                ClearDbcSelection();
+            }
+            else Toast.Error(r.Message);
+        }
+        else
+        {
+            // ── Update metadata only ────────────────────────────────────
+            var r = await DbcService.UpdateMetaAsync(_dbcForm);
+
+            if (r.Success)
+            {
+                if (_dbcCache.TryGetValue(_dbcBattery.Id, out var list))
+                {
+                    var idx = list.FindIndex(d => d.Id == _dbcUploadEditTarget.Id);
+                    if (idx >= 0) list[idx] = r.Data!;
+                }
+                Toast.Success(r.Message);
+                ClearDbcSelection();
+            }
+            else Toast.Error(r.Message);
+        }
+
+        _dbcSaving = false;
+    }
+
+    private async Task DownloadDbc(DbcFileRecordDto dbc)
+    {
+        var path = await DbcService.GetFilePathAsync(dbc.Id);
+        if (!path.Success)
+            Toast.Error(path.Message);
+        // TODO: trigger browser download when path.Data is available
+    }
+
+    private void ConfirmDeleteDbc(DbcFileRecordDto dbc)
+    {
+        _dbcToDelete      = dbc;
+        _isDbcConfirmOpen = true;
+    }
+
+    private async Task ExecuteDeleteDbc()
+    {
+        if (_dbcToDelete is null || _dbcBattery is null) return;
+
+        var r = await DbcService.DeleteAsync(_dbcToDelete.Id);
+
+        if (r.Success)
+        {
+            if (_dbcCache.TryGetValue(_dbcBattery.Id, out var list))
+                list.RemoveAll(d => d.Id == _dbcToDelete.Id);
+
+            Toast.Success(r.Message);
+
+            // If deleted file was open in editor, reset to empty/upload
+            if (_dbcSelected?.Id == _dbcToDelete.Id)
+            {
+                _dbcSelected  = null;
+                _dbcRightMode = DbcFilesForBattery(_dbcBattery.Id).Any()
+                    ? DbcRightMode.None
+                    : DbcRightMode.Upload;
+            }
+        }
+        else Toast.Error(r.Message);
+
+        _dbcToDelete = null;
+    }
+
+    // Called when DbcDatabaseEditor raises OnSave
+    private async Task HandleDbcSave(DbcDatabase database)
+    {
+        if (_dbcSelected is null) return;
+
+        int sigId = 31;
+
+        foreach (var msg in database.Messages)
+        {
+            foreach (var sig in msg.Value.Signals)
+            {
+                if (sig.IsSelected)
+                    sig.SingalId = sigId++;
+            }
+        }
+
+        _dbcSelected.DbcstrJson = JsonConvert.SerializeObject(database);
+
+        var r = await DbcService.UpdateDbcDatabaseAsync(_dbcSelected.Id, database);
+
+        if (r.Success)
+            Toast.Success("DBC configuration saved.");
+        else
+            Toast.Error("Failed to save DBC: " + r.Message);    
+    }
+
+    // ══════════════════════════════════════════════
+    // Render helpers
+    // ══════════════════════════════════════════════
+    private static string Inp() =>
+        "w-full rounded-md border border-input bg-background px-2 py-1 text-xs " +
+        "focus:outline-none focus:ring-1 focus:ring-ring " +
+        "invalid:[&.modified]:border-destructive [&.modified.invalid]:ring-destructive/30";
+
+    private RenderFragment Field(string? label, string? hint, string colClass,
+                                  RenderFragment input, RenderFragment? validation) => __b =>
+    {
+        __b.OpenElement(0, "div");
+        __b.AddAttribute(1, "class", colClass + " flex flex-col gap-0.5");
+        if (label is not null)
+        {
+            __b.OpenElement(2, "label");
+            __b.AddAttribute(3, "class", "text-[10px] font-medium text-foreground/80");
+            __b.AddContent(4, label);
+            if (hint is not null)
+            {
+                __b.OpenElement(5, "span");
+                __b.AddAttribute(6, "class", "ml-1 text-[9px] text-muted-foreground font-normal");
+                __b.AddContent(7, hint);
+                __b.CloseElement();
+            }
+            __b.CloseElement();
+        }
+        __b.AddContent(8, input);
+        if (validation is not null)
+        {
+            __b.OpenElement(9, "span");
+            __b.AddAttribute(10, "class", "text-[9px] text-destructive leading-none");
+            __b.AddContent(11, validation);
+            __b.CloseElement();
+        }
+        __b.CloseElement();
+    };
+
+    private static RenderFragment Stat(string label, string value) => __b =>
+    {
+        __b.OpenElement(0, "div");
+        __b.AddAttribute(1, "class", "bg-background rounded border border-border px-2 py-1.5");
+        __b.OpenElement(2, "p");
+        __b.AddAttribute(3, "class", "text-[9px] text-muted-foreground uppercase tracking-wide mb-0.5");
+        __b.AddContent(4, label);
+        __b.CloseElement();
+        __b.OpenElement(5, "p");
+        __b.AddAttribute(6, "class", "text-xs font-semibold text-foreground leading-tight");
+        __b.AddContent(7, string.IsNullOrWhiteSpace(value) ? "&#x2014;" : value);
+        __b.CloseElement();
+        __b.CloseElement();
+    };
+}

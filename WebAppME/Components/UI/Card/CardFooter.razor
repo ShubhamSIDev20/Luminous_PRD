@@ -1,0 +1,22 @@
+@namespace BatteryTestingSystem.Components.UI.Card
+
+<div class="@GetCardFooterClasses()" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetCardFooterClasses()
+    {
+        var baseClasses = "flex items-center p-6 pt-0";
+        return string.IsNullOrWhiteSpace(Class) ? baseClasses : $"{baseClasses} {Class}";
+    }
+}

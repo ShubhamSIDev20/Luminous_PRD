@@ -1,0 +1,2258 @@
+[
+ {
+  "req": "SW_REQ_1",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "1.0 Digital Inputs",
+  "stmt": "BTS Primary and Secondary  has a provision of 4 digital inputs each. Hence there are total 8 Digital Inputs provided by "
+ },
+ {
+  "req": "SW_REQ_2",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "1.0 Digital Inputs",
+  "stmt": "Inputs from BTS Primary will be referred as INPUT_1 to INPUT_4 and those from BTS Secondary will be Refered as INPUT_5 t"
+ },
+ {
+  "req": "SW_REQ_3",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "1.0 Digital Inputs",
+  "stmt": "The BTS SW shall be able detect voltage level change from Low to High. Note : Low level is 0V and High level is 24V."
+ },
+ {
+  "req": "SW_REQ_4",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "1.0 Digital Inputs",
+  "stmt": "The BTS SW shall be able detect voltage level change from High to Low. Note : Low level is 0V and High level is 24V."
+ },
+ {
+  "req": "SW_REQ_5",
+  "app": "BM",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "1.0 Digital Inputs",
+  "stmt": "It shall be possible to Enable or Disable any Inputs through \"Battery Manager\" Software."
+ },
+ {
+  "req": "SW_REQ_6",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "1.0 Digital Inputs",
+  "stmt": "It shall be possible to Read any Input through Ethernet Port if enabled for communication with Host."
+ },
+ {
+  "req": "SW_REQ_7",
+  "app": "All",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "1.0 Digital Inputs",
+  "stmt": "It shall be possible to sned the Input Value Read from any Digital Inputs (Input1 to Input8)to Send on any CAN Port as a"
+ },
+ {
+  "req": "SW_REQ_8",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "2.0 Digital Outputs",
+  "stmt": "BTS Primary  has a provision of 4 digital outputs and the BTS Secondary has a provision of 8 digital ouputs.Hence there "
+ },
+ {
+  "req": "SW_REQ_9",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "2.0 Digital Outputs",
+  "stmt": "Outputs from BTS Primary will be referred as OUTPUT_1 to OUTPUT_4 and those from BTS Secondary will be Refered as OUTPUT"
+ },
+ {
+  "req": "SW_REQ_10",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "2.0 Digital Outputs",
+  "stmt": "BTS SW shall be able to make the output 0V or 24V depending on the Logical Command it receives."
+ },
+ {
+  "req": "SW_REQ_11",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "2.0 Digital Outputs",
+  "stmt": "If Output is given logical command LOW then the corresponding Output shall be 0V."
+ },
+ {
+  "req": "SW_REQ_12",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "2.0 Digital Outputs",
+  "stmt": "If Output is given logical command HI then the corresponding Output shall be 24V."
+ },
+ {
+  "req": "SW_REQ_13",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "2.0 Digital Outputs",
+  "stmt": "It shall be possible to Enable or Disable any Output through \"Battery Manager\" Software."
+ },
+ {
+  "req": "SW_REQ_14",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "2.0 Digital Outputs",
+  "stmt": "It shall be possible to control any Output through Ethernet Port if enabled for communication with Host."
+ },
+ {
+  "req": "SW_REQ_15",
+  "app": "All",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "2.0 Digital Outputs",
+  "stmt": "It shall be possible to control any Output through any 1 Bit Signal received on any of the Rx Message received on any of"
+ },
+ {
+  "req": "SW_REQ_16",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "3.0 Relays",
+  "stmt": "BTS Secondary has a provision of three Relays mounted on it's PCBs."
+ },
+ {
+  "req": "SW_REQ_17",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "3.0 Relays",
+  "stmt": "These Relays will be referred as RELAY_1 to RELAY_3"
+ },
+ {
+  "req": "SW_REQ_18",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "3.0 Relays",
+  "stmt": "RELAY_1 shall be used for change ove from Charging Mode to Discharging Mode for Dual Transistor Bank type of the BTS."
+ },
+ {
+  "req": "SW_REQ_19",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "3.0 Relays",
+  "stmt": "RELAY_2 and RELAY_3 shall be used as spare and shall be used by the BTS SW only."
+ },
+ {
+  "req": "SW_REQ_19",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "4.0 RTC",
+  "stmt": "The RTC module is responsible for maintaining accurate system time, including date and time of day, in a 24-hour format."
+ },
+ {
+  "req": "SW_REQ_20",
+  "app": "Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "4.0 RTC",
+  "stmt": "The RTC module shall provide a time-stamp for all system logs, including Epoch time and date, time (YYYY-MM-DD HH:MM:SS)"
+ },
+ {
+  "req": "SW_REQ_21",
+  "app": "All",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "4.0 RTC",
+  "stmt": "The RTC module shall synchronize with a BTS web application for time correction on request."
+ },
+ {
+  "req": "SW_REQ_22",
+  "app": "Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "4.0 RTC",
+  "stmt": "The RTC module shall communicate over I2C to set and retrieve time data."
+ },
+ {
+  "req": "SW_REQ_23",
+  "app": "Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "4.0 RTC",
+  "stmt": "If the RTC module fails to provide valid time data during startup, the system shall set the time to a default value and "
+ },
+ {
+  "req": "SW_REQ_24",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.1 RS485_1",
+  "stmt": "RS485_1  Port shall support MODBUS RTU Protocol for interfacing with third party HMI."
+ },
+ {
+  "req": "SW_REQ_25",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.1 RS485_1",
+  "stmt": "RS485_1 shall work as MOBUS Slave Node."
+ },
+ {
+  "req": "SW_REQ_26",
+  "app": "Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "5.1 RS485_1",
+  "stmt": "It shall be possible to configure following for RS485_1:\n1. BTS Device ID\n2. HMI Device ID\n3. Baud Rate\n4. Parity\n5. Sto"
+ },
+ {
+  "req": "SW_REQ_27",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.1 RS485_1",
+  "stmt": "It shall be possible to send any of the following parameters to HMI using Modbus Protocol through RS485_1 port:\n1. Batte"
+ },
+ {
+  "req": "SW_REQ_28",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "RS-485_Port_2 shall be able to read data from external third party devices."
+ },
+ {
+  "req": "SW_REQ_29",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "RS485 shall be configurable to be used via Modbus protocol."
+ },
+ {
+  "req": "SW_REQ_30",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "It shall be possible to set the baud rate of this port up to 115200 bps"
+ },
+ {
+  "req": "SW_REQ_31",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "The Modbus protocol shall use 8 data bits, 1 stop bit, and even/odd/none parity as per configuration XXX."
+ },
+ {
+  "req": "SW_REQ_32",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "The Modbus frame format shall consist of the following components: Address Field, Function Code, Data Field, CRC."
+ },
+ {
+  "req": "SW_REQ_33",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "The Modbus protocol shall support function codes XXX"
+ },
+ {
+  "req": "SW_REQ_34",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "The Modbus protocol shall support RTU (Remote Terminal Unit) mode with a fixed timeout of XXX ms for responses."
+ },
+ {
+  "req": "SW_REQ_35",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "The RS485 network shall support up to XXX devices connected on the same bus."
+ },
+ {
+  "req": "SW_REQ_36",
+  "app": "Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "5.2 RS 485_2",
+  "stmt": "The R485 network shall allow configuration of the slave address in the range XXX to XXX."
+ },
+ {
+  "req": "SW_REQ_37",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "6.0 Ethernet Port",
+  "stmt": "The BTS Primary has one Ethernet interface to communicate with host computer on which Battery Manager SW runs. PC/Comput"
+ },
+ {
+  "req": "SW_REQ_38",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "The Ethernet port shall support TCP/IP Protocol."
+ },
+ {
+  "req": "SW_REQ_39",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "BTS Primary Ethernet port must support IP V4."
+ },
+ {
+  "req": "SW_REQ_40",
+  "app": "Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "If possible the BTS Primary Ethernet port shall support IP V6"
+ },
+ {
+  "req": "SW_REQ_41",
+  "app": "BM + Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "BTS Primary Ethernet port shall support DHCP protocol."
+ },
+ {
+  "req": "SW_REQ_42",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "The ethernet port of the BTS Primary shall have Unique MAC Address."
+ },
+ {
+  "req": "SW_REQ_43",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "It shall be possible to read the MAC address of the BTS Primary Ethernet port through the Battery Manager Software."
+ },
+ {
+  "req": "SW_REQ_44",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "It shall be possible to set the IP address for the Ethernet port Manually through the Battery Manager Software."
+ },
+ {
+  "req": "SW_REQ_45",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "It shall be possible to enable auto IP address assignement by using DHCP Protocol."
+ },
+ {
+  "req": "SW_REQ_46",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "6.0 Ethernet Port",
+  "stmt": "It shall be possible to do following by using the BTS Primary Ethernet port and TCP/IP protocol:\n1. Configuration.\n2. Ca"
+ },
+ {
+  "req": "SW_REQ_47",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "7.0 CAN Interface",
+  "stmt": "The BTS Primary provides 3 CAN Ports for communication with external Devices."
+ },
+ {
+  "req": "SW_REQ_48",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "7.0 CAN Interface",
+  "stmt": "These Ports will be Reffered as CAN_1, CAN_2 and CAN_3."
+ },
+ {
+  "req": "SW_REQ_49",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "All CAN Ports shall support following Baud Rates:\n1. 125Kbps\n2. 250Kbps\n3. 500Kbps &\n4. 1Mbps"
+ },
+ {
+  "req": "SW_REQ_50",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "All CAN Ports shall support Standard as well as Extended CAN IDs."
+ },
+ {
+  "req": "SW_REQ_51",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "It shall be possible to Receive the CAN messages for each CAN Port as per configuration."
+ },
+ {
+  "req": "SW_REQ_52",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "It shall be possible to retrieve the information of the signals from the received messages for all CAN Ports."
+ },
+ {
+  "req": "SW_REQ_53",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "It shall be possible to send the received CAN Message Data to the Battery Manager SW running on the commputer."
+ },
+ {
+  "req": "SW_REQ_54",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "All CAN Ports shall be able to transmit messages Periodically as per configuration."
+ },
+ {
+  "req": "SW_REQ_55",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "It shall be possible to send any Data available with BTS Primary on any CAN Port."
+ },
+ {
+  "req": "SW_REQ_56",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "It shall be possible to do the Mapping of the Received CAN Signal Data from the received CAN message on any CAN Port wit"
+ },
+ {
+  "req": "SW_REQ_57",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.0 CAN Interface",
+  "stmt": "It shall be possible to do the Mapping of BTS Data which needs to be transmitted with corresponding CAN signals configur"
+ },
+ {
+  "req": "SW_REQ_58",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1 Configuration of CAN Frames.",
+  "stmt": "For each CAN port BTS shall recieve following groups of configurations :                                                "
+ },
+ {
+  "req": "SW_REQ_59",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.1.CAN Port Configuration:",
+  "stmt": "For each CAN Port there shall be following Port Configuration Parameters:\n1.1 Baud Rate\n1.2 Subscribed CAN Messages\n1.3 "
+ },
+ {
+  "req": "SW_REQ_60",
+  "app": "BM + Primary",
+  "status": "",
+  "type": "Requirement",
+  "section": "7.1.1.1 Baud Rate",
+  "stmt": "Add 125Kbps as well"
+ },
+ {
+  "req": "SW_REQ_61",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.1.1 Baud Rate",
+  "stmt": "It shall be possible to set CAN baud rate of 250 Kbps through configuration."
+ },
+ {
+  "req": "SW_REQ_62",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.1.1 Baud Rate",
+  "stmt": "It shall be possible to set CAN baud rate of 500 Kbps through configuration."
+ },
+ {
+  "req": "SW_REQ_63",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.1.1 Baud Rate",
+  "stmt": "It shall be possible to set CAN baud rate of 1 Mbps through configuration."
+ },
+ {
+  "req": "SW_REQ_64",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.1.1 Baud Rate",
+  "stmt": "If the baud rate configured is not any from above then error notification shall be raised."
+ },
+ {
+  "req": "SW_REQ_65",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "7.1.1.1 Baud Rate",
+  "stmt": "How to indicate error and what shall be the action?"
+ },
+ {
+  "req": "SW_REQ_66",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "7.1.1.2 Subscribed CAN Messages",
+  "stmt": "The Message which, a CAN Port is expected to Read and consume shall be configured as Subscribed CAN Message by the confi"
+ },
+ {
+  "req": "SW_REQ_67",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "7.1.1.2 Subscribed CAN Messages",
+  "stmt": "This configuration shall contain the total number of Subscribed by a CAN Port."
+ },
+ {
+  "req": "SW_REQ_68",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "7.1.1.2 Subscribed CAN Messages",
+  "stmt": "It shall be possible to receive all Subscribed CAN Messages configured."
+ },
+ {
+  "req": "SW_REQ_69",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "7.1.1.2 Subscribed CAN Messages",
+  "stmt": "Messages other than configured as Subscribed CAN Message shall not be received by the respective CAN Port of the BTS Pri"
+ },
+ {
+  "req": "SW_REQ_70",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "7.1.1.2 Subscribed CAN Messages",
+  "stmt": "Each Subscribed CAN Message for a given CAN Port shall have a unique Message Id."
+ },
+ {
+  "req": "SW_REQ_71",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "7.1.1.3 Published CAN Messages",
+  "stmt": "Message which a CAN Port is expected to Transmit shall be configured as Published CAN Message by the Configuration tool."
+ },
+ {
+  "req": "SW_REQ_72",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "7.1.1.3 Published CAN Messages",
+  "stmt": "This configuration shall contain the total number of Published CAN Messages by each CAN Port."
+ },
+ {
+  "req": "SW_REQ_73",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2. Message Configuration",
+  "stmt": "For each Message following parameters shall be configured:\n2.1 Message Id\n2.2 Message Name\n2.3 Message Type\n2.4 DLC\n2.5 "
+ },
+ {
+  "req": "SW_REQ_74",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.1 Message Identifier(Msg Id)",
+  "stmt": "For every CAN message shall have 11-bit message Identifier configured."
+ },
+ {
+  "req": "SW_REQ_75",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.1 Message Identifier(Msg Id)",
+  "stmt": "Message Ids configured shall be checked for validity , valid range is 0x000 to 0x7FF"
+ },
+ {
+  "req": "SW_REQ_76",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.1 Message Identifier(Msg Id)",
+  "stmt": "Any message with invalid Id shall not be considered for Transmission or reception."
+ },
+ {
+  "req": "SW_REQ_77",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.1 Message Identifier(Msg Id)",
+  "stmt": "For a given CAN Port, all messages shall have unique CAN Message ID."
+ },
+ {
+  "req": "SW_REQ_78",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "7.1.2.1 Message Identifier(Msg Id)",
+  "stmt": "29 bit Id is also required (not J1939) -- to be taken up in the next phase"
+ },
+ {
+  "req": "SW_REQ_79",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.2 Message Name",
+  "stmt": "Every CAN message Configured for a given CAN Port shall have unique Message Name."
+ },
+ {
+  "req": "SW_REQ_80",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.2 Message Name",
+  "stmt": "Message Name shall not be more than 30 letters long."
+ },
+ {
+  "req": "SW_REQ_81",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.3 Message Type",
+  "stmt": "For each CAN Port each and every CAN Message shall be configured as either \"Subscribed CAN Message\" or \"Published CAN Me"
+ },
+ {
+  "req": "SW_REQ_82",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.3 Message Type",
+  "stmt": "CAN Messages which are not configured as \"Subscribed\" or \"Published\" shall be ignored by BTS Primary."
+ },
+ {
+  "req": "SW_REQ_83",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.4 Data Length Code(DLC)",
+  "stmt": "For every CAN message it shall be possible to set the DLC of 1-8 Bytes through configuration."
+ },
+ {
+  "req": "SW_REQ_84",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "7.1.2.4 Data Length Code(DLC)",
+  "stmt": "Padding bytes not required."
+ },
+ {
+  "req": "SW_REQ_85",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.5 Periodicity",
+  "stmt": "BTS Primary shall receive the periodicity configured for all messages to be transmitted by each port ."
+ },
+ {
+  "req": "SW_REQ_86",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.5 Periodicity",
+  "stmt": "BTS Primary shall receive the periodicity configured for all messages to be received by each port ."
+ },
+ {
+  "req": "SW_REQ_87",
+  "app": "Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.5 Periodicity",
+  "stmt": "If the periodicity is not configured for any of the Messages then that message shall be ignored."
+ },
+ {
+  "req": "SW_REQ_88",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.2.5 Periodicity",
+  "stmt": "The validity of Periodicty shall be checked, which shall be in between 10mS to 2000ms in multiples of 5mS."
+ },
+ {
+  "req": "SW_REQ_89",
+  "app": "BM",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.6 MTO",
+  "stmt": "Message Time Out Time shall be configured for each Subscribed Message of all CAN Ports."
+ },
+ {
+  "req": "SW_REQ_90",
+  "app": "BM",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.6 MTO",
+  "stmt": "The Minimum value of MTO configured shall be equal to or more than the 3 Times the periodicity of that message."
+ },
+ {
+  "req": "SW_REQ_91",
+  "app": "BM",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.6 MTO",
+  "stmt": "The maximum possible MTO shall be 10000mS."
+ },
+ {
+  "req": "SW_REQ_92",
+  "app": "Primary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.6 MTO",
+  "stmt": "If MTO configured is less than Minimum Expected Value for that message or greater than 10000mS then it shall be ignored "
+ },
+ {
+  "req": "SW_REQ_93",
+  "app": "Primary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.6 MTO",
+  "stmt": "If MTO is not configured for a messgae then it shall be ignored and MTO shall not be monitored for that CAN Message."
+ },
+ {
+  "req": "SW_REQ_94",
+  "app": "BM + Primary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.7 MTO Exception Enable",
+  "stmt": "All subscribed CAN Message of all CAN ports shall support MTO Exception Enable configuration."
+ },
+ {
+  "req": "SW_REQ_95",
+  "app": "Primary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.7 MTO Exception Enable",
+  "stmt": "If the value of this is \"True\" for a Message then the Exception shall be raised on detection of the MTO for that message"
+ },
+ {
+  "req": "SW_REQ_96",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "7.1.2.7 MTO Exception Enable",
+  "stmt": "How exception shall be sent?"
+ },
+ {
+  "req": "SW_REQ_97",
+  "app": "BM + Primary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.8 MTO Exception Action",
+  "stmt": "This configuration shall define the Action to be taken after detection of the MTO for a message."
+ },
+ {
+  "req": "SW_REQ_98",
+  "app": "Primary + Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "7.1.2.8 MTO Exception Action",
+  "stmt": "Following Actions shall be possible:\n1. Stop the Test\n2. Continue Test"
+ },
+ {
+  "req": "SW_REQ_99",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3. Signal Configuration:",
+  "stmt": "The signal Configuration shall have following parameters:\n1. Signal Enumeration\n2. Signal Name\n3. Message ID\n4. Initial "
+ },
+ {
+  "req": "SW_REQ_100",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "7.1.3. Signal Configuration:",
+  "stmt": "Add multiplexed CAN Message as well"
+ },
+ {
+  "req": "SW_REQ_101",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.1 Signal Enumeration",
+  "stmt": "Each signal of all CAN Messages of all CAN Ports shall have unique Enumeration ranging from 0 to 65535."
+ },
+ {
+  "req": "SW_REQ_102",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.2 Signal Name",
+  "stmt": "Each signal of all CAN Messages of all CAN Ports shall have unique short name of not more than 30 letters."
+ },
+ {
+  "req": "SW_REQ_103",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.3 Message ID",
+  "stmt": "Each CAN signal shall have the associated CAN Messgae ID."
+ },
+ {
+  "req": "SW_REQ_104",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.4 Initial Value",
+  "stmt": "The initial value for each signal shall be configured."
+ },
+ {
+  "req": "SW_REQ_105",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.4 Initial Value",
+  "stmt": "The configured value must be less than the possible maximum value for that signal."
+ },
+ {
+  "req": "SW_REQ_106",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.5 Start Bit",
+  "stmt": "Each CAN Signal shall have the start bit configured."
+ },
+ {
+  "req": "SW_REQ_107",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.5 Start Bit",
+  "stmt": "Valid values of start bits are 0 to 63 including both."
+ },
+ {
+  "req": "SW_REQ_108",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.6 Length",
+  "stmt": "Each signal shall have the bit length configured for it."
+ },
+ {
+  "req": "SW_REQ_109",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.6 Length",
+  "stmt": "The configuration of the Start bit and Length of each Signal shall be such that the start bit of the nth signal shall be"
+ },
+ {
+  "req": "SW_REQ_110",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.7 Format",
+  "stmt": "Each CAN signal with length more than 8 bits shall have Format type indicating if the Signal is stored in  Intel Format "
+ },
+ {
+  "req": "SW_REQ_111",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.8 Scale",
+  "stmt": "It shall be possible to set the scaling factor of the signal through configuration."
+ },
+ {
+  "req": "SW_REQ_112",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.8 Scale",
+  "stmt": "The data type of the Scale shall be float."
+ },
+ {
+  "req": "SW_REQ_113",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.8 Offset",
+  "stmt": "It shall be possible to set the offset for each value signal through configuration."
+ },
+ {
+  "req": "SW_REQ_114",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "7.1.3.8 Offset",
+  "stmt": "The data type of the offset shall be float."
+ },
+ {
+  "req": "SW_REQ_115",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1 Voltage Measurement",
+  "stmt": "External 24 bit ADC shall be used to measure the Voltage of the battery under test."
+ },
+ {
+  "req": "SW_REQ_116",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1 Voltage Measurement",
+  "stmt": "It shall be possible to measure 100V DC Max with the external 24 Bit ADC."
+ },
+ {
+  "req": "SW_REQ_117",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1 Voltage Measurement",
+  "stmt": "The external ADC shall be configured to work in the Bipolar mode in order to detect the reverse polarity connection of t"
+ },
+ {
+  "req": "SW_REQ_118",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1 Voltage Measurement",
+  "stmt": "In Bipolar Mode it shall be possible to measure Voltage input from -2.5V to +2.5V with the External ADC."
+ },
+ {
+  "req": "SW_REQ_119",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.1 Max Battery Voltage",
+  "stmt": "Parameter \"Max Battery Voltage\" shall be configured in the BTS before starting the test as a Factory setting."
+ },
+ {
+  "req": "SW_REQ_120",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.1 Max Battery Voltage",
+  "stmt": "Any voltag configured between 2.5 V to 100 V shall be treated as valid \"Max Battery Voltage\"."
+ },
+ {
+  "req": "SW_REQ_121",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.1 Max Battery Voltage",
+  "stmt": "If the Max Battery Voltage configured is not valid then BTS shall raise the \"Invalid Max Battery Voltage\" Exception."
+ },
+ {
+  "req": "SW_REQ_122",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "8.1.1 Max Battery Voltage",
+  "stmt": "(How do we indicate this error?)"
+ },
+ {
+  "req": "SW_REQ_123",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.1 Max Battery Voltage",
+  "stmt": "If the \"Invalid Max Battery Voltage\" Exception is detected then Battery test shall be Disabled."
+ },
+ {
+  "req": "SW_REQ_124",
+  "app": "BM",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "8.1.2 Sampling Rate",
+  "stmt": "It shall be possible to configure the Sampling Rate for Voltage measurement."
+ },
+ {
+  "req": "SW_REQ_125",
+  "app": "BM",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "8.1.2 Sampling Rate",
+  "stmt": "The valid sampling rate configured shall be from 1mS to 1000mS."
+ },
+ {
+  "req": "SW_REQ_126",
+  "app": "BM + Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "8.1.2 Sampling Rate",
+  "stmt": "If the Sampling Rate configured is not valid then BTS shall raise the \"Invalid Voltage Sampling Rate\" Exception."
+ },
+ {
+  "req": "SW_REQ_127",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "8.1.2 Sampling Rate",
+  "stmt": "(How do we indicate this error?)"
+ },
+ {
+  "req": "SW_REQ_128",
+  "app": "BM + Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "8.1.2 Sampling Rate",
+  "stmt": "If the \"Voltage Sampling Rate\" Exception is detected then Battery test shall be Disabled."
+ },
+ {
+  "req": "SW_REQ_129",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.3 Reverse Polrity Detection",
+  "stmt": "Before starting the Battery Test as per the configured program the BTS Secondary shall measure the Battery Voltage."
+ },
+ {
+  "req": "SW_REQ_130",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.3 Reverse Polrity Detection",
+  "stmt": "If the measured voltage is -Ve i.e. less than 0V continuously for 2 seconds then \"Reverse Polarity\" exception shall be r"
+ },
+ {
+  "req": "SW_REQ_131",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.3 Reverse Polrity Detection",
+  "stmt": "If the \"Reverse Polarity\" Exception is detected then Battery test shall be Disabled."
+ },
+ {
+  "req": "SW_REQ_132",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "8.1.3 Reverse Polrity Detection",
+  "stmt": "(How do we indicate this error?)"
+ },
+ {
+  "req": "SW_REQ_133",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.4 Battery Open Detection",
+  "stmt": "Before starting the Battery Test if the measured Battery Voltage Voltage is found to be near 0V continuously for 2 secon"
+ },
+ {
+  "req": "SW_REQ_134",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.1.4 Battery Open Detection",
+  "stmt": "If the \"Battery Open\" Exception is detected then Battery test shall be Disabled."
+ },
+ {
+  "req": "SW_REQ_135",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "8.1.4 Battery Open Detection",
+  "stmt": "(How do we indicate this error?)"
+ },
+ {
+  "req": "SW_REQ_136",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "8.1.5 Calibration for Battery Voltage",
+  "stmt": ""
+ },
+ {
+  "req": "SW_REQ_137",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "8.1.5 Calibration for Battery Voltage",
+  "stmt": ""
+ },
+ {
+  "req": "SW_REQ_138",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2 Current Measurement",
+  "stmt": "External 24 bit ADC shall be used to measure the current of the battery under test."
+ },
+ {
+  "req": "SW_REQ_139",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Information",
+  "section": "8.2 Current Measurement",
+  "stmt": "The differential full scale signal of 75mV (0 to 75mV or -75mV to 0) will be available from BTS which shall to be measur"
+ },
+ {
+  "req": "SW_REQ_140",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Information",
+  "section": "8.2 Current Measurement",
+  "stmt": "For BTS with Single Transistor Bank for charging as well as the discharging the differential voltage signal proportional"
+ },
+ {
+  "req": "SW_REQ_141",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Information",
+  "section": "8.2 Current Measurement",
+  "stmt": "For BTS with Dual Transistor Bank for charging  the differential voltage signal proportional to current will be 0 to 75m"
+ },
+ {
+  "req": "SW_REQ_142",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2 Current Measurement",
+  "stmt": "The external ADC shall be configured to work in the Bipolar mode in order to detect the current flowing in the reverse d"
+ },
+ {
+  "req": "SW_REQ_143",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.1 Max Charging current",
+  "stmt": "Parameter \"Max Charging Current\" shall be configured in the BTS as a Factory setting."
+ },
+ {
+  "req": "SW_REQ_144",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.1 Max Charging current",
+  "stmt": "The Maximum Charging Current configured shall not be more than 200A"
+ },
+ {
+  "req": "SW_REQ_145",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.1 Max Charging current",
+  "stmt": "If the Max Charging Current configured is more than 200A then BTS shall raise the \"Invalid Max Charging Current\" Excepti"
+ },
+ {
+  "req": "SW_REQ_146",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "8.2.1 Max Charging current",
+  "stmt": "(How do we indicate this error?)"
+ },
+ {
+  "req": "SW_REQ_147",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.1 Max Charging current",
+  "stmt": "If the \"Invalid Max Charging Current\" Exception is detected then Battery test shall be Disabled."
+ },
+ {
+  "req": "SW_REQ_148",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.1 Max Discharging current",
+  "stmt": "Parameter \"Max Discharging Current\" shall be configured in the BTS as a Factory setting."
+ },
+ {
+  "req": "SW_REQ_149",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.1 Max Discharging current",
+  "stmt": "The Maximum Discharging Current configured shall not be more than 200A"
+ },
+ {
+  "req": "SW_REQ_150",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.1 Max Discharging current",
+  "stmt": "If the Max Discharging Current configured is more than 200A then BTS shall raise the \"Invalid Max Discharging Current\" E"
+ },
+ {
+  "req": "SW_REQ_151",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "8.2.1 Max Discharging current",
+  "stmt": "(How do we indicate this error?)"
+ },
+ {
+  "req": "SW_REQ_152",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.1 Max Discharging current",
+  "stmt": "If the \"Invalid Max Discharging Current\" Exception is detected then Battery test shall be Disabled."
+ },
+ {
+  "req": "SW_REQ_153",
+  "app": "BM",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "8.2.3 Sampling Rate",
+  "stmt": "It shall be possible to configure the Sampling Rate for Current measurement."
+ },
+ {
+  "req": "SW_REQ_154",
+  "app": "BM + Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "8.2.3 Sampling Rate",
+  "stmt": "The valid sampling rate configured shall be from 1mS to 1000mS."
+ },
+ {
+  "req": "SW_REQ_155",
+  "app": "BM + Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "8.2.3 Sampling Rate",
+  "stmt": "If the Sampling Rate configured is not valid then BTS shall raise the \"Invalid Current Sampling Rate\" Exception."
+ },
+ {
+  "req": "SW_REQ_156",
+  "app": "",
+  "status": "NA",
+  "type": "",
+  "section": "8.2.3 Sampling Rate",
+  "stmt": "(How do we indicate this error?)"
+ },
+ {
+  "req": "SW_REQ_157",
+  "app": "BM + Primary",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "8.2.3 Sampling Rate",
+  "stmt": "If the \"Current Sampling Rate\" Exception is detected then Battery test shall be Disabled."
+ },
+ {
+  "req": "SW_REQ_158",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Description",
+  "section": "8.2.4 Auto Ranging for Current Measurement",
+  "stmt": "In the charging mode if the measured current is less than the 50% of the configured Full scale value then the gain of 2 "
+ },
+ {
+  "req": "SW_REQ_159",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Description",
+  "section": "8.2.4 Auto Ranging for Current Measurement",
+  "stmt": "In the charging mode if the measured current is less than the 25% of the configured Full scale value then the gain of 4 "
+ },
+ {
+  "req": "SW_REQ_160",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Description",
+  "section": "8.2.4 Auto Ranging for Current Measurement",
+  "stmt": "In the charging mode if the measured current is less than the 12.5% of the configured Full scale value then the gain of "
+ },
+ {
+  "req": "SW_REQ_161",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Description",
+  "section": "8.2.4 Auto Ranging for Current Measurement",
+  "stmt": "In the discharging mode if the measured current is less than the 50% of the configured Full scale value then the gain of"
+ },
+ {
+  "req": "SW_REQ_162",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Description",
+  "section": "8.2.4 Auto Ranging for Current Measurement",
+  "stmt": "In the discharging mode if the measured current is less than the 25% of the configured Full scale value then the gain of"
+ },
+ {
+  "req": "SW_REQ_163",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Description",
+  "section": "8.2.4 Auto Ranging for Current Measurement",
+  "stmt": "In the discharging mode if the measured current is less than the 12.5% of the configured Full scale value then the gain "
+ },
+ {
+  "req": "SW_REQ_164",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.5 Calibration for Charging Current",
+  "stmt": "It shall be possible to do the calibration of Current for Charging."
+ },
+ {
+  "req": "SW_REQ_165",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "8.2.5 Calibration for Discharging Current",
+  "stmt": "It shall be possible to do the calibration of Current for Disc-Charging."
+ },
+ {
+  "req": "SW_REQ_166",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "9 Analog Output",
+  "stmt": "It shall be possible to generate Analog output either from 0 to 10V or -10V to 0 V"
+ },
+ {
+  "req": "SW_REQ_167",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "9 Analog Output",
+  "stmt": "The resolution of the Analog Output shall be at least 18bits."
+ },
+ {
+  "req": "SW_REQ_168",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Information",
+  "section": "9.1 BTS Transistor Bank Types",
+  "stmt": "For charging and discharging of the Battery the BTS uses Transistor Banks. The BTS comes with two types of Transistor Ba"
+ },
+ {
+  "req": "SW_REQ_169",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Information",
+  "section": "9.2 Single Transistor Bank",
+  "stmt": "In this type there is only one bank of transistor which is used for Charging as well as Discharging purpose."
+ },
+ {
+  "req": "SW_REQ_170",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.2 Single Transistor Bank",
+  "stmt": "With \"Single Transistor Bank\" type of BTS the Analog out put from BTS controller during charging shall be 0 to 10V."
+ },
+ {
+  "req": "SW_REQ_171",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.2 Single Transistor Bank",
+  "stmt": "With \"Single Transistor Bank\" type of BTS the Analog out put from BTS controller during discharging shall be 0 to 10V."
+ },
+ {
+  "req": "SW_REQ_172",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.2 Single Transistor Bank",
+  "stmt": "For switching over from charging to discharging a contator shall be driven from the BTS secondary card."
+ },
+ {
+  "req": "SW_REQ_173",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.2 Single Transistor Bank",
+  "stmt": "During charging mode the Relay shall be kept off in order to keep contactor in off condition."
+ },
+ {
+  "req": "SW_REQ_174",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.2 Single Transistor Bank",
+  "stmt": "During discharging mode the Relay shall be kept on in order to keep contactor in off condition."
+ },
+ {
+  "req": "SW_REQ_175",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "9.2 Single Transistor Bank",
+  "stmt": "Which relay Output to use?"
+ },
+ {
+  "req": "SW_REQ_176",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.3 Safe Switch Over with Single Transistor Bank",
+  "stmt": "In order to achieve safe switch over from charging to discharging or from discharging to charging first of all the Analo"
+ },
+ {
+  "req": "SW_REQ_177",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.3 Safe Switch Over with Single Transistor Bank",
+  "stmt": "After the analog out put becomes 0, the Relay switching shall be done as per the required mode."
+ },
+ {
+  "req": "SW_REQ_178",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.3 Safe Switch Over with Single Transistor Bank",
+  "stmt": "After switching the relay \"Switche Over Delay\" of 500mS shall be started."
+ },
+ {
+  "req": "SW_REQ_179",
+  "app": "Secondary",
+  "status": "Need to check",
+  "type": "Requirement",
+  "section": "9.3 Safe Switch Over with Single Transistor Bank",
+  "stmt": "After completion of the delay only the relavent Analog Output shall be given."
+ },
+ {
+  "req": "SW_REQ_180",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Information",
+  "section": "9.4 Dual Transistor Bank",
+  "stmt": "In this type there are two separate Transistor Banks for Charging and Discharging. For charging \"NPN Transistor Bank is "
+ },
+ {
+  "req": "SW_REQ_181",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "9.4 Dual Transistor Bank",
+  "stmt": "With \"Dual Transistor Bank\" type of BTS the Analog out put from BTS controller during charging shall be 0 to 10V."
+ },
+ {
+  "req": "SW_REQ_182",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "9.4 Dual Transistor Bank",
+  "stmt": "With \"Dual Transistor Bank\" type of BTS the Analog out put from BTS controller during discharging shall be -10 to 0 V."
+ },
+ {
+  "req": "SW_REQ_183",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "9.5 Safe Switch Over with Dual Transistor Bank",
+  "stmt": "In order to achieve safe switch over from charging to discharging or from discharging to charging first of all the Analo"
+ },
+ {
+  "req": "SW_REQ_184",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "9.5 Safe Switch Over with Dual Transistor Bank",
+  "stmt": "After the analog out put becomes 0, \"Switch Over Delay\" of 500mS shall be started."
+ },
+ {
+  "req": "SW_REQ_185",
+  "app": "Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "9.5 Safe Switch Over with Dual Transistor Bank",
+  "stmt": "After the \"Switch Over Delay\" is lapsed the relavint Analog Output shall be applied."
+ },
+ {
+  "req": "SW_REQ_186",
+  "app": "All",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "9.6 Factory Callibration",
+  "stmt": "It shall be possible to do the calibration of 0 to 10 V Analog output to achieve linearity of the output."
+ },
+ {
+  "req": "SW_REQ_187",
+  "app": "All",
+  "status": "NA",
+  "type": "Requirement",
+  "section": "9.6 Factory Callibration",
+  "stmt": "It shall be possible to do the calibration of -10 to 0 V Analog output to achieve linearity of the output."
+ },
+ {
+  "req": "SW_REQ_188",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.1 Introduction",
+  "stmt": "Charging or Descharging operations of the BTS are controlled by a Program which is developed in the BTS Programming Soft"
+ },
+ {
+  "req": "SW_REQ_189",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.2 Step",
+  "stmt": "Each Programming Step shall have a unique Step number."
+ },
+ {
+  "req": "SW_REQ_190",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.2 Step",
+  "stmt": "There shall not be any empty Step  i.e. Step without any Operator in the program."
+ },
+ {
+  "req": "SW_REQ_191",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.2 Step",
+  "stmt": "Each Programming Step shall contain the operation to be performed."
+ },
+ {
+  "req": "SW_REQ_192",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3 Operator",
+  "stmt": "There are total 28 operators supported by the existing BTS. However out of 28 only 14 operators are frequently used."
+ },
+ {
+  "req": "SW_REQ_193",
+  "app": "All",
+  "status": "Done (Except REG)",
+  "type": "Requirement",
+  "section": "10.3 Operator",
+  "stmt": "Following operators shall be supported:\n1.   SET\n2.   PAU\n3.   CHA\n4.   DCH\n5.   INT\n6.   STO\n7.   BEG\n8.   CYC\n9.   GOT"
+ },
+ {
+  "req": "SW_REQ_194",
+  "app": "",
+  "status": "",
+  "type": "",
+  "section": "10.3 Operator",
+  "stmt": "Operators not supported for Phase I:\nRCH\nLOM\nEIS\nPOL"
+ },
+ {
+  "req": "SW_REQ_195",
+  "app": "",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.1 SET",
+  "stmt": "BTS shall support SET Operator"
+ },
+ {
+  "req": "SW_REQ_196",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "If Operator for the BTS program step is PAU, then BTS shall drop power contactors until specified Limit value has elapse"
+ },
+ {
+  "req": "SW_REQ_197",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "For PAU operator Nominal Valu field must be BLANK."
+ },
+ {
+  "req": "SW_REQ_198",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "The Limit value for PAU shall be in the range of 10.0 Sec to 99.9 hr."
+ },
+ {
+  "req": "SW_REQ_199",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "If BTS receives PAU operator with Limit set beyond valid range (10. sec to 99.9hr) then \"OPERATOR_PAU_LIMIT_INVALID_VALU"
+ },
+ {
+  "req": "SW_REQ_200",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3.2 PAU",
+  "stmt": "Program Example with Only Limit Value for PAU:"
+ },
+ {
+  "req": "SW_REQ_201",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "If BTS receives PAU operator in program with Nominal Value then \"OPERATOR_PAU_INVALID_PARAMETER_ERROR\" shall be raised a"
+ },
+ {
+  "req": "SW_REQ_202",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "With PAU operator only \"GOTO\" action shall be allowed."
+ },
+ {
+  "req": "SW_REQ_203",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "If the Program setp with PAU operator conatains GOTO Action with Valid Destination then after execution of PAU Operator "
+ },
+ {
+  "req": "SW_REQ_204",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "If BTS receives a Program Step with PAU operator and Action other than \"GOTO\" then \"OPERATOR_PAU_INVALID_ACTION_ERROR\" s"
+ },
+ {
+  "req": "SW_REQ_205",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3.2 PAU",
+  "stmt": "Program Example for PAU with Action:"
+ },
+ {
+  "req": "SW_REQ_206",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.2 PAU",
+  "stmt": "If the Programming Step contains PAU Operator with Valid Registration Value then Registration as per mentioned value sha"
+ },
+ {
+  "req": "SW_REQ_207",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3.2 PAU",
+  "stmt": "Program Example of PAU with Registration Value:"
+ },
+ {
+  "req": "SW_REQ_208",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "When programming step is CHA, BTS shall perform charging operation by considering the Nominal value, Limit, Action and R"
+ },
+ {
+  "req": "SW_REQ_209",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "For CHA Operator the Nominal Value and Limit must be mentioned."
+ },
+ {
+  "req": "SW_REQ_210",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "BTS shall perform charging in CC mode if Nominal value mentioned is \"Current\" untill the specified limit is reached; aft"
+ },
+ {
+  "req": "SW_REQ_211",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "For CHA Operator if the Nominal Value mentioned in Current then the Limit Value must either be \"Voltage\", \"Time\" or \"Tem"
+ },
+ {
+  "req": "SW_REQ_212",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3 .3 CHA",
+  "stmt": "CHA Operator for CC charging with Voltage Limit:"
+ },
+ {
+  "req": "SW_REQ_213",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3 .3 CHA",
+  "stmt": "CHA Operator for CC charging with Time Limit:"
+ },
+ {
+  "req": "SW_REQ_214",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "BTS shall perform charging in CV mode if Nominal value mentioned is \"Voltage\" untill the specified limit is reached; aft"
+ },
+ {
+  "req": "SW_REQ_215",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "For CHA Operator if the Nominal Value mentioned in Voltage then the Limit Value must either be \"Current\", \"Ah\", \"Time\" o"
+ },
+ {
+  "req": "SW_REQ_216",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3 .3 CHA",
+  "stmt": "CHA Operator for CV charging with Current Limit:"
+ },
+ {
+  "req": "SW_REQ_217",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "If CHA Operator has not been specified with Nominal Value or Limit or both then \"OPERATOR_CHA_MANDETORY_PARAMETERS_MISSI"
+ },
+ {
+  "req": "SW_REQ_218",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "If both Current and Voltage nominal values are given with limits then BTS shall perform CC charging untill specified nom"
+ },
+ {
+  "req": "SW_REQ_219",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3 .3 CHA",
+  "stmt": "CHA Operator with CC & CV Charging in single step:"
+ },
+ {
+  "req": "SW_REQ_220",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "The BTS Program step with CHA Operator shall work with Action or Registration or both parameters if mentioned."
+ },
+ {
+  "req": "SW_REQ_221",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "For CHA operator if registration value is specified then standard parameters shall be logged with the specified registra"
+ },
+ {
+  "req": "SW_REQ_222",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .3 CHA",
+  "stmt": "If registration value is not specified(BLANK) for CHA operator then standard parameters shall be logged with default set"
+ },
+ {
+  "req": "SW_REQ_223",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.4 DCH",
+  "stmt": "The BTS shall also support DCH operator for testing the Discharging."
+ },
+ {
+  "req": "SW_REQ_224",
+  "app": "BM + Primary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .5 INT",
+  "stmt": "The BTS shall support the INT operator."
+ },
+ {
+  "req": "SW_REQ_225",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .6 STO",
+  "stmt": "The STO operator shall terminate the program."
+ },
+ {
+  "req": "SW_REQ_226",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .6 STO",
+  "stmt": "This operator shall automatically be set at the end of each program."
+ },
+ {
+  "req": "SW_REQ_227",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .6 STO",
+  "stmt": "It shall be possible to use \"STO\" operator in sub-programs."
+ },
+ {
+  "req": "SW_REQ_228",
+  "app": "NA",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3 .6 STO",
+  "stmt": "For BTS program, STO can be used as an \"Operator\" or as an \"Action\"."
+ },
+ {
+  "req": "SW_REQ_229",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .6 STO",
+  "stmt": "If STO is used as an operator then it must not have Nominal Value, Limit and Action for that program Step."
+ },
+ {
+  "req": "SW_REQ_230",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .6 STO",
+  "stmt": "If BTS receives STO operator in program with Nominal Value or Limit or Action or Registration Value or combination of th"
+ },
+ {
+  "req": "SW_REQ_231",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3 .6 STO",
+  "stmt": "If BTS receives STO Operator with some Nominal Value or Limit or Action or Registration Value then these values shal be "
+ },
+ {
+  "req": "SW_REQ_232",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3 .6 STO",
+  "stmt": "Below is the example of the STO Operator in the Program:"
+ },
+ {
+  "req": "SW_REQ_233",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall begin executing the repetition of the steps following the BEG operator until the cycle is terminated by a CYC "
+ },
+ {
+  "req": "SW_REQ_234",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall begin the execution of the steps \"XYZ\" times when a variable(XYZ) has been assigned to nominal value."
+ },
+ {
+  "req": "SW_REQ_235",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall ensure that all operations within the cycle execute sequentially unless a step is being  interrupted by a GOTO"
+ },
+ {
+  "req": "SW_REQ_236",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall ensure that all operations within the cycle execute sequentially unless a step is being  interrupted by a INT "
+ },
+ {
+  "req": "SW_REQ_237",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall ensure that all operations within the cycle execute sequentially unless a step is being  interrupted by a STO "
+ },
+ {
+  "req": "SW_REQ_238",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "In case the mentioned GOTO action is outside and preceeds the cycle the BTS shall move to execute the step and return to"
+ },
+ {
+  "req": "SW_REQ_239",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "It shall be possible add a label to the steps inside the cycle to ensure the predefined counter values do not get reset."
+ },
+ {
+  "req": "SW_REQ_240",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall execute that step mentioned with the GOTO action and jump to the end of the test if the prescribed limits have"
+ },
+ {
+  "req": "SW_REQ_241",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall move to the next step  inside the cycle in case the prescribed limits of the current step have been reached an"
+ },
+ {
+  "req": "SW_REQ_242",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall support interlacing of up to 16 different cycles, allowing nested execution of cycles without conflicts."
+ },
+ {
+  "req": "SW_REQ_243",
+  "app": "All",
+  "status": "Pending",
+  "type": "Information",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "Below is an example how BTS shall handle  BEG AND CYC operator commands :"
+ },
+ {
+  "req": "SW_REQ_244",
+  "app": "All",
+  "status": "Pending",
+  "type": "Information",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": ""
+ },
+ {
+  "req": "SW_REQ_245",
+  "app": "All",
+  "status": "Pending",
+  "type": "",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "Outer Cycle Execution:"
+ },
+ {
+  "req": "SW_REQ_246",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall begin executing the outer cycle at Step 11 and continue until Step 20."
+ },
+ {
+  "req": "SW_REQ_247",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall repeat the execution of Steps 11 to 20 exactly 2 times as defined by CYC 2* at Step 20."
+ },
+ {
+  "req": "SW_REQ_248",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall maintain cycle counters to track the number of times the outer cycle has executed."
+ },
+ {
+  "req": "SW_REQ_249",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "Upon completing two executions of the outer cycle, BTS shall proceed to Step 21"
+ },
+ {
+  "req": "SW_REQ_250",
+  "app": "All",
+  "status": "Pending",
+  "type": "",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "Inner Cycle Execution within Outer Cycle"
+ },
+ {
+  "req": "SW_REQ_251",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall begin executing the inner cycle at Step 14 and continue until Step 17."
+ },
+ {
+  "req": "SW_REQ_252",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall repeat the execution of Steps 14 to 17 exactly 3 times as defined by CYC 3* at Step 17."
+ },
+ {
+  "req": "SW_REQ_253",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "Each time the inner cycle completes execution, BTS shall return to Step 14 until the count reaches 3."
+ },
+ {
+  "req": "SW_REQ_254",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "After completing 3 iterations of the inner cycle, BTS shall proceed to Step 18."
+ },
+ {
+  "req": "SW_REQ_255",
+  "app": "All",
+  "status": "Pending",
+  "type": "",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "Interaction Between Outer and Inner Cycles"
+ },
+ {
+  "req": "SW_REQ_256",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "While executing the outer cycle, BTS shall execute the inner cycle in each repetition of the outer cycle."
+ },
+ {
+  "req": "SW_REQ_257",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "Since the outer cycle executes 2 times and the inner cycle executes 3 times per outer cycle, BTS shall execute the inner"
+ },
+ {
+  "req": "SW_REQ_258",
+  "app": "All",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall ensure that the cycle counters for the inner loop reset after each execution of the outer loop."
+ },
+ {
+  "req": "SW_REQ_259",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "If an external condition or error is encountered, BTS shall log the cycle status and abort execution as per system-defin"
+ },
+ {
+  "req": "SW_REQ_260",
+  "app": "All",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": ""
+ },
+ {
+  "req": "SW_REQ_261",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "In this example pre-defined counters for Ah and Wh have been set."
+ },
+ {
+  "req": "SW_REQ_262",
+  "app": "All",
+  "status": "Pending",
+  "type": "Information",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "BTS shall execute the GOTO operator command to enter the cyclic execution."
+ },
+ {
+  "req": "SW_REQ_263",
+  "app": "All",
+  "status": "Pending",
+  "type": "Information",
+  "section": "10.3.7 BEG & CYC",
+  "stmt": "This ensures the pre-defined counter values do not get reset"
+ },
+ {
+  "req": "SW_REQ_264",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.4 Action",
+  "stmt": "The Action column indicates how a test step is terminated as soon as the associated limit is reached."
+ },
+ {
+  "req": "SW_REQ_265",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.4 Action",
+  "stmt": "The Action shall be performed by the BTS if the prescribed limit has been reached."
+ },
+ {
+  "req": "SW_REQ_266",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.4 Action",
+  "stmt": "The BTS shall move to the execution of the next step if the predefined Limit is reached and Action is set as \"BLANK\"."
+ },
+ {
+  "req": "SW_REQ_267",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.4 Action",
+  "stmt": "BTS shall support following defined actions:\n1. INT\n2. STOP\n3. GOTO\n4. <Procedure Name>\n5. ERR\n6. MSG"
+ },
+ {
+  "req": "SW_REQ_268",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.4.1 INT",
+  "stmt": "When the associated limit of the Step being executed is reached, the program shall be interrupted."
+ },
+ {
+  "req": "SW_REQ_269",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.4.1 INT",
+  "stmt": "If BTS received \"Continue\" command from the Battery Manager during it's Inturupt state, then it shall go to the next Ste"
+ },
+ {
+  "req": "SW_REQ_270",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.4.2 STO",
+  "stmt": "When the associated limit of the Step being executed is reached, the BTS shall terminate the Step being executed and it "
+ },
+ {
+  "req": "SW_REQ_271",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.4.2 STO",
+  "stmt": "Following is the example of STO being used as Action:"
+ },
+ {
+  "req": "SW_REQ_272",
+  "app": "Primary + Secondary",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "10.4.3 GOTO",
+  "stmt": "When the associated limit of the Step being executed is reached, the program shall jump to the program step that contain"
+ },
+ {
+  "req": "SW_REQ_273",
+  "app": "All",
+  "status": "Done",
+  "type": "Information",
+  "section": "10.4.3 GOTO",
+  "stmt": "Example of GOTO Action:"
+ },
+ {
+  "req": "SW_REQ_274",
+  "app": "Primary + Secondary",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.4.4 Procedure Name",
+  "stmt": "When the associated limit of the Step being executed is reached, BTS shall execute  the procedure mentioned in the Actio"
+ },
+ {
+  "req": "SW_REQ_275",
+  "app": "Primary + Secondary",
+  "status": "Pending",
+  "type": "Requirement",
+  "section": "10.4.4 Procedure Name",
+  "stmt": "After execution of the Procedure the BTS shall execute the Step next to the step from where it executed the mentioned pr"
+ },
+ {
+  "req": "SW_REQ_276",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "10.4.5 ERR",
+  "stmt": "BTS shall support ERR Action."
+ },
+ {
+  "req": "SW_REQ_277",
+  "app": "",
+  "status": "Done",
+  "type": "",
+  "section": "10.4.6 MSG",
+  "stmt": "BTS shall support MSG Action"
+ },
+ {
+  "req": "SW_REQ_278",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "11  Program Compilation and Download",
+  "stmt": "All the Steps of a program shall be compiled by the Programming tool."
+ },
+ {
+  "req": "SW_REQ_279",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "11  Program Compilation and Download",
+  "stmt": "After successful compilation of the program, it shall be downloaded in the BTS Primary connected with Ethernet."
+ },
+ {
+  "req": "SW_REQ_280",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "11  Program Compilation and Download",
+  "stmt": "If any compilation errors are found in the Program then user shall be notified and the program shall not be doownloaded "
+ },
+ {
+  "req": "SW_REQ_281",
+  "app": "BM",
+  "status": "Done",
+  "type": "Requirement",
+  "section": "11  Program Compilation and Download",
+  "stmt": "If program download fails due to any reason then it shall be notified to the user."
+ }
+]

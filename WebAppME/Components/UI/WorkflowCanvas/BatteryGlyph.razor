@@ -1,0 +1,33 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using System.Globalization
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Services.Implementations.Workflow
+
+@* The glyph's whole API is CSS custom properties. The telemetry bridge updates a battery by
+   writing --wf-soc and --wf-status onto this element from JS — it never re-renders this
+   component. Fill is a scaleY transform, not a height, so it animates on the compositor. *@
+
+<div class="wf-battery @(IsCharging ? "wf-battery--charging" : "") @(Status == CircuitStatus.Error ? "wf-battery--fault" : "")"
+     style="--wf-soc: @Soc; --wf-status: var(@WorkflowStatusCss.Var(Status));"
+     data-role="battery">
+
+    @for (var i = 0; i < Math.Max(1, CellCount); i++)
+    {
+        <div class="wf-cell">
+            <div class="wf-cell__fill"></div>
+            <div class="wf-cell__shimmer"></div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int CellCount { get; set; } = 1;
+    [Parameter] public double StateOfCharge { get; set; }
+    [Parameter] public CircuitStatus Status { get; set; } = CircuitStatus.Offline;
+    [Parameter] public bool IsCharging { get; set; }
+
+    /// <summary>Clamped and formatted invariantly — a comma decimal separator would make the
+    /// custom property unparseable and the fill would silently sit at zero.</summary>
+    private string Soc =>
+        Math.Clamp(StateOfCharge, 0, 1).ToString("0.####", CultureInfo.InvariantCulture);
+}

@@ -1,0 +1,30 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+@using BatteryTestingSystem.Services.Implementations.Workflow
+
+@* Every checkbox click goes straight through WorkflowNodeConfig.Toggle, so the 6-cap is
+   enforced by that method (already unit-tested), not re-implemented here. Persistence is the
+   page's job (WorkflowCanvasPage), not this component's — it only reports the new config up via
+   ConfigChanged, matching the standard Blazor two-way-bindable component shape. *@
+
+<div class="wf-property-picker">
+    <div class="wf-dock__title">Node properties</div>
+    <p class="opacity-60 text-xs">@Config.VisibleProperties.Count / @WorkflowNodeProperties.MaxVisible selected</p>
+    <div class="wf-property-picker__list">
+        @foreach (var key in WorkflowNodeProperties.AvailableKeys)
+        {
+            var isChecked = Config.VisibleProperties.Contains(key);
+            var atCap = Config.VisibleProperties.Count >= WorkflowNodeProperties.MaxVisible;
+            <label class="wf-property-picker__item">
+                <input type="checkbox" data-key="@key" checked="@isChecked" disabled="@(!isChecked && atCap)"
+                       @onchange="@(() => ConfigChanged.InvokeAsync(Config.Toggle(key)))" />
+                <span>@WorkflowNodeProperties.Label(key)</span>
+            </label>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public WorkflowNodeConfig Config { get; set; } = WorkflowNodeConfig.Default;
+    [Parameter] public EventCallback<WorkflowNodeConfig> ConfigChanged { get; set; }
+}

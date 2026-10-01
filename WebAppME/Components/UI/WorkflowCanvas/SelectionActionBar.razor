@@ -1,0 +1,24 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+
+@* Makes no eligibility decisions itself - IsActionEnabled (WorkflowActionRules, already tested)
+   decides what is clickable; this only renders that and reports which button fired. *@
+
+<div class="wf-selection-action-bar">
+    <span class="font-semibold">@SelectedCount selected</span>
+    <button class="wf-btn" data-action="start" disabled="@(!IsActionEnabled("start"))"
+            @onclick="@(() => OnAction.InvokeAsync("start"))">Start</button>
+    <button class="wf-btn" data-action="stop" disabled="@(!IsActionEnabled("stop"))"
+            @onclick="@(() => OnAction.InvokeAsync("stop"))">Stop</button>
+    <button class="wf-btn" data-action="pause" disabled="@(!IsActionEnabled("pause"))"
+            @onclick="@(() => OnAction.InvokeAsync("pause"))">Pause</button>
+    <button class="wf-btn" data-action="continue" disabled="@(!IsActionEnabled("continue"))"
+            @onclick="@(() => OnAction.InvokeAsync("continue"))">Continue</button>
+    <button class="wf-btn" data-action="transfer" disabled="@(!IsActionEnabled("transfer"))"
+            @onclick="@(() => OnAction.InvokeAsync("transfer"))">Transfer</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int SelectedCount { get; set; }
+    [Parameter, EditorRequired] public Func<string, bool> IsActionEnabled { get; set; } = _ => false;
+    [Parameter] public EventCallback<string> OnAction { get; set; }
+}

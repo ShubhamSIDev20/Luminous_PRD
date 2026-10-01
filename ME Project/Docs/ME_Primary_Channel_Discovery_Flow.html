@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Channel Discovery Protocol — ME Primary × Secondary</title>
+<style>
+/* ---------------------------------------------------------------------------
+   ME Primary - Channel Discovery Protocol
+   Self-contained: no scripts, no external fonts, no CDN. Opens offline.
+   Single light theme on purpose - an engineering document that gets printed,
+   projected and shared across teams should render identically everywhere.
+
+   FLOWCHART RULES (why the diagrams cannot go out of alignment):
+     * Every node lives in one centred column, so node centres and arrow
+       centres are the same point by construction - never positioned by hand.
+     * A decision whose "other" answer leaves the flow carries that answer
+       INSIDE its own box as a footer row. No floating side branches.
+     * A decision whose two answers BOTH end in the same place uses .split,
+       which draws a real rail: one horizontal line and two drops landing
+       exactly on the two column centres (25% / 75% of the same container).
+--------------------------------------------------------------------------- */
+
+:root{
+  --paper:#FAFAF8;
+  --raised:#FFFFFF;
+  --ink:#16202C;
+  --muted:#5F6B7A;
+  --line:#D6DBE2;
+  --line-soft:#E8EBEF;
+  --primary:#1B5FA8;
+  --primary-soft:#EEF3FA;
+  --secondary:#B85C0C;
+  --secondary-soft:#FDF3E7;
+  --present:#2E7D52;
+  --present-soft:#EAF4EE;
+  --absent:#6E7885;
+  --absent-soft:#F0F2F5;
+  --shadow:0 1px 2px rgba(20,30,45,.05),0 8px 24px -12px rgba(20,30,45,.14);
+  --f-body:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --f-mono:"Cascadia Mono",Consolas,"SFMono-Regular","Liberation Mono",Menlo,monospace;
+}
+
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--f-body);
+  font-size:16px;
+  line-height:1.6;
+  margin:0;
+  padding:0 24px 80px;
+}
+.wrap{max-width:960px;margin:0 auto;}
+
+/* ------------------------------------------------------------- header --- */
+header.page{padding:56px 0 28px;border-bottom:2px solid var(--ink);}
+.eyebrow{
+  font-family:var(--f-mono);font-size:12px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--primary);
+  margin:0 0 14px;
+}
+h1{font-weight:700;font-size:40px;line-height:1.08;letter-spacing:-.015em;margin:0 0 14px;}
+.dek{font-size:18px;line-height:1.55;color:var(--muted);max-width:64ch;margin:0 0 24px;}
+.meta{display:flex;flex-wrap:wrap;gap:6px 30px;font-family:var(--f-mono);font-size:12.5px;color:var(--muted);}
+.meta b{color:var(--ink);font-weight:600;}
+
+.audience{
+  background:var(--primary-soft);border-left:3px solid var(--primary);
+  border-radius:0 8px 8px 0;padding:16px 22px;margin:28px 0 16px;
+}
+.audience p{margin:0;font-size:15px;line-height:1.62;color:#3C4A5A;}
+.audience b{color:var(--ink);font-weight:600;}
+.audience.alt{background:var(--secondary-soft);border-left-color:var(--secondary);margin-bottom:56px;}
+.audience.alt p{color:#5A4530;}
+
+/* ------------------------------------------------------------ sections -- */
+section{margin-bottom:64px;}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px;}
+.sec-num{font-family:var(--f-mono);font-size:13px;font-weight:600;color:var(--primary);letter-spacing:.05em;flex:0 0 auto;}
+h2{font-weight:600;font-size:25px;letter-spacing:-.01em;margin:0;line-height:1.2;}
+.lede{font-size:15.5px;line-height:1.65;color:var(--muted);max-width:70ch;margin:0 0 26px;}
+
+figure{margin:0;}
+.fig{
+  background:var(--raised);border:1px solid var(--line);border-radius:12px;
+  padding:34px 26px;box-shadow:var(--shadow);overflow-x:auto;
+}
+figcaption{font-size:14px;line-height:1.6;color:var(--muted);margin:16px 2px 0;max-width:78ch;}
+figcaption b{color:var(--ink);font-weight:600;}
+
+/* =====================================================================
+   SEQUENCE DIAGRAM  (section 1)
+   ===================================================================== */
+.seq{min-width:600px;}
+.seq-heads{display:grid;grid-template-columns:1fr 1fr;margin-bottom:4px;}
+.seq-head{
+  justify-self:center;background:var(--primary-soft);
+  border:1.5px solid var(--primary);color:var(--primary);
+  border-radius:7px;padding:9px 22px;
+  font-family:var(--f-mono);font-size:12.5px;font-weight:600;
+  letter-spacing:.06em;white-space:nowrap;
+}
+.seq-head.alt{background:var(--secondary-soft);border-color:var(--secondary);color:var(--secondary);}
+.seq-body{position:relative;padding:12px 0 4px;}
+.seq-body::before,.seq-body::after{content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--line);}
+.seq-body::before{left:25%;margin-left:-1px;}
+.seq-body::after{left:75%;margin-left:-1px;}
+.seq-row{position:relative;margin:0 0 22px;}
+.seq-label{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:7px;}
+.seq-n{
+  flex:0 0 auto;width:20px;height:20px;border-radius:50%;
+  background:var(--ink);color:var(--raised);
+  font-family:var(--f-mono);font-size:11px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+}
+.seq-text{font-family:var(--f-mono);font-size:13px;color:var(--ink);background:var(--raised);padding:0 10px;white-space:nowrap;}
+.seq-text .dim{color:var(--muted);}
+.seq-line{position:relative;height:2px;background:var(--ink);margin-left:25%;width:50%;}
+.seq-line.dashed{background:none;border-top:2px dashed var(--muted);height:0;}
+.seq-row.right .seq-line::after{
+  content:"";position:absolute;right:-1px;top:-5px;
+  border-top:6px solid transparent;border-bottom:6px solid transparent;
+  border-left:10px solid var(--ink);
+}
+.seq-row.left .seq-line::after{
+  content:"";position:absolute;left:-1px;top:-6px;
+  border-top:6px solid transparent;border-bottom:6px solid transparent;
+  border-right:10px solid var(--muted);
+}
+.seq-row.self .seq-line{
+  margin-left:25%;width:14%;border:2px solid var(--ink);border-left:none;
+  background:none;height:26px;border-radius:0 6px 6px 0;
+}
+.seq-row.self .seq-line::after{
+  content:"";position:absolute;left:-1px;bottom:-6px;
+  border-top:6px solid transparent;border-bottom:6px solid transparent;
+  border-right:10px solid var(--ink);
+}
+.seq-note{
+  background:var(--secondary-soft);border:1.5px solid var(--secondary);
+  border-radius:7px;color:#6B3A08;font-size:13.5px;line-height:1.5;
+  padding:9px 18px;margin:0 auto 22px;max-width:520px;text-align:center;
+}
+.seq-note.calm{background:var(--primary-soft);border-color:var(--primary);color:#144A85;}
+.seq-note.tally{
+  background:var(--ink);border-color:var(--ink);color:var(--raised);
+  font-family:var(--f-mono);font-size:13px;font-weight:600;letter-spacing:.03em;
+}
+
+/* =====================================================================
+   FLOWCHART PRIMITIVES  (sections 2 and 3)
+   ===================================================================== */
+.flow{
+  display:flex;flex-direction:column;align-items:center;
+  width:100%;max-width:600px;margin:0 auto;min-width:440px;
+}
+
+.node{
+  border-radius:9px;padding:14px 24px;text-align:center;
+  font-size:15px;line-height:1.45;
+  border:1.5px solid var(--line);background:var(--raised);color:var(--ink);
+  width:100%;
+}
+.node .sub{display:block;font-family:var(--f-mono);font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5;}
+.node.terminal{
+  border-radius:26px;padding:13px 30px;width:auto;min-width:260px;
+  font-family:var(--f-mono);font-size:13px;font-weight:600;letter-spacing:.07em;
+}
+.node.start{background:var(--primary);border-color:var(--primary);color:#FFFFFF;}
+.node.finish{background:var(--present);border-color:var(--present);color:#FFFFFF;}
+.node.gate{background:var(--primary-soft);border-color:var(--primary);color:#144A85;}
+.node.absent{background:var(--absent-soft);border-color:var(--absent);color:#3E4855;}
+.node.present{background:var(--present-soft);border-color:var(--present);color:#1E5637;}
+.node.map{
+  background:var(--ink);border-color:var(--ink);color:#FFFFFF;width:auto;min-width:280px;
+  font-family:var(--f-mono);font-size:13px;font-weight:600;letter-spacing:.03em;padding:15px 30px;
+}
+.node.map .sub{color:#AEBBC9;letter-spacing:0;font-weight:400;}
+
+/* A decision. If one answer leaves the flow, it goes in .alt INSIDE this box,
+   so the main path stays in the single centred column. */
+.node.decision{background:var(--secondary-soft);border-color:var(--secondary);color:#6B3A08;}
+.node.decision .q{font-weight:600;font-size:15.5px;}
+.node.decision .alt{
+  margin-top:11px;padding-top:11px;border-top:1px dashed var(--secondary);
+  font-size:13.5px;line-height:1.55;color:#7A4A12;text-align:left;
+  display:flex;gap:9px;align-items:flex-start;
+}
+.node.decision .alt .k{
+  flex:0 0 auto;font-family:var(--f-mono);font-size:11.5px;font-weight:700;
+  background:var(--secondary);color:#FFFFFF;border-radius:4px;padding:2px 7px;margin-top:1px;
+}
+.node.decision .alt b{color:#5A3208;font-weight:600;}
+
+/* vertical connector, centred by the flex column - always under the node */
+.arrow{width:2px;height:26px;background:var(--ink);position:relative;flex:0 0 auto;}
+.arrow::after{
+  content:"";position:absolute;bottom:-1px;left:-5px;
+  border-left:6px solid transparent;border-right:6px solid transparent;
+  border-top:9px solid var(--ink);
+}
+.arrow.tall{height:34px;}
+.arrow.plain::after{display:none;}     /* feeds a split rail, not a box */
+.arrow .tag{
+  position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  font-family:var(--f-mono);font-size:11.5px;font-weight:700;
+  color:var(--present);white-space:nowrap;
+}
+
+/* A true two-way split: both answers end in the same place, so neither
+   continues down the page. The rail is drawn, not implied. */
+.split{width:100%;}
+.split .rail{position:relative;height:30px;}
+.split .rail .h{position:absolute;top:0;left:25%;right:25%;height:2px;background:var(--ink);}
+.split .rail .d{position:absolute;top:0;width:2px;height:30px;background:var(--ink);}
+.split .rail .d.l{left:25%;margin-left:-1px;}
+.split .rail .d.r{left:75%;margin-left:-1px;}
+.split .rail .d::after{
+  content:"";position:absolute;bottom:-1px;left:-5px;
+  border-left:6px solid transparent;border-right:6px solid transparent;
+  border-top:9px solid var(--ink);
+}
+.split .cols{display:grid;grid-template-columns:1fr 1fr;}
+.split .col{display:flex;flex-direction:column;align-items:center;padding:0 8px;}
+.split .col .lbl{
+  font-family:var(--f-mono);font-size:11.5px;font-weight:700;
+  margin-bottom:9px;letter-spacing:.04em;
+}
+.split .col .lbl.yes{color:var(--present);}
+.split .col .lbl.no{color:var(--absent);}
+
+/* a bounded repeat, and a named protocol state */
+.repeat,.phase{
+  display:flex;flex-direction:column;align-items:center;
+  width:100%;background:#FCFCFB;border-radius:12px;
+}
+.repeat{border:2px dashed var(--line);padding:16px 22px 20px;}
+.phase{border:1.5px solid var(--line);padding:14px 22px 20px;}
+.repeat-label,.phase-label{
+  font-family:var(--f-mono);font-size:11.5px;font-weight:600;
+  letter-spacing:.05em;margin:0 0 16px;text-align:center;line-height:1.5;
+}
+.repeat-label{color:var(--muted);}
+.phase-label{color:var(--primary);}
+.loopback{
+  font-family:var(--f-mono);font-size:11.5px;color:var(--muted);line-height:1.6;
+  border-top:2px dashed var(--line);padding-top:10px;margin:18px 0 0;width:100%;text-align:center;
+}
+.loopback b{color:var(--ink);}
+
+/* ---------------------------------------------------------------- table -- */
+.tbl-wrap{background:var(--raised);border:1px solid var(--line);border-radius:10px;overflow-x:auto;box-shadow:var(--shadow);}
+table{width:100%;border-collapse:collapse;font-size:14.5px;font-variant-numeric:tabular-nums;}
+th{
+  text-align:left;font-family:var(--f-mono);font-size:11.5px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+  padding:14px 18px;border-bottom:1px solid var(--line);white-space:nowrap;
+}
+td{padding:14px 18px;border-bottom:1px solid var(--line-soft);vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+td.mono{font-family:var(--f-mono);font-size:13px;white-space:nowrap;}
+td.bytes{font-family:var(--f-mono);font-size:13.5px;color:var(--primary);font-weight:600;white-space:nowrap;}
+td .note{color:var(--muted);font-size:13.5px;}
+
+/* --------------------------------------------------------------- slots --- */
+.slot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;}
+.slot{background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:20px 22px;box-shadow:var(--shadow);}
+.slot.is-present{border-top:3px solid var(--present);}
+.slot.is-absent{border-top:3px solid var(--absent);}
+.slot h3{font-size:16.5px;font-weight:600;margin:0 0 5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.slot .sub{font-size:13.5px;color:var(--muted);margin:0 0 15px;line-height:1.5;}
+.slot pre{
+  font-family:var(--f-mono);font-size:12.5px;line-height:1.75;
+  background:var(--paper);border:1px solid var(--line-soft);border-radius:6px;
+  padding:14px 16px;margin:0;overflow-x:auto;
+}
+.tag{display:inline-block;font-family:var(--f-mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;letter-spacing:.04em;white-space:nowrap;}
+.tag.present{background:var(--present-soft);color:var(--present);}
+.tag.absent{background:var(--absent-soft);color:var(--absent);}
+.hl{color:var(--present);font-weight:600;}
+.dim{color:#9AA3AF;}
+.cm{color:var(--muted);}
+
+/* -------------------------------------------------------------- callout -- */
+.callout{background:var(--secondary-soft);border-left:3px solid var(--secondary);border-radius:0 8px 8px 0;padding:18px 22px;margin:26px 0 0;}
+.callout .label{
+  font-family:var(--f-mono);font-size:11.5px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--secondary);
+  display:block;margin-bottom:9px;
+}
+.callout p{margin:0;font-size:14.5px;line-height:1.65;color:#5A4530;}
+.callout p + p{margin-top:12px;}
+.callout b{color:var(--ink);font-weight:600;}
+.callout.calm{background:var(--primary-soft);border-left-color:var(--primary);}
+.callout.calm .label{color:var(--primary);}
+.callout.calm p{color:#33475C;}
+
+code{font-family:var(--f-mono);font-size:.88em;background:var(--primary-soft);padding:1.5px 6px;border-radius:4px;}
+.callout code{background:rgba(184,92,12,.11);color:#8A4508;}
+
+/* ------------------------------------------------------------ internals -- */
+.internals{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:16px;}
+.icard{background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:18px 20px;box-shadow:var(--shadow);}
+.icard .n{font-family:var(--f-mono);font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.05em;display:block;margin-bottom:7px;}
+.icard h3{font-size:15.5px;font-weight:600;margin:0 0 7px;line-height:1.3;}
+.icard p{margin:0;font-size:13.5px;line-height:1.6;color:var(--muted);}
+
+footer{
+  border-top:1px solid var(--line);padding-top:24px;
+  font-family:var(--f-mono);font-size:12px;color:var(--muted);
+  display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;
+}
+
+/* ---------------------------------------------------------------- print -- */
+@media print{
+  body{padding:0;background:#FFFFFF;font-size:11.5pt;}
+  .fig,.tbl-wrap,.slot,.icard{box-shadow:none;}
+  section{page-break-inside:avoid;margin-bottom:34px;}
+  figure,.slot-grid,.internals{page-break-inside:avoid;}
+  header.page{padding-top:0;}
+}
+@media (max-width:640px){
+  body{padding:0 15px 60px;}
+  h1{font-size:31px;}
+  .fig{padding:22px 12px;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <p class="eyebrow">ME Primary &times; Secondary &middot; CAN-FD interface</p>
+  <h1>How the Primary Finds Your Channels</h1>
+  <p class="dek">At power-up the Primary asks every Secondary which of its channels physically exist, then registers only those with the Web Application. This is the complete start-up sequence.</p>
+  <div class="meta">
+    <span><b>Status</b> proposed &mdash; not yet implemented</span>
+    <span><b>Date</b> 27 Aug 2026</span>
+    <span><b>Protocol</b> Master-Slave CAN V1.0</span>
+  </div>
+</header>
+
+<div class="audience">
+  <p><b>For the Secondary board team:</b> sections <b>01, 04 and 05</b> are your interface contract &mdash; what arrives on your bus and what you must send back. Sections 02 and 03 show where your reply ends up, and section 06 is Primary-side detail; neither changes what you implement.</p>
+</div>
+
+<div class="audience alt">
+  <p><b>The start-up sequence in one line:</b> ask every Secondary which channels exist over CAN-FD (01&ndash;02) &rarr; write the answers into a channel map &rarr; register only the present ones with the Web Application over TCP (03) &rarr; run.</p>
+</div>
+
+<!-- =================================================== 01 THE EXCHANGE -->
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>The exchange</h2></div>
+  <p class="lede">The Primary probes one block at a time and waits for each answer before moving on. There is never more than one outstanding request on the bus.</p>
+
+  <figure>
+    <div class="fig">
+      <div class="seq">
+        <div class="seq-heads">
+          <div class="seq-head">ME PRIMARY</div>
+          <div class="seq-head alt">SECONDARY</div>
+        </div>
+
+        <div class="seq-body">
+          <div class="seq-note calm">Power on</div>
+
+          <div class="seq-row right">
+            <div class="seq-label"><span class="seq-n">1</span><span class="seq-text">READ_VALUES &nbsp;<span class="dim">Ch# = 1 &middot; 2 &middot; 3 &middot; 4</span></span></div>
+            <div class="seq-line"></div>
+          </div>
+
+          <div class="seq-row left">
+            <div class="seq-label"><span class="seq-n">2</span><span class="seq-text">Reply &nbsp;<span class="dim">slots for channels 1&ndash;4</span></span></div>
+            <div class="seq-line dashed"></div>
+          </div>
+
+          <div class="seq-note">Channels 1&ndash;4 recorded</div>
+
+          <div class="seq-row right">
+            <div class="seq-label"><span class="seq-n">3</span><span class="seq-text">READ_VALUES &nbsp;<span class="dim">Ch# = 5 &middot; 6 &middot; 7 &middot; 8</span></span></div>
+            <div class="seq-line"></div>
+          </div>
+
+          <div class="seq-row left">
+            <div class="seq-label"><span class="seq-n">4</span><span class="seq-text">Reply &nbsp;<span class="dim">slots for channels 5&ndash;8</span></span></div>
+            <div class="seq-line dashed"></div>
+          </div>
+
+          <div class="seq-note">Channels 5&ndash;8 recorded</div>
+
+          <div class="seq-row right">
+            <div class="seq-label"><span class="seq-n">5</span><span class="seq-text">READ_VALUES &nbsp;<span class="dim">to each remaining Secondary</span></span></div>
+            <div class="seq-line"></div>
+          </div>
+
+          <div class="seq-note">A Secondary that is not fitted never answers. After the timeout, all four channels of that block are recorded as absent.</div>
+
+          <div class="seq-note tally">SWEEP DONE &nbsp;&middot;&nbsp; 16 PROBES &nbsp;&middot;&nbsp; NO RETRIES</div>
+
+          <div class="seq-row self">
+            <div class="seq-label"><span class="seq-n">6</span><span class="seq-text">Register present channels only</span></div>
+            <div class="seq-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption>The full power-up sweep. <b>16 probes, always</b> &mdash; 8 Secondaries &times; 2 blocks. There are <b>no retries</b>: one probe per block, and silence within the timeout means that block's four channels are absent.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================== 02 DISCOVERY SEQUENCE -->
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>Discovery, step by step</h2></div>
+  <p class="lede">The same sweep as a decision path. Nothing is registered with the Web Application until every Secondary has been asked.</p>
+
+  <figure>
+    <div class="fig">
+      <div class="flow">
+
+        <div class="node terminal start">POWER ON</div>
+        <div class="arrow"></div>
+
+        <div class="node">Open CAN link to the Secondaries</div>
+        <div class="arrow"></div>
+
+        <div class="node decision">
+          <div class="q">Is the CAN link up?</div>
+          <div class="alt"><span class="k">no</span><span>Wait and try again. <b>Nothing is marked absent</b> &mdash; no question has been asked yet, so there is no answer to record.</span></div>
+        </div>
+        <div class="arrow"><span class="tag">yes</span></div>
+
+        <div class="repeat">
+          <p class="repeat-label">REPEAT &mdash; SECONDARY 1&hellip;8, BLOCK 1 THEN BLOCK 2 &mdash; 16 PROBES</p>
+
+          <div class="node">Probe Secondary N, Block B<span class="sub">READ_VALUES &middot; one probe at a time</span></div>
+          <div class="arrow plain"></div>
+
+          <div class="node decision" style="margin-bottom:0"><div class="q">Reply received within the timeout?</div></div>
+          <div class="arrow plain" style="height:14px"></div>
+
+          <div class="split">
+            <div class="rail"><i class="h"></i><i class="d l"></i><i class="d r"></i></div>
+            <div class="cols">
+              <div class="col">
+                <span class="lbl no">NO REPLY</span>
+                <div class="node absent">All 4 channels of this block are <b>ABSENT</b></div>
+              </div>
+              <div class="col">
+                <span class="lbl yes">REPLY</span>
+                <div class="node">Read the 4 channel slots</div>
+                <div class="arrow" style="height:18px"></div>
+                <div class="node present">Slot has data &rarr; <b>PRESENT</b><br>Slot is all zero &rarr; <b>ABSENT</b></div>
+              </div>
+            </div>
+          </div>
+
+          <p class="loopback">&#8593;&nbsp; <b>next block, then next Secondary</b>, until all 16 probes are done</p>
+        </div>
+
+        <div class="arrow tall"></div>
+        <div class="node terminal gate">SWEEP COMPLETE</div>
+        <div class="arrow"></div>
+
+        <div class="node map">CHANNEL MAP<span class="sub">every circuit marked PRESENT or ABSENT</span></div>
+        <div class="arrow"></div>
+
+        <div class="node">Continue to registration<span class="sub">section 03</span></div>
+
+      </div>
+    </div>
+    <figcaption>A Secondary that never answers costs one timeout and is skipped &mdash; it does not stall or abort the sweep. The <b>channel map</b> is the handover between the two halves of start-up: the CAN side fills it, the Web Application side reads it.</figcaption>
+  </figure>
+</section>
+
+<!-- ================================================= 03 REGISTRATION -->
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>Registering with the Web Application</h2></div>
+  <p class="lede">The channel map now holds a verdict for all 64 possible circuits. The Primary opens one TCP connection and sends one <code>0xDD</code> frame per <b>present</b> channel. Absent channels are never offered &mdash; that is the whole point of the sweep.</p>
+
+  <figure>
+    <div class="fig">
+      <div class="flow">
+
+        <div class="node map">CHANNEL MAP<span class="sub">from section 02 &middot; the present list</span></div>
+        <div class="arrow"></div>
+
+        <div class="phase">
+          <p class="phase-label">STATE &mdash; CONNECTING</p>
+
+          <div class="node">Open TCP connection to the Web Application<span class="sub">port 9999 &middot; the board is the client</span></div>
+          <div class="arrow"></div>
+
+          <div class="node decision" style="margin-bottom:0">
+            <div class="q">Connected?</div>
+            <div class="alt"><span class="k">no</span><span>Wait, then try again from the top of this state. The wait <b>doubles each time</b>: 1&nbsp;s, 2, 4, 8&hellip; up to a 30&nbsp;s maximum.</span></div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="tag">yes</span></div>
+
+        <div class="phase">
+          <p class="phase-label">STATE &mdash; REGISTERING &nbsp;&middot;&nbsp; FIRST PASS</p>
+
+          <div class="repeat">
+            <p class="repeat-label">FOR EACH <b>PRESENT</b> CHANNEL &mdash; ONE AT A TIME, IN ORDER</p>
+
+            <div class="node">Send <b>0xDD</b> frame, wait for the 7-byte reply<span class="sub">33 bytes &middot; CircuitID identifies the channel</span></div>
+            <div class="arrow plain"></div>
+
+            <div class="node decision" style="margin-bottom:0"><div class="q">Does the reply say registered?<span class="sub" style="color:#8A6238">Value 0x01 or 0x02</span></div></div>
+            <div class="arrow plain" style="height:14px"></div>
+
+            <div class="split">
+              <div class="rail"><i class="h"></i><i class="d l"></i><i class="d r"></i></div>
+              <div class="cols">
+                <div class="col">
+                  <span class="lbl no">NO</span>
+                  <div class="node absent"><b>NOT ADMITTED</b><span class="sub">logged &middot; stays on the list &middot; nothing else happens yet</span></div>
+                </div>
+                <div class="col">
+                  <span class="lbl yes">YES</span>
+                  <div class="node present"><b>ADMITTED</b><span class="sub">marked, then one 0xCC live frame on UDP 10000</span></div>
+                </div>
+              </div>
+            </div>
+
+            <p class="loopback">&#8593;&nbsp; <b>next present channel</b> &mdash; every channel is attempted either way.<br>One channel's result never blocks another's.</p>
+          </div>
+
+          <div class="arrow tall"></div>
+
+          <div class="node decision" style="margin-bottom:0">
+            <div class="q">Did <b>any</b> channel get admitted?</div>
+            <div class="alt"><span class="k">none</span><span>Close the connection, wait (1&nbsp;s doubling to 30&nbsp;s), then <b>return to CONNECTING</b> and run this whole pass again.</span></div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="tag">at least one</span></div>
+
+        <div class="phase">
+          <p class="phase-label">STATE &mdash; IDLE &nbsp;&middot;&nbsp; CONNECTION HELD OPEN</p>
+
+          <div class="node terminal finish">READY FOR COMMANDS</div>
+          <div class="arrow"></div>
+
+          <div class="node">Every <b>10 seconds</b>, re-send <b>0xDD</b> for each channel still not admitted<span class="sub">same connection &middot; no reconnect &middot; an admitted channel is never re-sent</span></div>
+          <div class="arrow"></div>
+
+          <div class="node decision" style="margin-bottom:0">
+            <div class="q">Connection lost?</div>
+            <div class="alt"><span class="k">yes</span><span>Close it and <b>return to CONNECTING</b>. Every present channel is offered again from scratch.</span></div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="tag">no</span></div>
+        <div class="node present">Stay in IDLE &mdash; keep serving commands</div>
+
+      </div>
+    </div>
+    <figcaption>Three protocol states, named as the board's own logs name them. The two grey-dashed rows inside the amber decision boxes are the paths that <b>leave</b> the flow; the arrow out of the bottom is the path that continues.</figcaption>
+  </figure>
+
+  <div class="callout calm">
+    <span class="label">The part that is easy to misread &mdash; there are two different retries</span>
+    <p>They look similar but fire in different situations, and only one of them reconnects. Which one applies to a rejected channel depends entirely on whether <b>any other channel</b> got in.</p>
+  </div>
+
+  <div class="tbl-wrap" style="margin-top:18px">
+    <table>
+      <thead>
+        <tr>
+          <th>Situation</th>
+          <th>What gets retried</th>
+          <th>How often</th>
+          <th>Reconnects?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Some admitted,<br>some not</b></td>
+          <td>Only the channels still not admitted. An admitted channel is <b>never</b> re-sent on that connection.</td>
+          <td class="mono">every 10 s,<br>indefinitely</td>
+          <td class="mono">No &mdash; the same<br>connection stays up</td>
+        </tr>
+        <tr>
+          <td><b>No channel admitted<br>at all</b></td>
+          <td>The connection closes and the <b>entire first pass</b> runs again &mdash; every present channel.</td>
+          <td class="mono">after 1 s, then 2, 4,<br>8&hellip; capped at 30 s</td>
+          <td class="mono">Yes &mdash; full<br>reconnect</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="lede" style="margin-top:34px">A registration attempt can fail for four reasons. <b>The Primary treats all four identically</b> &mdash; the channel is simply not admitted yet, and is picked up by whichever retry above applies.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Cause</th><th>What the Primary logs</th><th>Meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Value = 0x00</b><br><span class="note">the everyday case</span></td>
+          <td class="mono">rejected by server &mdash;<br>value 0x00</td>
+          <td>The Web Application knows the device but has not approved it. <b>Usually waiting on an operator</b> to approve the new circuit on screen.</td>
+        </tr>
+        <tr>
+          <td><b>No reply in time</b></td>
+          <td class="mono">no response<br>within N ms</td>
+          <td>The server accepted the TCP connection but did not answer this frame.</td>
+        </tr>
+        <tr>
+          <td><b>Bad CRC</b></td>
+          <td class="mono">response rejected &mdash;<br>BAD_CRC</td>
+          <td>Byte-order disagreement between board and server. The log prints the computed CRC next to the frame's value read both ways, and names the flag to switch if the other order matches.</td>
+        </tr>
+        <tr>
+          <td><b>Malformed reply</b></td>
+          <td class="mono">BAD_LENGTH /<br>BAD_START / BAD_QUERY</td>
+          <td>The reply was not a well-formed <code>0xDD</code> response at all.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="label">Not a failure</span>
+    <p>If the server echoes back a different DeviceID or CircuitID than was sent, that is logged as <b>informational only</b> and the registration still succeeds. Only the <b>Value</b> byte decides whether a channel is admitted.</p>
+  </div>
+
+  <p class="lede" style="margin-top:34px">Each channel becomes a <b>CircuitID</b> &mdash; one byte, upper nibble the Secondary, lower nibble the channel, both counting from 1. That byte identifies the circuit in every frame from here on.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Channel map says</th><th>CircuitID</th><th>Registered?</th><th>Result at the Web Application</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Secondary 1, channel 1 &mdash; <span class="tag present">PRESENT</span></td>
+          <td class="bytes">0x11</td><td class="mono">yes</td>
+          <td>Circuit appears, ready to accept a battery-test program</td>
+        </tr>
+        <tr>
+          <td>Secondary 1, channel 2 &mdash; <span class="tag present">PRESENT</span></td>
+          <td class="bytes">0x12</td><td class="mono">yes</td>
+          <td>Circuit appears, ready to accept a battery-test program</td>
+        </tr>
+        <tr>
+          <td>Secondary 1, channel 3 &mdash; <span class="tag absent">ABSENT</span></td>
+          <td class="bytes">&mdash;</td><td class="mono">no frame sent</td>
+          <td>Nothing appears &mdash; no phantom circuit to confuse the operator</td>
+        </tr>
+        <tr>
+          <td>Secondary 4, channel 7 &mdash; <span class="tag present">PRESENT</span></td>
+          <td class="bytes">0x47</td><td class="mono">yes</td>
+          <td>Circuit appears, ready to accept a battery-test program</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="lede" style="margin-top:34px">The two frames on the wire, for reference.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Direction</th><th>Size</th><th>Layout</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Request</b><br><span class="note">Primary &rarr; Web App</span></td>
+          <td class="mono">33 bytes</td>
+          <td class="mono">0xDD &middot; 0x01 &middot; len&nbsp;28 &middot; DeviceID &middot; <b>CircuitID</b> &middot; Name[16] &middot; IP[4] &middot; MAC[6] &middot; CRC[2]</td>
+        </tr>
+        <tr>
+          <td><b>Response</b><br><span class="note">Web App &rarr; Primary</span></td>
+          <td class="mono">7 bytes</td>
+          <td class="mono">0xDD &middot; 0x01 &middot; DeviceID &middot; CircuitID &middot; <b>Value</b> &middot; CRC[2]</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="label">Why 0x02 counts as success</span>
+    <p>Both <code>0x01</code> (Registered) and <code>0x02</code> (Already Registered) mean the channel <b>is</b> registered &mdash; <code>0x02</code> only adds that the Web Application already held a record for it, which is the normal answer after a reconnect. Only <code>0x00</code> is a rejection.</p>
+    <p>This is not a hypothetical distinction. Treating <code>0x02</code> as a failure once made the board close the connection and re-register every 30 seconds, observed on hardware.</p>
+  </div>
+</section>
+
+<!-- ======================================= 04 WHAT THE SECONDARY ANSWERS -->
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>What the Secondary must answer</h2></div>
+  <p class="lede">Both blocks of a Secondary share one CAN identifier, so the identifier alone cannot say which four channels are being asked about. The <code>Channel #</code> field in the request carries it.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Primary sends</th><th>CAN ID</th><th>Identified by</th><th>Secondary replies with</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Block 1 probe</b><br><span class="note">asking about channels 1&ndash;4</span></td>
+          <td class="bytes">0x022</td>
+          <td class="mono">byte&nbsp;&nbsp;9 = 0x01<br>byte&nbsp;25 = 0x02<br>byte&nbsp;41 = 0x03<br>byte&nbsp;57 = 0x04</td>
+          <td>64-byte frame, slots 0&ndash;3 filled for <b>channels 1, 2, 3, 4</b></td>
+        </tr>
+        <tr>
+          <td><b>Block 2 probe</b><br><span class="note">asking about channels 5&ndash;8</span></td>
+          <td class="bytes">0x022</td>
+          <td class="mono">byte&nbsp;&nbsp;9 = 0x05<br>byte&nbsp;25 = 0x06<br>byte&nbsp;41 = 0x07<br>byte&nbsp;57 = 0x08</td>
+          <td>64-byte frame, slots 0&ndash;3 filled for <b>channels 5, 6, 7, 8</b></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="label">Action for the Secondary team</span>
+    <p><b>Read byte 9 of the request to decide which block to answer.</b> Everything else in the probe is zero &mdash; it carries no setpoint and commands nothing. Reply on function <code>0x02</code>, as with any <code>READ_VALUES</code>.</p>
+    <p>This rule is <b>not in the Master-Slave CAN V1.0 workbook</b> &mdash; the workbook never says how a Secondary distinguishes a Block 1 request from a Block 2 request. If your firmware already resolves this a different way, tell us before we build it, because the Primary has to match.</p>
+  </div>
+</section>
+
+<!-- ============================================== 05 PRESENCE DECISION -->
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>How presence is decided</h2></div>
+  <p class="lede">Per channel, from its own 16-byte slot in the reply. The test is whether the slot carries <em>anything at all</em> &mdash; not whether the voltage is non-zero.</p>
+
+  <div class="slot-grid">
+    <div class="slot is-present">
+      <h3>Channel 2 <span class="tag present">PRESENT</span></h3>
+      <p class="sub">Fitted, idle, nothing connected to its terminals. Reads 0.000&nbsp;V &mdash; and is still present.</p>
+<pre><span class="cm">off  bytes         field</span>
+ +0  <span class="dim">00 00 00 00</span>   Voltage 0.000
+ +4  <span class="dim">00 00 00 00</span>   Current 0.000
+ +8  <span class="dim">00</span>            STATE idle
+ +9  <span class="hl">02</span>            Channel #  &#8592;
++10  <span class="dim">00 00</span>
++12  <span class="dim">00 00 00 00</span></pre>
+    </div>
+    <div class="slot is-absent">
+      <h3>Channel 3 <span class="tag absent">ABSENT</span></h3>
+      <p class="sub">Not fitted. Nothing populates the slot, so all 16 bytes stay zero.</p>
+<pre><span class="cm">off  bytes         field</span>
+ +0  <span class="dim">00 00 00 00</span>   &mdash;
+ +4  <span class="dim">00 00 00 00</span>   &mdash;
+ +8  <span class="dim">00</span>            &mdash;
+ +9  <span class="dim">00</span>            Channel #  &#8592;
++10  <span class="dim">00 00</span>
++12  <span class="dim">00 00 00 00</span></pre>
+    </div>
+  </div>
+
+  <div class="callout">
+    <span class="label">Question for the Secondary team</span>
+    <p>The rule above is <b>an assumption we need you to confirm.</b> It reads: <em>if all 16 bytes of a channel's slot are zero, that channel is not fitted.</em></p>
+    <p>Two things would break it. If your firmware <b>zero-fills the slots of channels it does not have</b> and a fitted channel can genuinely report 0.000&nbsp;V with <code>Channel #</code> also zero, then nothing in the frame separates the two cases. And if a fitted channel's slot can be all-zero for any other reason, the Primary will skip a working channel silently. <b>Please tell us what your firmware actually puts in the slot of a channel that is not fitted.</b></p>
+  </div>
+</section>
+
+<!-- ============================================ 06 PRIMARY-SIDE INTERNALS -->
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Primary-side internals</h2></div>
+  <p class="lede">Three existing behaviours in the Primary's CAN driver that this sweep is the first thing to exercise. Listed for completeness &mdash; none of them changes anything on the Secondary side.</p>
+
+  <div class="internals">
+    <div class="icard">
+      <span class="n">INTERNAL &middot; 1</span>
+      <h3>The Primary hears its own probe</h3>
+      <p>The M7 co-processor loops every transmitted frame back on the same receive stream that carries real replies. The sweep must compare each inbound frame against the probe it just sent and discard the match, or its own probe would read as four present channels.</p>
+    </div>
+    <div class="icard">
+      <span class="n">INTERNAL &middot; 2</span>
+      <h3>Block identity is tracked, not inferred</h3>
+      <p>The driver normally guesses which block a reply belongs to from which channels are already active &mdash; safe only while no Secondary has channels in both blocks. The sweep probes both blocks back to back, so it tracks the block it is probing explicitly.</p>
+    </div>
+    <div class="icard">
+      <span class="n">INTERNAL &middot; 3</span>
+      <h3>Probes bypass the transmit buffer</h3>
+      <p>Outgoing frames normally go through a shared buffer so one channel's setpoint cannot overwrite another's. A probe carries no setpoint, and passing it through that buffer would erase the <code>Channel #</code> bytes that select the block &mdash; so probes are sent directly.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Design proposal &middot; no firmware written on either side</span>
+  <span>ME Project &middot; Docs/ME_Primary_Channel_Discovery_Flow.html</span>
+</footer>
+
+</div>
+</body>
+</html>

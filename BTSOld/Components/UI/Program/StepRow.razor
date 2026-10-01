@@ -1,0 +1,253 @@
+@namespace BatteryTestingSystem.Components.UI
+
+<TableRowContextMenu @ref="rowContextMenu"
+                     OnAddStep="@(() => OnAddStep.InvokeAsync())"
+                     OnRemoveStep="@(() => OnRemove.InvokeAsync())"
+                     OnDuplicateStep="@(() => OnDuplicate.InvokeAsync())"
+                     OnMoveUp="@(() => OnMoveUp.InvokeAsync())"
+                     OnMoveDown="@(() => OnMoveDown.InvokeAsync())"
+                     CanModify="@CanModify" 
+                     />
+
+<tr class="group border-b border-grid-border transition-colors @GetRowClass()" 
+    @onclick="@((e) => OnSelect.InvokeAsync((Step.Id, e.CtrlKey || e.MetaKey)))"
+    @oncontextmenu="@((e) => {
+        if (!IsSelected)
+            OnSelect.InvokeAsync((Step.Id, e.CtrlKey || e.MetaKey));
+        rowContextMenu.Open(e);
+    })"
+    @oncontextmenu:preventDefault
+    @oncontextmenu:stopPropagation>
+
+    <td class="grid-cell w-12 text-center text-muted-foreground">
+        <div class="flex items-center gap-1">
+            <Blazicon Svg="Lucide.GripVertical" class="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 cursor-grab" />
+            @Step.StepNumber
+        </div>
+    </td>
+
+    <td class="grid-cell w-8 text-center">
+        @if (HasErrors())
+        {
+            <div class="relative group/error">
+                <Blazicon Svg="Lucide.CircleAlert" class="w-4 h-4 text-red-500 animate-pulse" />
+                <div class="absolute left-full top-0 ml-2 z-50 hidden group-hover/error:block">
+                    <div class="bg-card border border-border rounded-md p-2 shadow-lg text-xs max-w-[200px] whitespace-nowrap">
+                        @foreach (var error in Errors)
+                        {
+                            <div class="text-red-500">@error.Message</div>
+                        }
+                        @foreach (var error in GetInlineErrors())
+                        {
+                            <div class="text-red-500">@error</div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="validation-dot valid mx-auto"></div>
+        }
+    </td>
+
+    <td class="grid-cell w-24">
+        <div class="rounded hover:border-primary/30 transition-colors @(!string.IsNullOrWhiteSpace(Step.Label) ? "bg-primary/10 text-foreground border border-primary/20" : "border border-dashed border-border/50")">
+            <input type="text" value="@Step.Label"
+                   @onkeydown="@HandleFirstColumnKeyDown"
+                   @oninput="@((e) => OnUpdateStep.InvokeAsync(new { Label = e.Value?.ToString() }))" placeholder="" class="w-full bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/30 focus:bg-secondary/50 rounded px-1 -mx-1" /> @* disabled="@(Step.OperatorCode == OperatorConstants.STO)" *@
+        </div>
+    </td>
+
+    <td class="grid-cell w-32">
+        <OperatorSelect Value="@Step.OperatorCode" OnChange="@OnUpdateOperator" Disabled="@(IsFirst || IsLast)" ExcludeCodes="@(IsLast ? new List<byte>() : new List<byte> { OperatorConstants.STO })" />
+    </td>
+
+    <td class="grid-cell min-w-[160px]">
+        <NominalValuesEditor
+            Values="@Step.NominalValues"
+            OperatorCode="@Step.OperatorCode"
+            OnAdd="@OnAddNominalValue"
+            OnRemove="@OnRemoveNominalValue"
+            OnUpdate="@OnUpdateNominalValue"
+            Disabled="@IsNominalDisabled()"
+            GlobalVariables="@GlobalVariables"
+            AllLabels="@AllLabels"
+            AllStepNumbers="@AllStepNumbers"
+            OnViewTable="@OnViewTable"
+            AllPrograms="@AllPrograms"
+            OnViewProducer="@OnViewProducer" />
+    </td>
+
+    <td class="grid-cell min-w-[280px]" colspan="2">
+        <LimitActionPairEditor
+            Limits="@Step.Limits"
+            Actions="@Step.Actions"
+            OperatorCode="@Step.OperatorCode"
+            OnAddPair="@OnAddLimitActionPair"
+            OnUpdateLimit="@OnUpdateLimit"
+            OnUpdateAction="@OnUpdateAction"
+            OnRemovePair="@OnRemoveLimitActionPair"
+            Disabled="@(!IsLimitActionAllowed())"
+            GlobalVariables="@GlobalVariables"
+            AllLabels="@AllLabels"
+            AllStepNumbers="@AllStepNumbers" />
+    </td>
+
+    <td class="grid-cell min-w-[140px]">
+        <RegistrationsEditor 
+            Values="@Step.Registrations" 
+            OnAdd="@OnAddRegistration" 
+            OnRemove="@OnRemoveRegistration" 
+            OnUpdate="@OnUpdateRegistration"
+            GlobalVariables="@GlobalVariables"
+            OperatorCode="@Step.OperatorCode"
+            IsFirstStep="@IsFirst" />
+    </td>
+
+    <td class="grid-cell min-w-[120px]">
+        <div class="rounded hover:border-primary/30 transition-colors @(!string.IsNullOrWhiteSpace(Step.Comment) ? "bg-primary/10 text-foreground border border-primary/20" : "border border-dashed border-border/50")"></div>
+        <input type="text" value="@Step.Comment"
+               @onkeydown="@HandleLastColumnKeyDown"
+               @oninput="@((e) => OnUpdateStep.InvokeAsync(new { Comment = e.Value?.ToString() }))" placeholder="" disabled="@(Step.OperatorCode == OperatorConstants.STO)" class="w-full bg-transparent outline-none text-sm text-muted-foreground placeholder:text-muted-foreground/30 focus:bg-secondary/50 rounded px-1 -mx-1" />
+    </td>
+
+   @*  <td class="grid-cell w-28 border-r-0">
+        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button @onclick="@OnAddStep" @onclick:stopPropagation="true" class="action-button text-primary" title="Add step below">
+                <Blazicon Svg="Lucide.Plus" class="w-4 h-4" />
+            </button>
+            <button @onclick="@OnMoveUp" @onclick:stopPropagation="true" disabled="@(!CanModify || IsFirst)" class="action-button disabled:opacity-30" title="Move up">
+                <Blazicon Svg="Lucide.ChevronUp" class="w-4 h-4" />
+            </button>
+            <button @onclick="@OnMoveDown" @onclick:stopPropagation="true" disabled="@(!CanModify || IsLast)" class="action-button disabled:opacity-30" title="Move down">
+                <Blazicon Svg="Lucide.ChevronDown" class="w-4 h-4" />
+            </button>
+            <button @onclick="@OnDuplicate" @onclick:stopPropagation="true" disabled="@(!CanModify)" class="action-button disabled:opacity-30" title="Duplicate">
+                <Blazicon Svg="Lucide.Copy" class="w-4 h-4" />
+            </button>
+            <button @onclick="@OnRemove" @onclick:stopPropagation="true" disabled="@(!CanModify)" class="action-button hover:text-red-500 disabled:opacity-30" title="Delete">
+                <Blazicon Svg="Lucide.Trash2" class="w-4 h-4" />
+            </button>
+        </div>
+    </td> *@
+</tr>
+
+@code {
+    [Parameter] public StepModel Step { get; set; } = null!;
+    [Parameter] public bool IsSelected { get; set; }
+    [Parameter] public bool IsFirst { get; set; }
+    [Parameter] public bool IsLast { get; set; }
+    [Parameter] public List<ValidationError> Errors { get; set; } = new();
+    [Parameter] public List<GlobalVariable> GlobalVariables { get; set; } = new();
+    [Parameter] public HashSet<string> AllLabels { get; set; } = new();
+    [Parameter] public HashSet<int> AllStepNumbers { get; set; } = new();
+    [Parameter] public EventCallback<(string, bool)> OnSelect { get; set; }
+    [Parameter] public EventCallback<byte> OnUpdateOperator { get; set; }
+    [Parameter] public EventCallback<object> OnUpdateStep { get; set; }
+    [Parameter] public EventCallback OnMoveUp { get; set; }
+    [Parameter] public EventCallback OnMoveDown { get; set; }
+    [Parameter] public EventCallback OnDuplicate { get; set; }
+    [Parameter] public EventCallback OnRemove { get; set; }
+    [Parameter] public EventCallback OnAddStep { get; set; }
+    [Parameter] public EventCallback<string> OnAddNominalValue { get; set; }
+    [Parameter] public EventCallback<int> OnRemoveNominalValue { get; set; }
+    [Parameter] public EventCallback<(int, string)> OnUpdateNominalValue { get; set; }
+    [Parameter] public EventCallback<(string, string)> OnAddLimitActionPair { get; set; }
+    [Parameter] public EventCallback<(int, string)> OnUpdateLimit { get; set; }
+    [Parameter] public EventCallback<(int, string)> OnUpdateAction { get; set; }
+    [Parameter] public EventCallback<int> OnRemoveLimitActionPair { get; set; }
+    [Parameter] public EventCallback<string> OnAddRegistration { get; set; }
+    [Parameter] public EventCallback<int> OnRemoveRegistration { get; set; }
+    [Parameter] public EventCallback<(int, string)> OnUpdateRegistration { get; set; }
+    [Parameter] public EventCallback OnTabToNextRow { get; set; }
+    [Parameter] public EventCallback OnShiftTabToPrevRow { get; set; }
+    [Parameter] public List<ProgramDTO> AllPrograms { get; set; } = new();
+    [Parameter] public EventCallback<string> OnViewProducer { get; set; }
+
+    private TableRowContextMenu rowContextMenu = default!;
+
+    private bool CanModify => !IsFirst && !IsLast;
+
+    private string GetRowClass()
+    {
+        // var cls = Step.StepNumber % 2 == 0 ? "bg-grid-row-alt" : "bg-grid-row";
+        var cls = "bg-grid-row"; // all rows same color
+        if (IsSelected) cls += " bg-grid-row-selected";
+        cls += " hover:bg-grid-row-hover";
+        return cls;
+    }
+
+    private bool IsNominalDisabled() => 
+        OperatorConstants.NominalDisabled.ContainsKey(Step.OperatorCode) && 
+        OperatorConstants.NominalDisabled[Step.OperatorCode];
+
+    private bool IsLimitActionAllowed() => 
+        OperatorConstants.LimitActionAllowed.ContainsKey(Step.OperatorCode) && 
+        OperatorConstants.LimitActionAllowed[Step.OperatorCode];
+
+    private bool HasErrors()
+    {
+        if (Errors.Any()) return true;
+        return GetInlineErrors().Any();
+    }
+
+    private List<string> GetInlineErrors()
+    {
+        var errors = new List<string>();
+
+        foreach (var (nominal, index) in Step.NominalValues.Select((value, i) => (value, i)))
+        {
+            var validation = ValidationHelper.ValidateNominal(nominal, index, Step.OperatorCode, AllLabels, GlobalVariables, AllStepNumbers);
+            if (!validation.IsValid && !string.IsNullOrEmpty(validation.Error))
+                errors.Add($"Nominal: {validation.Error}");
+        }
+
+        foreach (var limit in Step.Limits)
+        {
+            var validation = ValidationHelper.ValidateLimit(limit, Step.OperatorCode, GlobalVariables);
+            if (!validation.IsValid && !string.IsNullOrEmpty(validation.Error))
+                errors.Add($"Limit: {validation.Error}");
+        }
+
+        foreach (var action in Step.Actions)
+        {
+            var validation = ValidationHelper.ValidateAction(action, AllLabels, AllStepNumbers);
+            if (!validation.IsValid && !string.IsNullOrEmpty(validation.Error))
+                errors.Add($"Action: {validation.Error}");
+        }
+
+        foreach (var reg in Step.Registrations)
+        {
+            var validation = ValidationHelper.ValidateRegistration(reg, Step.OperatorCode, GlobalVariables);
+            if (!validation.IsValid && !string.IsNullOrEmpty(validation.Error))
+                errors.Add($"Registration: {validation.Error}");
+        }
+
+        return errors;
+    }
+
+    private void OnViewTable(string tableName)
+    {
+        // TODO: Implement your table viewing logic here
+        Console.WriteLine($"View table: {tableName}");
+    }
+
+    private async Task HandleLastColumnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Tab" && !e.ShiftKey)
+        {
+            // Tab from last column -> move to next row
+            await OnTabToNextRow.InvokeAsync();
+        }
+    }
+
+    private async Task HandleFirstColumnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Tab" && e.ShiftKey)
+        {
+            // Tab from last column -> move to next row
+            await OnShiftTabToPrevRow.InvokeAsync();
+        }
+    }
+}

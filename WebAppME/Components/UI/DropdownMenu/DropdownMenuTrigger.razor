@@ -1,0 +1,27 @@
+@namespace BatteryTestingSystem.Components.UI.DropdownMenu
+
+<div @onclick="HandleClick" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [CascadingParameter]
+    private DropdownMenu? ParentDropdown { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public bool AsChild { get; set; } = true;
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (ParentDropdown != null)
+        {
+            await ParentDropdown.Toggle();
+        }
+    }
+}

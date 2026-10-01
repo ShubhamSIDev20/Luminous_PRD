@@ -1,0 +1,304 @@
+﻿@namespace BatteryTestingSystem.Components.UI
+@using System.Text.RegularExpressions
+
+
+<div class="space-y-1">
+    @foreach (var (value, index) in Values.Select((v, i) => (v, i)))
+    {
+        var validation = ValidationHelper.ValidateRegistration(value, OperatorCode, GlobalVariables);
+        <div class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-mono mr-1 mb-1 animate-scale-in group @(validation.IsValid ? "bg-primary/10 text-foreground border border-accent/20" : "bg-red-500/20 text-red-500 border border-red-500/30")" title="@validation.Error">
+            @if (editingIndex == index)
+            {
+                <input type="text"
+                @ref="regInputRef"
+                @bind="editValue" 
+                @onkeydown="@((e) => HandleEditKeyDown(e, index))" 
+                @onblur="@(() => ConfirmEdit(index))" 
+                @onclick:stopPropagation="true" class="bg-transparent outline-none text-xs min-w-[60px]" />
+            }
+            else
+            {
+                <span @ondblclick="@(() => StartEditing(index, value))" class="cursor-pointer">@value</span>
+                <button @onclick="@(() => StartEditing(index, value))" class="p-0.5 rounded hover:bg-foreground/10 transition-colors opacity-0 group-hover:opacity-100">
+                    <Blazicon Svg="Lucide.Pencil" class="w-2.5 h-2.5" />
+                </button>
+                <button @onclick="@(() => OnRemove.InvokeAsync(index))" class="p-0.5 rounded hover:bg-red-500/20 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                    <Blazicon Svg="Lucide.X" class="w-2.5 h-2.5" />
+                </button>
+            }
+        </div>
+    }
+
+    @if ((OperatorCode == OperatorConstants.SET || OperatorCode == OperatorConstants.REG) && Values.Count < 1)
+    {
+        <div class="inline-flex items-center gap-1 px-1 py-0.5 rounded border border-dashed border-border/50 hover:border-primary/30 transition-colors">
+            <input 
+            type="text" 
+            @bind="input" 
+            @bind:event="oninput"
+            @onkeydown="HandleKeyDown" 
+            @onblur="AutoCorrectInput"
+            placeholder="@(IsFirstStep ? "" : "")" 
+            class="min-w-[80px] bg-transparent outline-none text-xs font-mono placeholder:text-muted-foreground/40"
+            list="@dataID" 
+            />
+            <datalist id="@dataID">
+                @foreach (var standard in RStandards.GetStandards())
+                {
+                    <option value="@standard.StandardName"></option>
+                }
+            </datalist>
+
+
+            <button @onclick="HandleAdd" disabled="@string.IsNullOrWhiteSpace(input)" class="p-0.5 rounded hover:bg-primary/20 text-primary transition-colors disabled:opacity-30">
+                <Blazicon Svg="Lucide.Plus" class="w-3 h-3" />
+            </button>
+
+        </div>
+    }
+    else if (OperatorCode != OperatorConstants.SET && OperatorCode != OperatorConstants.REG)
+    {
+        <div class="inline-flex items-center gap-1 px-1 py-0.5 rounded border border-dashed border-border/50 hover:border-primary/30 transition-colors">
+            <input 
+            type="text" 
+            @onfocusout="HandleAdd"
+            @bind="input" 
+            @bind:event="oninput"
+            @onkeydown="HandleKeyDown" 
+            @onblur="AutoCorrectInput"
+            placeholder="@(IsFirstStep ? "" : "")" 
+            class="min-w-[80px] bg-transparent outline-none text-xs font-mono placeholder:text-muted-foreground/40"
+            />
+
+            <button @onclick="HandleAdd" disabled="@string.IsNullOrWhiteSpace(input)" class="p-0.5 rounded hover:bg-primary/20 text-primary transition-colors disabled:opacity-30">
+                <Blazicon Svg="Lucide.Plus" class="w-3 h-3" />
+            </button>
+
+        </div>
+    }
+
+
+</div>
+
+@code {
+    [Parameter] public List<string> Values { get; set; } = new();
+    [Parameter] public EventCallback<string> OnAdd { get; set; }
+    [Parameter] public EventCallback<int> OnRemove { get; set; }
+    [Parameter] public byte OperatorCode { get; set; }
+    [Parameter] public EventCallback<(int, string)> OnUpdate { get; set; }
+    [Parameter] public List<GlobalVariable> GlobalVariables { get; set; } = new();
+    [Parameter] public bool IsFirstStep { get; set; }
+
+    private string input = string.Empty;
+    private int? editingIndex = null;
+    private string editValue = string.Empty;
+    private string dataID = $"registration-input-{Guid.NewGuid().ToString("N")}";
+
+
+    private ElementReference regInputRef;
+    private bool regInputFocused = false;
+
+
+
+    protected override void OnInitialized()
+    {
+        if (OperatorCode != null && OperatorCode == OperatorConstants.SET && Values.Count < 1)
+        {
+            OnAdd.InvokeAsync(RStandards.GetStandards().FirstOrDefault().StandardName ?? "STANDARD");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (regInputFocused && regInputFocused != null)
+        {
+            await regInputRef.FocusAsync();
+            regInputFocused = false;
+        }
+    }
+
+    private void AutoCorrectInput()
+    {
+        if (string.IsNullOrWhiteSpace(input)) return;
+
+        input = input.Trim();
+        
+        input = OperatorConstants.AutoSpace(input);
+
+        input = System.Text.RegularExpressions.Regex.Replace(input, @"\s+", " ");
+
+        var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if ((OperatorCode == OperatorConstants.SET || OperatorCode == OperatorConstants.REG) &&  parts.Length == 1)
+        {
+            //if input is number float then add default first unit 
+            var standard = RStandards.GetStandards().FirstOrDefault(e => e.StandardName.ToLower().StartsWith(parts[0].ToLower()));
+
+            if (standard != null)
+            {
+                input = $"{standard.StandardName}";
+            }
+        }
+
+        if (parts.Length == 1)
+        {
+            //if input is number float then add default first unit 
+            //input = $"{parts[0]} s";
+        }
+        else if (parts.Length >= 2)
+        {
+            var unit = parts[^1]; 
+
+            var validUnit = OperatorConstants.ValidUnits.FirstOrDefault(u =>u.StartsWith(unit, StringComparison.OrdinalIgnoreCase));
+
+            if (validUnit != null)
+            {
+                var value = string.Join(" ", parts.Take(parts.Length - 1));
+                input = $"{value} {validUnit}";
+            }
+            else
+            {
+                input = $"{parts[0]} {unit}";
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void AutoCorrectEditInput()
+    {
+        if (string.IsNullOrWhiteSpace(editValue)) return;
+
+        editValue = editValue.Trim();
+        
+        editValue = OperatorConstants.AutoSpace(editValue);
+
+        editValue = System.Text.RegularExpressions.Regex.Replace(editValue, @"\s+", " ");
+
+        var parts = editValue.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if ((OperatorCode == OperatorConstants.SET || OperatorCode == OperatorConstants.REG) &&  parts.Length == 1)
+        {
+            //if input is number float then add default first unit 
+            var standard = RStandards.GetStandards().FirstOrDefault(e => e.StandardName.ToLower().StartsWith(parts[0].ToLower()));
+
+            if (standard != null)
+            {
+                editValue = $"{standard.StandardName}";
+            }
+        }
+
+        if (parts.Length == 1)
+        {
+            //if input is number float then add default first unit 
+            //input = $"{parts[0]} s";
+        }
+        else if (parts.Length >= 2)
+        {
+            var unit = parts[^1]; 
+
+            var validUnit = OperatorConstants.ValidUnits.FirstOrDefault(u =>u.StartsWith(unit, StringComparison.OrdinalIgnoreCase));
+
+            if (validUnit != null)
+            {
+                var value = string.Join(" ", parts.Take(parts.Length - 1));
+                editValue = $"{value} {validUnit}";
+            }
+            else
+            {
+                editValue = $"{parts[0]} {unit}";
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void HandleAdd()
+    {
+
+        if (OperatorCode == OperatorConstants.SET && Values.Count >= 1)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(input))
+        {
+            AutoCorrectInput();
+
+            OnAdd.InvokeAsync(input);
+            input = string.Empty;           
+        }
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == "Tab") HandleAdd();
+        else if (e.Key == "Escape") input = string.Empty;
+    }
+
+    private void StartEditing(int index, string value)
+    {
+        editingIndex = index;
+        editValue = value;
+        regInputFocused = true;
+    }
+
+    private void ConfirmEdit(int index)
+    {
+         AutoCorrectEditInput();
+
+        if (!string.IsNullOrWhiteSpace(editValue))
+        {
+            var validation = ValidationHelper.ValidateRegistration(editValue.Trim(), OperatorCode, GlobalVariables);
+            if (validation.IsValid && !string.IsNullOrEmpty(validation.Corrected))
+            {
+                OnUpdate.InvokeAsync((index, validation.Corrected));
+            }
+        }
+        editingIndex = null;
+        editValue = string.Empty;
+    }
+
+    private void HandleEditKeyDown(KeyboardEventArgs e, int index)
+    {
+        if (e.Key == "Enter") ConfirmEdit(index);
+        else if (e.Key == "Escape") { editingIndex = null; editValue = string.Empty; }
+    }
+
+    private  List<string> UpdateSuggestions()
+    {
+        List<string> Suggestions = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            Suggestions = OperatorConstants.ValidUnits
+                    .Select(u => $"1 {u}")
+                    .ToList();
+        }
+        else
+        {
+            var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length == 1)
+            {
+                // User typed only number: "20"
+                if (int.TryParse(parts[0], out _))
+                {
+                    Suggestions = OperatorConstants.ValidUnits
+                        .Select(u => $"{parts[0]} {u}")
+                        .ToList();
+                }
+            }
+            else if (parts.Length == 2)
+            {
+                var number = parts[0];
+                Suggestions = OperatorConstants.ValidUnits
+                    .Select(u => $"{number} {u}")
+                    .ToList();
+            }
+        }
+        
+        return Suggestions;
+
+    }
+}

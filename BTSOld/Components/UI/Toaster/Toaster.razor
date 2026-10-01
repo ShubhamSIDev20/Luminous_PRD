@@ -1,0 +1,80 @@
+@namespace BatteryTestingSystem.Components.UI
+
+@inject ToastService ToastService
+
+@* <div class="fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]"> *@
+<div class="@GetContainerClass()">
+
+    @foreach (var toast in ToastService.Toasts)
+    {
+        <Toast Variant="@toast.Variant" 
+               ShowClose="true" 
+               OnClose="@(() => ToastService.Remove(toast.Id))"
+               Class="@GetAnimationClass(toast)">
+            @if (!string.IsNullOrEmpty(toast.Title))
+            {
+                <ToastTitle>@toast.Title</ToastTitle>
+            }
+            @if (!string.IsNullOrEmpty(toast.Description))
+            {
+                <ToastDescription>@toast.Description</ToastDescription>
+            }
+        </Toast>
+    }
+</div>
+
+@code {
+
+    [Parameter]
+    public ToastPosition Position { get; set; } = ToastPosition.BottomRight;
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        ToastService.OnChange -= StateHasChanged;
+    }
+
+
+    private string GetContainerClass()
+    {
+        var baseClasses = "fixed z-[100] flex max-h-screen w-full p-4 md:max-w-[420px]";
+
+        return Position switch
+        {
+            ToastPosition.TopLeft => $"{baseClasses} top-0 left-0 flex-col",
+            ToastPosition.TopCenter => $"{baseClasses} top-0 left-1/2 -translate-x-1/2 flex-col",
+            ToastPosition.TopRight => $"{baseClasses} top-0 right-0 flex-col",
+            ToastPosition.BottomLeft => $"{baseClasses} bottom-0 left-0 flex-col-reverse",
+            ToastPosition.BottomCenter => $"{baseClasses} bottom-0 left-1/2 -translate-x-1/2 flex-col-reverse",
+            ToastPosition.BottomRight => $"{baseClasses} bottom-0 right-0 flex-col-reverse",
+            _ => $"{baseClasses} bottom-0 right-0 flex-col-reverse"
+        };
+    }
+
+    private string GetAnimationClass(ToastMessage toast)
+    {
+        return Position switch
+        {
+            ToastPosition.TopLeft or ToastPosition.TopCenter or ToastPosition.TopRight
+                => "animate-in slide-in-from-top-full",
+            ToastPosition.BottomLeft or ToastPosition.BottomCenter or ToastPosition.BottomRight
+                => "animate-in slide-in-from-bottom-full",
+            _ => "animate-in slide-in-from-bottom-full"
+        };
+    }
+
+
+    public enum ToastPosition
+    {
+        TopLeft,
+        TopCenter,
+        TopRight,
+        BottomLeft,
+        BottomCenter,
+        BottomRight
+    }
+}

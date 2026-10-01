@@ -1,0 +1,641 @@
+﻿@page "/reports/sessions"
+@using BatteryTestingSystem.Components.UI.Dashboard
+@using BatteryTestingSystem.Components.UI.DataViewer
+@using BatteryTestingSystem.Components.UI.Datatable;
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Models.Entities
+@using BatteryTestingSystem.Repositories.Interfaces
+@using BatteryTestingSystem.Services.Implementations
+@using Hangfire
+@attribute [Authorize]
+@attribute [StreamRendering]
+@inject IProgramServices PService
+@inject ToastService Toast
+@inject TabService tbService
+@inject ISqliteBulkDatabaseManager dbManager
+@inject IExportRepository ExportRepo
+@inject IBackgroundJobClient HangfireClient
+@inject ExportJobService ExportJobSvc
+@inject IJSRuntime JS
+
+<PageHeader Title="Session Reports" Description="View and analyse all recorded battery testing sessions." />
+
+@if (isLoading)
+{
+    <div class="flex items-center justify-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+    </div>
+}
+else
+{
+    <div class="h-[80%] flex flex-col">
+        <DataTable TItem="SessionRecordDto"
+                   Title="Sessions"
+                   Subtitle="All completed and active testing sessions"
+                   Data="@SessionRecords"
+                   Search="true"
+                   ExcelExport="true"
+                   ExcelFileName="sessions"
+                   ExcelSheetName="Sessions"
+                   OnRowClick="OnRowClick"
+                   PdfExport="true"
+                   PdfFileName="sessions"
+                   ExportHeaderText="Session Report"
+                   ExportFooterText="@("Exported: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"))">
+
+            @* Header slot — custom status filter chips *@
+            <HeaderContent>
+       @*          <div style="display:flex; gap:4px; margin-left:6px;">
+                    @foreach (var s in new[] { "All", "Program", "Battery" })
+                    {
+                        var sLocal = s;
+                        <button style="height:20px; padding:0 8px; font-size:10px; cursor:pointer;
+                                           border-radius:10px; border:1px solid #e5e7eb; font-family:inherit;
+                                           background:@("" == sLocal ? "#1d4ed8" : "#f9fafb");
+                                           color:@(false ? "#fff" : "#374151");
+                                    ">
+                            @sLocal
+                        </button>
+                    }
+                </div> *@
+            </HeaderContent>
+
+            <Columns>
+
+                <ColumnDef TItem="SessionRecordDto" Key="id" Header="ID"
+                           Align="right"
+                           SearchSelector="@(s => s.SessionID.ToString())"
+                           ExcelValueSelector="@(s => s.SessionID.ToString())">
+                    <CellTemplate Context="s">
+                        <span class="text-xs text-muted-foreground font-mono">@s.SessionID</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="sessionName" Header="Session Name"
+                           SearchSelector="@(s => s.SessionName ?? string.Empty)"
+                           ExcelValueSelector="@(s => s.SessionName ?? string.Empty)">
+                    <CellTemplate Context="s">
+                        <span class="font-medium">@s.SessionName</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="SessionFilePath" Header="FilePath"
+                           SearchSelector="@(s => s.SessionFilePath ?? string.Empty)"
+                           ExcelValueSelector="@(s => s.SessionFilePath ?? string.Empty)">
+                    <CellTemplate Context="s">
+                        <span class="font-medium">@s.SessionFilePath</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="devCir" Header="Dev-Cir"
+                           Align="center"
+                           SearchSelector="@(s => $"{s.DeviceID}-{s.SecondaryBoardNumber}-{s.ChannelNumber}")"
+                           ExcelValueSelector="@(s => $"{s.DeviceID}-{s.SecondaryBoardNumber}-{s.ChannelNumber}")">
+                    <CellTemplate Context="s">
+                        <span class="font-mono text-xs">@s.DeviceID-@s.SecondaryBoardNumber-@s.ChannelNumber</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="ProgramName" Header="Program Name"
+                           Align="center"
+                           SearchSelector="@(s => s.ProgramName?.ToString())"
+                           ExcelValueSelector="@(s => s.ProgramName?.ToString())">
+                    <CellTemplate Context="s">
+                        @s.ProgramName
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="BatteryName" Header="Battery Name"
+                           Align="center"
+                           SearchSelector="@(s => s.BatteryName?.ToString())"
+                           ExcelValueSelector="@(s => s.BatteryName?.ToString())">
+                    <CellTemplate Context="s">
+                        @s.BatteryName
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="startTime" Header="Start Time"
+                           SearchSelector="@(s => s.StartTime.ToString())"
+                           ExcelValueSelector="@(s => s.StartTime.ToString())">
+                    <CellTemplate Context="s">
+                        <span class="text-xs text-muted-foreground">@s.StartTime</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="endTime" Header="End Time"
+                           SearchSelector="@(s => s.EndTime.ToString())"
+                           ExcelValueSelector="@(s => s.EndTime.ToString())">
+                    <CellTemplate Context="s">
+                        <span class="text-xs text-muted-foreground">@s.EndTime</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="duration" Header="Duration"
+                           Align="right"
+                           SearchSelector="@(s => s.Duration.ToString())"
+                           ExcelValueSelector="@(s => s.Duration.ToString())">
+                    <CellTemplate Context="s">
+                        @s.Duration
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="SessionRecordDto" Key="actions" Header="Actions"
+                           Align="right"
+                           ExcelValueSelector="@(s => string.Empty)">
+                    <CellTemplate Context="s">
+                        <div class="flex items-center justify-end gap-1">
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                            OnClick="@(() => OpenSessionPanel(s))">
+                                        <Blazicon Svg="Lucide.Info" class="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent Side="TooltipSide.Top">Session Properties</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                            OnClick="@(() => OpenView(s))">
+                                        <Blazicon Svg="Lucide.View" class="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent Side="TooltipSide.Top">Open Session</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                            Disabled="@IsExporting(s)"
+                                            OnClick="@(() => RequestExportAsync(s))">
+                                        @if (IsExporting(s))
+                                        {
+                                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                                            </svg>
+                                        }
+                                        else
+                                        {
+                                            <Blazicon Svg="Lucide.FileSpreadsheet" class="h-4 w-4 text-green-600" />
+                                        }
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent Side="TooltipSide.Top">
+                                    @(IsExporting(s) ? _exportStatus.GetValueOrDefault(s.SessionFilePath, "Exporting...") : "Export Excel (Hangfire)")
+                                </TooltipContent>
+                            </Tooltip>
+                        </div>
+                    </CellTemplate>
+                </ColumnDef>
+
+            </Columns>
+            <ActionButtons>
+                <button class="inline-flex items-center justify-center w-6 h-6 rounded
+               border border-border bg-background text-muted-foreground
+               hover:bg-muted hover:text-foreground
+               transition-colors cursor-pointer text-xs"
+                        title="Refresh data"
+                        @onclick="LoadSessions">
+                    ↺
+                </button>
+            </ActionButtons>
+        </DataTable>
+    </div>
+}
+
+
+@* ── Session Properties Panel ───────────────────────────────────────────── *@
+@if (_showSessionPanel && selectedRow != null)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+         @onclick="CloseSessionPanel">
+        <div class="bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))] border border-[hsl(var(--border))] rounded-lg shadow-2xl w-[560px] max-w-[95vw] max-h-[80vh] overflow-hidden flex flex-col"
+             @onclick:stopPropagation>
+
+            @* Header *@
+            <div class="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))] shrink-0">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-[hsl(var(--primary))]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h3 class="text-sm font-semibold">Session Properties</h3>
+                    <span class="text-xs text-[hsl(var(--muted-foreground))] font-mono">— @selectedRow.SessionName</span>
+                </div>
+                <button class="inline-flex items-center justify-center w-6 h-6 rounded-md border border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))] text-[hsl(var(--muted-foreground))]"
+                        @onclick="CloseSessionPanel">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            @* Body *@
+            <div class="overflow-y-auto flex-1 p-4">
+                @if (_sessionPropsLoading)
+                {
+                    <div class="flex items-center justify-center h-20 gap-2 text-[hsl(var(--muted-foreground))] text-xs">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                        Loading session data…
+                    </div>
+                }
+                else
+                {
+                    @* Basic info *@
+                    <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs mb-4">
+                        @SessionPropField("Program", selectedRow.ProgramName ?? "—")
+                        @SessionPropField("Battery", selectedRow.BatteryName ?? "—")
+                        @SessionPropField("Device / Circuit", $"{selectedRow.DeviceID} — {selectedRow.SecondaryBoardNumber}-{selectedRow.ChannelNumber}")
+                        @SessionPropField("Start", selectedRow.StartTime.ToString())
+                        @SessionPropField("End", selectedRow.EndTime.ToString())
+                        @SessionPropField("Duration", selectedRow.Duration.ToString())
+                    </div>
+
+                    @* PRODUCER sub-programs *@
+                    <div class="mb-4">
+                        <div class="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))] mb-2 flex items-center gap-1.5">
+                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            PRODUCER Sub-programs
+                        </div>
+                        @if (_sessionProducerPrograms.Count == 0)
+                        {
+                            <div class="text-xs text-[hsl(var(--muted-foreground))] italic pl-1">None used in this session</div>
+                        }
+                        else
+                        {
+                            <div class="flex flex-col gap-1">
+                                @foreach (var prog in _sessionProducerPrograms)
+                                {
+                                    <div class="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-[hsl(var(--muted))]">
+                                        <span class="font-mono font-medium text-[hsl(var(--foreground))]">@prog.ProgramName</span>
+                                        <span class="text-[hsl(var(--muted-foreground))]">— @(prog.ProgramStepModel?.Count ?? 0) steps</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* TABLE files *@
+                    <div>
+                        <div class="text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))] mb-2 flex items-center gap-1.5">
+                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            TABLE Files
+                        </div>
+                        @if (_sessionTableFileData.Count == 0)
+                        {
+                            <div class="text-xs text-[hsl(var(--muted-foreground))] italic pl-1">None used in this session</div>
+                        }
+                        else
+                        {
+                            <div class="flex flex-col gap-1">
+                                @foreach (var kv in _sessionTableFileData)
+                                {
+                                    <div class="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-[hsl(var(--muted))]">
+                                        <span class="font-mono font-medium text-[hsl(var(--foreground))]">@kv.Key</span>
+                                        <span class="text-[hsl(var(--muted-foreground))]">— @kv.Value.Length lines</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            @* Footer *@
+            <div class="px-4 py-2 border-t border-[hsl(var(--border))] shrink-0 flex justify-end">
+                <button class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
+                        @onclick="@(() => OpenView(selectedRow))">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Open Full Session
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Export Confirm Dialog ──────────────────────────────────────────────── *@
+@if (_showExportConfirm && _existingExportRecord != null && _pendingExportSession != null)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" @onclick="CancelExportConfirm">
+        <div class="bg-card text-card-foreground border border-border rounded-lg shadow-2xl w-[440px] max-w-[95vw] overflow-hidden flex flex-col" @onclick:stopPropagation>
+            <div class="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 class="text-sm font-semibold">Export Already Exists</h3>
+                </div>
+                <button class="inline-flex items-center justify-center w-6 h-6 rounded-md border border-border hover:bg-accent text-muted-foreground"
+                        @onclick="CancelExportConfirm">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="px-4 py-4 text-sm text-muted-foreground space-y-1">
+                <p>An export for <span class="font-medium text-foreground">@_pendingExportSession.SessionName</span> was generated on
+                   <span class="font-medium text-foreground">@_existingExportRecord.CompletedAt?.ToString("yyyy-MM-dd HH:mm")</span>
+                   @if (_existingExportRecord.FileSizeBytes > 0)
+                   {
+                       <span>(@FormatFileSize(_existingExportRecord.FileSizeBytes))</span>
+                   }.
+                </p>
+                <p>Do you want to download the existing file or re-generate it from the latest data?</p>
+            </div>
+            <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-border shrink-0">
+                <button class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-border bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
+                        @onclick="CancelExportConfirm">Cancel</button>
+                <button class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-border bg-background text-foreground hover:bg-accent transition-colors"
+                        @onclick="ConfirmRegenerateAsync">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Re-generate
+                </button>
+                <button class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                        @onclick="ConfirmDownloadExistingAsync">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download Existing
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    public List<SessionRecordDto> SessionRecords { get; set; } = new();
+    private bool isLoading = true;
+    private SessionRecordDto? selectedRow;
+
+    // ── Hangfire export state ─────────────────────────────────────────────────
+    // Key = SessionFilePath, Value = human-readable status text shown in tooltip
+    private readonly Dictionary<string, string> _exportStatus   = new();
+    // Key = SessionFilePath, Value = export record Id returned by the API
+    private readonly Dictionary<string, int>    _exportRecordId = new();
+
+    // ── Export confirm dialog ─────────────────────────────────────────────────
+    private bool _showExportConfirm = false;
+    private SessionRecordDto? _pendingExportSession = null;
+    private ExportRecord?     _existingExportRecord = null;
+
+    private bool IsExporting(SessionRecordDto s)
+        => _exportStatus.ContainsKey(s.SessionFilePath ?? "");
+
+    private async Task RequestExportAsync(SessionRecordDto session)
+    {
+        var path = session.SessionFilePath;
+        if (string.IsNullOrWhiteSpace(path) || IsExporting(session)) return;
+
+        // Check for an existing Ready export before doing anything
+        var existing = await FindReadyExportAsync(path);
+        if (existing != null)
+        {
+            _pendingExportSession = session;
+            _existingExportRecord = existing;
+            _showExportConfirm    = true;
+            StateHasChanged();
+            return;
+        }
+
+        await RunExportJobAsync(session);
+    }
+
+    // ── Confirm dialog callbacks ──────────────────────────────────────────────
+    private void CancelExportConfirm()
+    {
+        _showExportConfirm    = false;
+        _pendingExportSession = null;
+        _existingExportRecord = null;
+    }
+
+    private async Task ConfirmDownloadExistingAsync()
+    {
+        var rec     = _existingExportRecord;
+        var session = _pendingExportSession;
+        _showExportConfirm    = false;
+        _pendingExportSession = null;
+        _existingExportRecord = null;
+        StateHasChanged();
+
+        if (rec == null || session == null) return;
+        Toast.Success("Export ready", $"{session.SessionName} — downloading existing export.");
+        await DownloadExportFileAsync(rec);
+    }
+
+    private async Task ConfirmRegenerateAsync()
+    {
+        var rec     = _existingExportRecord;
+        var session = _pendingExportSession;
+        _showExportConfirm    = false;
+        _pendingExportSession = null;
+        _existingExportRecord = null;
+        StateHasChanged();
+
+        if (session == null) return;
+
+        if (rec != null)
+            await ExportRepo.MarkSupersededAsync(rec.Id);
+
+        await RunExportJobAsync(session);
+    }
+
+    // ── Core export job runner ────────────────────────────────────────────────
+    private async Task RunExportJobAsync(SessionRecordDto session)
+    {
+        var path = session.SessionFilePath!;
+        _exportStatus[path] = "Queuing...";
+        StateHasChanged();
+
+        try
+        {
+            var userName = CurrentUser.UserName;
+
+            // Create DB record and enqueue Hangfire job
+            var record = new ExportRecord
+            {
+                SessionFilePath = path,
+                RequestedBy     = userName,
+                RequestedAt     = DateTime.Now,
+                Status          = ExportStatus.Pending,
+                DisplayName     = session.SessionName ?? Path.GetFileNameWithoutExtension(path)
+            };
+            var created = await ExportRepo.CreateAsync(record);
+            HangfireClient.Enqueue<ExportJobService>(svc => svc.RunAsync(created.Id, CancellationToken.None));
+
+            // Poll until Ready or Failed
+            _exportStatus[path] = "Processing...";
+            StateHasChanged();
+
+            const int maxAttempts = 120; // 2 min at 1s intervals
+            for (int i = 0; i < maxAttempts; i++)
+            {
+                await Task.Delay(1000);
+
+                var current = await ExportRepo.GetByIdAsync(created.Id);
+                if (current == null) continue;
+
+                if (current.Status == ExportStatus.Ready && File.Exists(current.ExportFilePath))
+                {
+                    _exportStatus.Remove(path);
+                    _exportRecordId.Remove(path);
+                    StateHasChanged();
+                    Toast.Success("Export ready", $"{session.SessionName} Excel is ready — downloading.");
+                    await DownloadExportFileAsync(current);
+                    return;
+                }
+
+                if (current.Status == ExportStatus.Failed)
+                {
+                    _exportStatus.Remove(path);
+                    _exportRecordId.Remove(path);
+                    StateHasChanged();
+                    Toast.Error("Export failed", current.ErrorMessage ?? "Unknown error");
+                    return;
+                }
+
+                _exportStatus[path] = $"Processing… {i + 1}s";
+                StateHasChanged();
+            }
+
+            // Timed out
+            _exportStatus.Remove(path);
+            _exportRecordId.Remove(path);
+            Toast.Warning("Export timeout", "The export is taking too long. Check Hangfire dashboard.");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _exportStatus.Remove(path);
+            _exportRecordId.Remove(path);
+            Toast.Error("Export error", ex.Message);
+            StateHasChanged();
+        }
+    }
+
+    // ── Shared helpers ────────────────────────────────────────────────────────
+    private async Task<ExportRecord?> FindReadyExportAsync(string sessionFilePath)
+    {
+        var records = await ExportRepo.GetBySessionAsync(sessionFilePath);
+        return records.FirstOrDefault(e =>
+            e.RequestedBy == CurrentUser.UserName &&
+            e.Status == ExportStatus.Ready &&
+            File.Exists(e.ExportFilePath));
+    }
+
+    private async Task DownloadExportFileAsync(ExportRecord record)
+    {
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(record.ExportFilePath!);
+            var base64 = Convert.ToBase64String(bytes);
+            var fileName = Path.GetFileName(record.ExportFilePath);
+            await JS.InvokeVoidAsync("BmsExport.downloadFile", fileName, base64);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("Download error", ex.Message);
+        }
+    }
+
+    private static string FormatFileSize(long bytes) => bytes switch
+    {
+        >= 1_048_576 => $"{bytes / 1_048_576.0:F1} MB",
+        >= 1_024     => $"{bytes / 1_024.0:F0} KB",
+        _            => $"{bytes} B"
+    };
+
+    // Session properties panel state
+    private bool _showSessionPanel = false;
+    private bool _sessionPropsLoading = false;
+    private List<ProgramDTO> _sessionProducerPrograms = new();
+    private Dictionary<string, string[]> _sessionTableFileData = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSessions();
+        isLoading = false;
+    }
+
+    private void OnRowClick(SessionRecordDto item)
+    {
+        selectedRow = item;
+    }
+
+    private async Task LoadSessions()
+    {
+        var result = await PService.GetSessionsAsync();
+        if (result.Success) SessionRecords = result.Data ?? new();
+        else Toast.Error(result.Message ?? "Failed to load sessions");
+    }
+
+    private async Task OpenSessionPanel(SessionRecordDto session)
+    {
+        selectedRow = session;
+        _showSessionPanel = true;
+        _sessionPropsLoading = true;
+        _sessionProducerPrograms = new();
+        _sessionTableFileData = new();
+        StateHasChanged();
+
+        try
+        {
+            var sessionData = await dbManager.GetSessionAsync(session.SessionFilePath);
+            if (sessionData != null)
+            {
+                _sessionProducerPrograms = sessionData.ProducerPrograms ?? new();
+                _sessionTableFileData = sessionData.TableFileData ?? new();
+            }
+        }
+        finally
+        {
+            _sessionPropsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseSessionPanel()
+    {
+        _showSessionPanel = false;
+    }
+
+    public void OpenView(SessionRecordDto session)
+    {
+        _showSessionPanel = false;
+        tbService.AddTab(new NavMenuItem
+        {
+            Title = $"Records:{session.SessionID}",
+            Icon = Lucide.FileCode,
+            keepAlive = true,
+            ComponentType = typeof(BmsDashboard),
+            Parameters = new Dictionary<string, object>
+            {
+                { "SQLFilePath", session.SessionFilePath }
+            },
+            Unique = true
+        });
+    }
+
+    // Helper render fragment for the properties panel info rows
+    private RenderFragment SessionPropField(string label, string value) => __builder =>
+    {
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class", "py-1 border-b border-[hsl(var(--border)/0.4)]");
+        __builder.OpenElement(2, "span");
+        __builder.AddAttribute(3, "class", "text-[hsl(var(--muted-foreground))] font-medium uppercase tracking-wide text-[10px] block");
+        __builder.AddContent(4, label);
+        __builder.CloseElement();
+        __builder.OpenElement(5, "span");
+        __builder.AddAttribute(6, "class", "font-mono text-xs text-[hsl(var(--foreground))]");
+        __builder.AddContent(7, value);
+        __builder.CloseElement();
+        __builder.CloseElement();
+    };
+}

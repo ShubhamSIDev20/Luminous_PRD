@@ -1,0 +1,981 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   BASE THEMES: Light & Dark (Original)
+   ============================================ */
+
+@layer base {
+    :root {
+        --background: 0 0% 100%;
+        --foreground: 222.2 84% 4.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 222.2 84% 4.9%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222.2 84% 4.9%;
+        --primary: 199 89% 42%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 220 14% 92%;
+        --secondary-foreground: 220 20% 20%;
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 46.9%;
+        --accent: 210 40% 96.1%;
+        --accent-foreground: 222.2 47.4% 11.2%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 214.3 31.8% 91.4%;
+        --input: 214.3 31.8% 91.4%;
+        --ring: 222.2 84% 4.9%;
+        --radius: 0.5rem;
+        /* Additional Status Colors */
+        --success: 142 76% 36%;
+        --warning: 38 92% 50%;
+        --critical: 0 84.2% 60.2%;
+        /* Battery Status */
+        --status-idle: 0 0% 62%;
+        --status-charge: 51 100% 50%;
+        --status-discharging: 33 100% 50%;
+        --status-pause: 207 90% 54%;
+        --status-continue: 122 39% 49%;
+        --status-interrupt: 37 75% 35%;
+        --status-error: 4 90% 58%;
+        --status-msg: 187 100% 42%;
+        --status-offline: 0 0% 100%;
+
+        /* Grid colors */
+        --grid-header: 220 14% 92%;
+        --grid-row: 0 0% 100%;
+        --grid-row-alt: 220 14% 97%;
+        --grid-row-hover: 220 14% 94%;
+        --grid-row-selected: 199 89% 92%;
+        --grid-border: 220 14% 88%;
+        /* Validation */
+        --valid: 142 71% 40%;
+        --invalid: 0 72% 51%;
+
+
+        /* Sidebar */
+        --sidebar-background: 0 0% 98%;
+        --sidebar-foreground: 222.2 84% 4.9%;
+        --sidebar-primary: 222.2 47.4% 11.2%;
+        --sidebar-primary-foreground: 210 40% 98%;
+        --sidebar-accent: 210 40% 96.1%;
+        --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+        --sidebar-border: 214.3 31.8% 91.4%;
+        --sidebar-ring: 222.2 84% 4.9%;
+    }
+
+    .dark {
+        --background: 222.2 84% 4.9%;
+        --foreground: 210 40% 98%;
+        --card: 222.2 84% 4.9%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222.2 84% 4.9%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 210 40% 98%;
+        --primary-foreground: 222.2 47.4% 11.2%;
+        --secondary: 217.2 32.6% 17.5%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217.2 32.6% 17.5%;
+        --muted-foreground: 215 20.2% 65.1%;
+        --accent: 217.2 32.6% 17.5%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 217.2 32.6% 17.5%;
+        --input: 217.2 32.6% 17.5%;
+        --ring: 212.7 26.8% 83.9%;
+        /* Additional Status Colors */
+        --success: 142 70% 45%;
+        --warning: 38 95% 55%;
+        --critical: 0 62.8% 30.6%;
+        /* Battery Status */
+        --status-idle: 0 0% 62%;
+        --status-charge: 51 100% 50%;
+        --status-discharging: 33 100% 50%;
+        --status-pause: 207 90% 54%;
+        --status-continue: 122 39% 49%;
+        --status-interrupt: 37 75% 35%;
+        --status-error: 4 90% 58%;
+        --status-msg: 187 100% 42%;
+        --status-offline: 0 0% 100%;
+       
+        /* Grid colors */
+        --grid-header: 220 16% 14%;
+        --grid-row: 220 16% 10%;
+        --grid-row-alt: 220 16% 12%;
+        --grid-row-hover: 220 16% 15%;
+        --grid-row-selected: 199 89% 20%;
+        --grid-border: 220 14% 18%;
+
+        /* Validation */
+        --valid: 142 71% 45%;
+        --invalid: 0 72% 51%;
+
+        /* Sidebar */
+        --sidebar-background: 222.2 84% 4.9%;
+        --sidebar-foreground: 210 40% 98%;
+        --sidebar-primary: 210 40% 98%;
+        --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+        --sidebar-accent: 217.2 32.6% 17.5%;
+        --sidebar-accent-foreground: 210 40% 98%;
+        --sidebar-border: 217.2 32.6% 17.5%;
+        --sidebar-ring: 212.7 26.8% 83.9%;
+    }
+}
+
+/* ============================================
+   NEW THEME 1: ShieldOS (S.H.I.E.L.D Tech)
+   Blue, Neon-Cyan, Tech-Glass Look
+   Components: Transparent with glass effect
+   ============================================ */
+
+@layer base {
+    .theme-shieldos {
+        /* Main surfaces - Semi-transparent for glass effect */
+        --background: 220 40% 8%;
+        --foreground: 195 100% 85%;
+        /* Cards & Surfaces - Glass morphism */
+        --card: 220 35% 12%;
+        --card-foreground: 195 100% 88%;
+        --popover: 220 30% 10%;
+        --popover-foreground: 195 100% 90%;
+        /* Primary - S.H.I.E.L.D Blue */
+        --primary: 210 100% 50%;
+        --primary-foreground: 0 0% 100%;
+        /* Secondary - Tech Cyan */
+        --secondary: 195 100% 45%;
+        --secondary-foreground: 220 45% 10%;
+        /* Muted - Subtle tech gray */
+        --muted: 220 25% 18%;
+        --muted-foreground: 195 40% 70%;
+        /* Accent - Glowing cyan */
+        --accent: 180 100% 50%;
+        --accent-foreground: 220 50% 8%;
+        /* Destructive - Alert red with cyan tint */
+        --destructive: 0 85% 55%;
+        --destructive-foreground: 0 0% 100%;
+        /* Borders & Inputs - Glowing effects */
+        --border: 195 80% 45%;
+        --input: 220 30% 15%;
+        --ring: 195 100% 50%;
+        --radius: 0.75rem;
+        /* Additional Status Colors */
+        --success: 142 90% 45%;
+        --warning: 38 100% 50%;
+        --critical: 0 85% 55%;
+        /* Battery Status */
+        --status-idle: 0 0% 62%;
+        --status-charge: 51 100% 50%;
+        --status-discharging: 33 100% 50%;
+        --status-pause: 207 90% 54%;
+        --status-continue: 122 39% 49%;
+        --status-interrupt: 37 75% 35%;
+        --status-error: 4 90% 58%;
+        --status-msg: 187 100% 42%;
+        --status-offline: 0 0% 100%;
+     
+        /* Grid colors */
+        --grid-header: 220 16% 14%;
+        --grid-row: 220 16% 10%;
+        --grid-row-alt: 220 16% 12%;
+        --grid-row-hover: 220 16% 15%;
+        --grid-row-selected: 199 89% 20%;
+        --grid-border: 220 14% 18%;
+        /* Validation */
+        --valid: 142 71% 45%;
+        --invalid: 0 72% 51%;
+
+        /* Sidebar - Tech panel */
+        --sidebar-background: 220 40% 10%;
+        --sidebar-foreground: 195 100% 85%;
+        --sidebar-primary: 210 100% 50%;
+        --sidebar-primary-foreground: 0 0% 100%;
+        --sidebar-accent: 195 100% 45%;
+        --sidebar-accent-foreground: 220 45% 10%;
+        --sidebar-border: 195 70% 40%;
+        --sidebar-ring: 195 100% 50%;
+    }
+}
+
+/* ============================================
+   NEW THEME 2: IronMan (Arc Reactor)
+   Deep Red, Gold, Arc-Reactor Cyan Highlights
+   ============================================ */
+
+@layer base {
+    .theme-ironman {
+        /* Main surfaces - Deep crimson */
+        --background: 0 50% 8%;
+        --foreground: 45 100% 90%;
+        /* Cards & Surfaces - Metallic feel */
+        --card: 0 45% 12%;
+        --card-foreground: 45 95% 88%;
+        --popover: 0 40% 10%;
+        --popover-foreground: 45 100% 92%;
+        /* Primary - Arc Reactor Cyan */
+        --primary: 190 100% 55%;
+        --primary-foreground: 0 0% 100%;
+        /* Secondary - Iron Red */
+        --secondary: 0 75% 45%;
+        --secondary-foreground: 45 100% 95%;
+        /* Muted - Dark metallic */
+        --muted: 0 20% 18%;
+        --muted-foreground: 45 40% 65%;
+        /* Accent - Gold highlight */
+        --accent: 45 100% 50%;
+        --accent-foreground: 0 50% 10%;
+        /* Destructive - Hot red */
+        --destructive: 0 100% 50%;
+        --destructive-foreground: 0 0% 100%;
+        /* Borders & Inputs - Gold trim */
+        --border: 45 60% 40%;
+        --input: 0 35% 15%;
+        --ring: 190 100% 55%;
+        --radius: 0.5rem;
+        /* Additional Status Colors */
+        --success: 142 80% 40%;
+        --warning: 45 100% 50%;
+        --critical: 0 100% 50%;
+        /* Battery Status - Arc reactor themed */
+        --status-idle: 0 0% 62%;
+        --status-charge: 51 100% 50%;
+        --status-discharging: 33 100% 50%;
+        --status-pause: 207 90% 54%;
+        --status-continue: 122 39% 49%;
+        --status-interrupt: 37 75% 35%;
+        --status-error: 4 90% 58%;
+        --status-msg: 187 100% 42%;
+        --status-offline: 0 0% 100%;
+
+        /* Grid colors */
+        --grid-header: 220 16% 14%;
+        --grid-row: 220 16% 10%;
+        --grid-row-alt: 220 16% 12%;
+        --grid-row-hover: 220 16% 15%;
+        --grid-row-selected: 199 89% 20%;
+        --grid-border: 220 14% 18%;
+        /* Validation */
+        --valid: 142 71% 45%;
+        --invalid: 0 72% 51%;
+
+        /* Sidebar - Command panel */
+        --sidebar-background: 0 45% 10%;
+        --sidebar-foreground: 45 95% 85%;
+        --sidebar-primary: 190 100% 55%;
+        --sidebar-primary-foreground: 0 0% 100%;
+        --sidebar-accent: 45 100% 50%;
+        --sidebar-accent-foreground: 0 50% 10%;
+        --sidebar-border: 45 50% 35%;
+        --sidebar-ring: 190 100% 55%;
+    }
+}
+
+/* ============================================
+   NEW THEME 3: Tech-Green (Matrix)
+   Matrix Green, Deep Black Contrast
+   ============================================ */
+
+@layer base {
+    .theme-tech {
+        /* Main surfaces - Matrix black */
+        --background: 120 20% 5%;
+        --foreground: 120 100% 85%;
+        /* Cards & Surfaces - Dark panels */
+        --card: 120 15% 8%;
+        --card-foreground: 120 95% 82%;
+        --popover: 120 18% 7%;
+        --popover-foreground: 120 100% 88%;
+        /* Primary - Electric Green */
+        --primary: 120 100% 45%;
+        --primary-foreground: 120 100% 5%;
+        /* Secondary - Terminal Green */
+        --secondary: 120 70% 35%;
+        --secondary-foreground: 120 100% 95%;
+        /* Muted - Subtle green-gray */
+        --muted: 120 10% 15%;
+        --muted-foreground: 120 30% 60%;
+        /* Accent - Neon Green */
+        --accent: 120 100% 50%;
+        --accent-foreground: 120 100% 8%;
+        /* Destructive - Red alert */
+        --destructive: 0 90% 50%;
+        --destructive-foreground: 0 0% 100%;
+        /* Borders & Inputs - Green glow */
+        --border: 120 60% 35%;
+        --input: 120 15% 12%;
+        --ring: 120 100% 50%;
+        --radius: 0.25rem;
+        /* Additional Status Colors */
+        --success: 120 100% 50%;
+        --warning: 60 100% 50%;
+        --critical: 0 90% 50%;
+        /* Battery Status - Matrix themed */
+        --status-idle: 0 0% 62%;
+        --status-charge: 51 100% 50%;
+        --status-discharging: 33 100% 50%;
+        --status-pause: 207 90% 54%;
+        --status-continue: 122 39% 49%;
+        --status-interrupt: 37 75% 35%;
+        --status-error: 4 90% 58%;
+        --status-msg: 187 100% 42%;
+        --status-offline: 0 0% 100%;
+
+        /* Grid colors */
+        --grid-header: 220 16% 14%;
+        --grid-row: 220 16% 10%;
+        --grid-row-alt: 220 16% 12%;
+        --grid-row-hover: 220 16% 15%;
+        --grid-row-selected: 199 89% 20%;
+        --grid-border: 220 14% 18%;
+        /* Validation */
+        --valid: 142 71% 45%;
+        --invalid: 0 72% 51%;
+
+
+        /* Sidebar - Terminal panel */
+        --sidebar-background: 120 18% 7%;
+        --sidebar-foreground: 120 90% 80%;
+        --sidebar-primary: 120 100% 45%;
+        --sidebar-primary-foreground: 120 100% 5%;
+        --sidebar-accent: 120 100% 50%;
+        --sidebar-accent-foreground: 120 100% 8%;
+        --sidebar-border: 120 50% 30%;
+        --sidebar-ring: 120 100% 50%;
+    }
+}
+
+/* ============================================
+   NEW THEME 4: Future-Purple (Cyberpunk)
+   Neon Purple, Violet, Dark Gradients
+   ============================================ */
+
+@layer base {
+    .theme-future {
+        /* Main surfaces - Deep violet-black */
+        --background: 270 40% 8%;
+        --foreground: 280 100% 90%;
+        /* Cards & Surfaces - Purple haze */
+        --card: 270 35% 12%;
+        --card-foreground: 280 90% 88%;
+        --popover: 270 38% 10%;
+        --popover-foreground: 280 95% 92%;
+        /* Primary - Neon Purple */
+        --primary: 280 100% 60%;
+        --primary-foreground: 0 0% 100%;
+        /* Secondary - Deep Violet */
+        --secondary: 270 70% 45%;
+        --secondary-foreground: 280 100% 95%;
+        /* Muted - Purple-gray */
+        --muted: 270 25% 18%;
+        --muted-foreground: 280 40% 70%;
+        /* Accent - Pink-Purple */
+        --accent: 300 100% 55%;
+        --accent-foreground: 270 50% 10%;
+        /* Destructive - Magenta alert */
+        --destructive: 330 85% 55%;
+        --destructive-foreground: 0 0% 100%;
+        /* Borders & Inputs - Purple glow */
+        --border: 280 60% 45%;
+        --input: 270 30% 14%;
+        --ring: 280 100% 60%;
+        --radius: 1rem;
+        /* Additional Status Colors */
+        --success: 142 80% 50%;
+        --warning: 38 100% 60%;
+        --critical: 330 85% 55%;
+        /* Battery Status - Cyberpunk themed */
+        --status-idle: 0 0% 62%;
+        --status-charge: 51 100% 50%;
+        --status-discharging: 33 100% 50%;
+        --status-pause: 207 90% 54%;
+        --status-continue: 122 39% 49%;
+        --status-interrupt: 37 75% 35%;
+        --status-error: 4 90% 58%;
+        --status-msg: 187 100% 42%;
+        --status-offline: 0 0% 100%;
+
+        /* Grid colors */
+        --grid-header: 220 16% 14%;
+        --grid-row: 220 16% 10%;
+        --grid-row-alt: 220 16% 12%;
+        --grid-row-hover: 220 16% 15%;
+        --grid-row-selected: 199 89% 20%;
+        --grid-border: 220 14% 18%;
+        /* Validation */
+        --valid: 142 71% 45%;
+        --invalid: 0 72% 51%;
+
+        /* Sidebar - Cyber panel */
+        --sidebar-background: 270 38% 10%;
+        --sidebar-foreground: 280 85% 85%;
+        --sidebar-primary: 280 100% 60%;
+        --sidebar-primary-foreground: 0 0% 100%;
+        --sidebar-accent: 300 100% 55%;
+        --sidebar-accent-foreground: 270 50% 10%;
+        --sidebar-border: 280 55% 40%;
+        --sidebar-ring: 280 100% 60%;
+    }
+}
+
+/* ============================================
+   GLOBAL SCROLLBAR - THEME AWARE
+   ============================================ */
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+}
+
+    *::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    *::-webkit-scrollbar-track {
+        background: hsl(var(--muted) / 0.4);
+        border-radius: var(--radius);
+    }
+
+    *::-webkit-scrollbar-thumb {
+        background: hsl(var(--muted-foreground) / 0.3);
+        border-radius: var(--radius);
+        border: 2px solid transparent;
+        background-clip: padding-box;
+    }
+
+        *::-webkit-scrollbar-thumb:hover {
+            background: hsl(var(--primary) / 0.6);
+            background-clip: padding-box;
+        }
+
+    *::-webkit-scrollbar-corner {
+        background: transparent;
+    }
+
+/* ShieldOS - Cyan glow */
+.theme-shieldos *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border) / 0.5);
+    background-clip: padding-box;
+    box-shadow: 0 0 6px hsl(var(--accent) / 0.4);
+}
+
+    .theme-shieldos *::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--accent) / 0.7);
+        background-clip: padding-box;
+    }
+
+/* IronMan - Gold trim */
+.theme-ironman *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border) / 0.5);
+    background-clip: padding-box;
+}
+
+    .theme-ironman *::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--accent) / 0.7);
+        background-clip: padding-box;
+    }
+
+/* Tech-Green - Matrix green */
+.theme-tech *::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.3);
+    background-clip: padding-box;
+}
+
+    .theme-tech *::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--primary) / 0.6);
+        background-clip: padding-box;
+    }
+
+/* Future-Purple - Neon purple */
+.theme-future *::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.3);
+    background-clip: padding-box;
+}
+
+    .theme-future *::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--primary) / 0.6);
+        background-clip: padding-box;
+    }
+
+/* ============================================
+   GLASS MORPHISM EFFECTS FOR SHIELDOS
+   ============================================ */
+
+.theme-shieldos .glass-effect {
+    background: hsl(var(--card));
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 0 20px hsl(var(--accent) / 0.2), inset 0 1px 0 hsl(var(--foreground) / 0.1);
+}
+
+.theme-shieldos .glow-text {
+    text-shadow: 0 0 10px hsl(var(--accent) / 0.8), 0 0 20px hsl(var(--accent) / 0.4), 0 0 30px hsl(var(--accent) / 0.2);
+}
+
+/* ============================================
+   METALLIC EFFECTS FOR IRONMAN
+   ============================================ */
+
+.theme-ironman .metallic-card {
+    background: linear-gradient( 135deg, hsl(var(--card)) 0%, hsl(0 40% 15%) 50%, hsl(var(--card)) 100% );
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 4px 20px hsl(0 70% 30% / 0.3), inset 0 1px 0 hsl(45 100% 50% / 0.15);
+}
+
+.theme-ironman .arc-glow {
+    box-shadow: 0 0 15px hsl(var(--primary) / 0.6), 0 0 30px hsl(var(--primary) / 0.3), inset 0 0 10px hsl(var(--primary) / 0.2);
+}
+
+/* ============================================
+   TERMINAL EFFECTS FOR TECH-GREEN
+   ============================================ */
+
+.theme-tech .terminal-border {
+    border: 1px solid hsl(var(--primary) / 0.4);
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.2), inset 0 0 10px hsl(var(--primary) / 0.05);
+}
+
+.theme-tech .matrix-text {
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 5px hsl(var(--primary) / 0.8);
+    animation: flicker 0.15s infinite alternate;
+}
+
+@keyframes flicker {
+    0%, 100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.95;
+    }
+}
+
+/* ============================================
+   NEON EFFECTS FOR FUTURE-PURPLE
+   ============================================ */
+
+.theme-future .neon-border {
+    border: 2px solid hsl(var(--primary) / 0.5);
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.5), 0 0 40px hsl(var(--primary) / 0.3), inset 0 0 20px hsl(var(--primary) / 0.1);
+    animation: neon-pulse 2s ease-in-out infinite;
+}
+
+@keyframes neon-pulse {
+    0%, 100% {
+        box-shadow: 0 0 20px hsl(var(--primary) / 0.5), 0 0 40px hsl(var(--primary) / 0.3), inset 0 0 20px hsl(var(--primary) / 0.1);
+    }
+
+    50% {
+        box-shadow: 0 0 30px hsl(var(--primary) / 0.7), 0 0 60px hsl(var(--primary) / 0.5), inset 0 0 30px hsl(var(--primary) / 0.2);
+    }
+}
+
+.theme-future .cyber-gradient {
+    background: linear-gradient( 135deg, hsl(var(--primary) / 0.2) 0%, hsl(var(--accent) / 0.2) 50%, hsl(var(--primary) / 0.2) 100% );
+}
+
+/* ============================================
+   BASE STYLES (Original - Unchanged)
+   ============================================ */
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+/* ============================================
+   UTILITIES (Original - Unchanged)
+   ============================================ */
+
+@layer utilities {
+    .step {
+        counter-increment: step;
+    }
+
+        .step:before {
+            @apply absolute w-9 h-9 bg-muted rounded-full font-mono font-medium text-center text-base inline-flex items-center justify-center -indent-px border-4 border-background;
+            @apply ml-[-50px] mt-[-4px];
+            content: counter(step);
+        }
+}
+
+/* ============================================
+   ANIMATIONS (Original - Unchanged)
+   ============================================ */
+
+@keyframes accordion-down {
+    from {
+        height: 0;
+    }
+
+    to {
+        height: var(--radix-accordion-content-height);
+    }
+}
+
+@keyframes accordion-up {
+    from {
+        height: var(--radix-accordion-content-height);
+    }
+
+    to {
+        height: 0;
+    }
+}
+
+@keyframes caret-blink {
+    0%, 70%, 100% {
+        opacity: 1;
+    }
+
+    20%, 50% {
+        opacity: 0;
+    }
+}
+
+/* Scrollbar Styles */
+.scroll-area-viewport::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.scroll-area-viewport::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.scroll-area-viewport::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 5px;
+}
+
+    .scroll-area-viewport::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--muted-foreground) / 0.5);
+    }
+
+/* Focus Visible */
+.focus-visible:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+}
+
+/* Custom Select Arrow */
+select::-ms-expand {
+    display: none;
+}
+
+/* Checkbox and Radio Custom Styles */
+input[type="checkbox"],
+input[type="radio"] {
+    @apply h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary;
+}
+
+/* Disable Spinner for Number Inputs */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+/* Loading Spinner */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Fade Animations */
+@keyframes fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes fade-out {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
+.animate-in {
+    animation: fade-in 0.2s ease-out;
+}
+
+.animate-out {
+    animation: fade-out 0.2s ease-out;
+}
+
+/* Zoom Animations */
+@keyframes zoom-in-95 {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes zoom-out-95 {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+}
+
+/* Slide Animations */
+@keyframes slide-in-from-top {
+    from {
+        transform: translateY(-100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes slide-in-from-bottom {
+    from {
+        transform: translateY(100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes slide-in-from-left {
+    from {
+        transform: translateX(-100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes slide-in-from-right {
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes slide-out-to-top {
+    from {
+        transform: translateY(0);
+    }
+
+    to {
+        transform: translateY(-100%);
+    }
+}
+
+@keyframes slide-out-to-bottom {
+    from {
+        transform: translateY(0);
+    }
+
+    to {
+        transform: translateY(100%);
+    }
+}
+
+@keyframes slide-out-to-left {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(-100%);
+    }
+}
+
+@keyframes slide-out-to-right {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(100%);
+    }
+}
+
+/* Utility Classes for Animations */
+.data-\[state\=open\]\:animate-in[data-state="open"] {
+    animation: fade-in 0.15s ease-out;
+}
+
+.data-\[state\=closed\]\:animate-out[data-state="closed"] {
+    animation: fade-out 0.15s ease-out;
+}
+
+.data-\[state\=open\]\:fade-in-0[data-state="open"] {
+    animation: fade-in 0.15s ease-out;
+}
+
+.data-\[state\=closed\]\:fade-out-0[data-state="closed"] {
+    animation: fade-out 0.15s ease-out;
+}
+
+.data-\[state\=open\]\:zoom-in-95[data-state="open"] {
+    animation: zoom-in-95 0.15s ease-out;
+}
+
+.data-\[state\=closed\]\:zoom-out-95[data-state="closed"] {
+    animation: zoom-out-95 0.15s ease-out;
+}
+
+.data-\[state\=open\]\:slide-in-from-top[data-state="open"] {
+    animation: slide-in-from-top 0.2s ease-out;
+}
+
+.data-\[state\=open\]\:slide-in-from-bottom[data-state="open"] {
+    animation: slide-in-from-bottom 0.2s ease-out;
+}
+
+.data-\[state\=open\]\:slide-in-from-left[data-state="open"] {
+    animation: slide-in-from-left 0.2s ease-out;
+}
+
+.data-\[state\=open\]\:slide-in-from-right[data-state="open"] {
+    animation: slide-in-from-right 0.2s ease-out;
+}
+
+.data-\[state\=closed\]\:slide-out-to-top[data-state="closed"] {
+    animation: slide-out-to-top 0.2s ease-out;
+}
+
+.data-\[state\=closed\]\:slide-out-to-bottom[data-state="closed"] {
+    animation: slide-out-to-bottom 0.2s ease-out;
+}
+
+.data-\[state\=closed\]\:slide-out-to-left[data-state="closed"] {
+    animation: slide-out-to-left 0.2s ease-out;
+}
+
+.data-\[state\=closed\]\:slide-out-to-right[data-state="closed"] {
+    animation: slide-out-to-right 0.2s ease-out;
+}
+
+/* Sidebar Utilities */
+.bg-sidebar {
+    background-color: hsl(var(--sidebar-background));
+}
+
+.text-sidebar-foreground {
+    color: hsl(var(--sidebar-foreground));
+}
+
+.border-sidebar-border {
+    border-color: hsl(var(--sidebar-border));
+}
+
+.bg-sidebar-accent {
+    background-color: hsl(var(--sidebar-accent));
+}
+
+.text-sidebar-accent-foreground {
+    color: hsl(var(--sidebar-accent-foreground));
+}
+
+.bg-sidebar-primary {
+    background-color: hsl(var(--sidebar-primary));
+}
+
+.text-sidebar-primary-foreground {
+    color: hsl(var(--sidebar-primary-foreground));
+}
+
+.ring-sidebar-ring {
+    --tw-ring-color: hsl(var(--sidebar-ring));
+}
+
+/*Program Editor */
+
+.grid-cell {
+    @apply px-3 py-2 border-r border-grid-border text-sm font-mono;
+}
+
+.grid-header-cell {
+    @apply px-3 py-2.5 border-r border-grid-border text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-grid-header;
+}
+
+.validation-dot {
+    @apply w-2 h-2 rounded-full;
+}
+
+    .validation-dot.valid {
+        @apply bg-success;
+    }
+
+    .validation-dot.invalid {
+        @apply bg-destructive animate-pulse;
+    }
+
+.operator-badge {
+    @apply px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide;
+}
+
+.tag-input {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded bg-secondary text-secondary-foreground text-xs font-mono;
+}
+
+.action-button {
+    @apply p-1.5 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground;
+}
+
+/*Program Editor */
+
+
+@keyframes marquee {
+    0% {
+        transform: translateX(100%);
+    }
+
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+.animate-marquee {
+    animation: marquee 10s linear infinite;
+}
+
+    .animate-marquee:hover {
+        animation-play-state: paused;
+    }

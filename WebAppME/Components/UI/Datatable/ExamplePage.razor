@@ -1,0 +1,644 @@
+@* ExamplePage.razor
+   ─────────────────────────────────────────────────────────────────────────
+   Demonstrates all features of the generic <DataTable<TItem>> component:
+
+   TABLE 1 — Products (client-side, search, Excel export, row click,
+                        column visibility, drag-reorder, fullscreen)
+
+   TABLE 2 — Orders (server-side, search, Excel export, row selected
+                      highlight, custom header content)
+
+   HOW TO ADD TO YOUR APP
+   ─────────────────────────────────────────────────────────────────────────
+   1. Drop DataTable.razor, ColumnDef.razor, DataTableModels.cs into
+      your component folder (e.g. Components/DataTable/).
+
+   2. Add the NuGet package:
+        dotnet add package DocumentFormat.OpenXml
+
+   3. In your _Imports.razor add:
+        @using UI.Components.DataTable
+
+   4. Navigate to this page or paste the markup into any .razor file.
+   ─────────────────────────────────────────────────────────────────────────
+*@
+@page "/datatable-example"
+@using BatteryTestingSystem.Components.UI.Datatable;
+
+<div style="padding:16px; display:flex; flex-direction:column; gap:24px; height:100vh; box-sizing:border-box; overflow:auto;">
+
+    @* ── Page title ── *@
+    <div>
+        <h1 style="font-size:18px; font-weight:700; margin:0 0 4px;">DataTable Component Examples</h1>
+        <p style="font-size:12px; color:#666; margin:0;">
+            Client-side (Table 1) &amp; Server-side (Table 2). Try search, column toggle, drag-reorder, and Excel export.
+        </p>
+    </div>
+
+    @* ══════════════════════════════════════════════════════════════════════
+       TABLE 1 — Products — client-side, all features
+    ══════════════════════════════════════════════════════════════════════ *@
+    <section style="flex:1; min-height:340px; display:flex; flex-direction:column; gap:6px;">
+
+        <h2 style="font-size:13px; font-weight:600; margin:0;">
+            Table 1 — Products
+            <span style="font-weight:400; color:#888; font-size:11px;">
+                (client-side · search · Excel export · column toggle · drag-reorder · row click)
+            </span>
+        </h2>
+
+        @* Selected product info bar *@
+        @if (_selectedProduct != null)
+        {
+            <div style="padding:6px 10px; background:#eff6ff; border:1px solid #bfdbfe;
+                        border-radius:6px; font-size:11px; color:#1d4ed8;">
+                Selected: <b>@_selectedProduct.Name</b> — @_selectedProduct.Category —
+                $@_selectedProduct.Price.ToString("F2") — Stock: @_selectedProduct.Stock
+                <button style="margin-left:8px; font-size:10px; cursor:pointer; border:none;
+                               background:none; color:#6b7280;"
+                        @onclick="() => _selectedProduct = null">
+                    ✕ clear
+                </button>
+            </div>
+        }
+
+        <div style="flex:1; min-height:0;">
+            <DataTable TItem="Product"
+                       Title="Products"
+                       Subtitle="@(_selectedProduct != null ? $"selected: {_selectedProduct.Name}" : null)"
+                       Data="@_products"
+                       Search="true"
+                       ExcelExport="true"
+                       ExcelFileName="products"
+                       ExcelSheetName="Products"
+                       PdfExport="true"
+                       PdfFileName="products"
+                       ExportHeaderText="Product Catalogue - Acme Corp"
+                       ExportFooterText="@("Exported: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"))"
+                       IsFullscreen="@_prodFullscreen"
+                       OnFullscreenToggle="@(() => _prodFullscreen = !_prodFullscreen)"
+                       OnRowClick="@(p => _selectedProduct = p)"
+                       RowSelected="@(p => _selectedProduct?.Id == p.Id)">
+
+                <ExportHeader>
+                    <span style="font-weight:700;">Product Catalogue</span>
+                    <span style="margin-left:8px;color:#888;font-size:11px;">Acme Corp</span>
+                </ExportHeader>
+                <ExportFooter>
+                    <span style="font-size:10px;color:#aaa;">Confidential - Do not distribute</span>
+                </ExportFooter>
+
+                <Columns>
+
+                    @* ID *@
+                    <ColumnDef TItem="Product" Key="id" Header="ID" Align="right"
+                               SearchSelector="@(p => p.Id.ToString())"
+                               ExcelValueSelector="@(p => p.Id.ToString())">
+                        <CellTemplate Context="p">
+                            <span style="color:#9ca3af; font-size:10px;">@p.Id</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    @* Name *@
+                    <ColumnDef TItem="Product" Key="name" Header="Product Name"
+                               SearchSelector="@(p => p.Name)"
+                               ExcelValueSelector="@(p => p.Name)">
+                        <CellTemplate Context="p">
+                            <span style="font-weight:500;">@p.Name</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    @* Category *@
+                    <ColumnDef TItem="Product" Key="cat" Header="Category"
+                               SearchSelector="@(p => p.Category)"
+                               ExcelValueSelector="@(p => p.Category)">
+                        <CellTemplate Context="p">
+                            <span style="@CategoryStyle(p.Category); font-size:10px;
+                                         padding:1px 6px; border-radius:10px; font-weight:500;">
+                                @p.Category
+                            </span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    @* Price *@
+                    <ColumnDef TItem="Product" Key="price" Header="Price" Align="right"
+                               HeaderColor="#16a34a"
+                               SearchSelector="@(p => p.Price.ToString("F2"))"
+                               ExcelValueSelector="@(p => p.Price.ToString("F2"))">
+                        <CellTemplate Context="p">
+                            <span style="color:#16a34a; font-weight:600;">$@p.Price.ToString("F2")</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    @* Stock *@
+                    <ColumnDef TItem="Product" Key="stock" Header="Stock" Align="right"
+                               HeaderColor="#7c3aed"
+                               SearchSelector="@(p => p.Stock.ToString())"
+                               ExcelValueSelector="@(p => p.Stock.ToString())">
+                        <CellTemplate Context="p">
+                            <span style="color:@(p.Stock < 20 ? "#dc2626" : "#7c3aed");">
+                                @p.Stock
+                            </span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    @* Rating *@
+                    <ColumnDef TItem="Product" Key="rating" Header="Rating" Align="center"
+                               SearchSelector="@(p => p.Rating.ToString("F1"))"
+                               ExcelValueSelector="@(p => p.Rating.ToString("F1"))">
+                        <CellTemplate Context="p">
+                            @RatingStars(p.Rating)
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    @* In Stock badge — hidden by default to demo visibility toggle *@
+                    <ColumnDef TItem="Product" Key="avail" Header="Available" Align="center"
+                               Visible="false"
+                               SearchSelector="@(p => p.InStock ? "yes" : "no")"
+                               ExcelValueSelector="@(p => p.InStock ? "Yes" : "No")">
+                        <CellTemplate Context="p">
+                            <span style="font-size:10px; padding:1px 5px; border-radius:4px; font-weight:600;
+                                         background:@(p.InStock ? "#dcfce7" : "#fee2e2");
+                                         color:@(p.InStock ? "#15803d" : "#dc2626");">
+                                @(p.InStock ? "YES" : "NO")
+                            </span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    @* Added date *@
+                    <ColumnDef TItem="Product" Key="added" Header="Added"
+                               SearchSelector="@(p => p.Added.ToString("yyyy-MM-dd"))"
+                               ExcelValueSelector="@(p => p.Added.ToString("yyyy-MM-dd"))">
+                        <CellTemplate Context="p">
+                            <span style="color:#9ca3af;">@p.Added.ToString("dd MMM yyyy")</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                </Columns>
+
+                @* Extra toolbar button injected via ActionButtons slot *@
+                <ActionButtons>
+                    <button style="display:inline-flex; align-items:center; justify-content:center;
+                                   width:24px; height:24px; border-radius:4px;
+                                   border:1px solid #e5e7eb; background:#f9fafb;
+                                   color:#9ca3af; cursor:pointer; font-size:11px;"
+                            title="Refresh data"
+                            @onclick="GenerateProducts">
+                        ↺
+                    </button>
+                </ActionButtons>
+
+            </DataTable>
+        </div>
+    </section>
+
+    @* ══════════════════════════════════════════════════════════════════════
+       TABLE 2 — Orders — server-side
+    ══════════════════════════════════════════════════════════════════════ *@
+    <section style="flex:1; min-height:340px; display:flex; flex-direction:column; gap:6px;">
+
+        <h2 style="font-size:13px; font-weight:600; margin:0;">
+            Table 2 — Orders
+            <span style="font-weight:400; color:#888; font-size:11px;">
+                (server-side · 300ms search debounce · Excel export · header slot)
+            </span>
+        </h2>
+
+        <div style="flex:1; min-height:0;">
+            <DataTable TItem="Order"
+                       Title="Orders"
+                       DataSource="@FetchOrders"
+                       ServerSide="true"
+                       Search="true"
+                       ExcelExport="true"
+                       ExcelFileName="orders"
+                       ExcelSheetName="Orders"
+                       PdfExport="true"
+                       PdfFileName="orders"
+                       ExportHeaderText="Orders Report"
+                       ExportFooterText="@("Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"))"
+                       RowSelected="@(o => _selectedOrderId == o.Id)">
+
+                @* Header slot — custom status filter chips *@
+                <HeaderContent>
+                    <div style="display:flex; gap:4px; margin-left:6px;">
+                        @foreach (var s in new[] { "All", "Pending", "Shipped", "Delivered", "Cancelled" })
+                        {
+                            var sLocal = s;
+                            <button style="height:20px; padding:0 8px; font-size:10px; cursor:pointer;
+                                           border-radius:10px; border:1px solid #e5e7eb; font-family:inherit;
+                                           background:@(_statusFilter == sLocal ? "#1d4ed8" : "#f9fafb");
+                                           color:@(_statusFilter == sLocal ? "#fff" : "#374151");"
+                                    @onclick="() => SetStatusFilter(sLocal)">
+                                @sLocal
+                            </button>
+                        }
+                    </div>
+                </HeaderContent>
+
+                <Columns>
+
+                    <ColumnDef TItem="Order" Key="oid" Header="Order #" Align="right"
+                               SearchSelector="@(o => o.Id.ToString("D5"))"
+                               ExcelValueSelector="@(o => o.Id.ToString("D5"))">
+                        <CellTemplate Context="o">
+                            <span style="color:#6b7280;">#@o.Id.ToString("D5")</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="Order" Key="customer" Header="Customer"
+                               SearchSelector="@(o => o.Customer)"
+                               ExcelValueSelector="@(o => o.Customer)">
+                        <CellTemplate Context="o">@o.Customer</CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="Order" Key="product" Header="Product"
+                               SearchSelector="@(o => o.Product)"
+                               ExcelValueSelector="@(o => o.Product)">
+                        <CellTemplate Context="o">
+                            <span style="color:#374151;">@o.Product</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="Order" Key="qty" Header="Qty" Align="right"
+                               SearchSelector="@(o => o.Quantity.ToString())"
+                               ExcelValueSelector="@(o => o.Quantity.ToString())">
+                        <CellTemplate Context="o">@o.Quantity</CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="Order" Key="total" Header="Total" Align="right"
+                               HeaderColor="#16a34a"
+                               SearchSelector="@(o => o.Total.ToString("F2"))"
+                               ExcelValueSelector="@(o => o.Total.ToString("F2"))">
+                        <CellTemplate Context="o">
+                            <span style="color:#16a34a; font-weight:600;">$@o.Total.ToString("F2")</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="Order" Key="status" Header="Status" Align="center"
+                               SearchSelector="@(o => o.Status)"
+                               ExcelValueSelector="@(o => o.Status)">
+                        <CellTemplate Context="o">
+                            <span style="font-size:10px; padding:1px 6px; border-radius:10px;
+                                         font-weight:600; @StatusStyle(o.Status)">
+                                @o.Status
+                            </span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="Order" Key="date" Header="Date"
+                               SearchSelector="@(o => o.Date.ToString("yyyy-MM-dd"))"
+                               ExcelValueSelector="@(o => o.Date.ToString("yyyy-MM-dd"))">
+                        <CellTemplate Context="o">
+                            <span style="color:#9ca3af;">@o.Date.ToString("dd MMM yyyy")</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                </Columns>
+
+            </DataTable>
+        </div>
+    </section>
+
+    @* ══════════════════════════════════════════════════════════════════════
+       TABLE 3 — Inventory grouped by Category (GroupBy demo)
+    ══════════════════════════════════════════════════════════════════════ *@
+    <section style="flex:1; min-height:340px; display:flex; flex-direction:column; gap:6px;">
+
+        <h2 style="font-size:13px; font-weight:600; margin:0;">
+            Table 3 — Inventory by Category
+            <span style="font-weight:400; color:#888; font-size:11px;">
+                (GroupBy · collapsible groups · group-select checkbox · Expand/Collapse all)
+            </span>
+        </h2>
+
+        <div style="flex:1; min-height:0;">
+            <DataTable TItem="InventoryItem"
+                       @ref="_invTable"
+                       Title="Inventory"
+                       Subtitle="@($"{_invItems.Count(r => r.Selected)} selected")"
+                       Data="@_invItems"
+                       Search="true"
+                       ExcelExport="true"
+                       ExcelFileName="inventory"
+                       GroupBy="@_invGroupDef">
+
+                <ActionButtons>
+                    <button style="display:inline-flex;align-items:center;gap:3px;height:24px;padding:0 8px;
+                                   border-radius:4px;border:1px solid #e5e7eb;background:#f9fafb;
+                                   font-size:11px;font-family:inherit;cursor:pointer;color:#374151;"
+                            @onclick="() => _invTable?.ExpandAllGroups()">▾ Expand</button>
+                    <button style="display:inline-flex;align-items:center;gap:3px;height:24px;padding:0 8px;
+                                   border-radius:4px;border:1px solid #e5e7eb;background:#f9fafb;
+                                   font-size:11px;font-family:inherit;cursor:pointer;color:#374151;"
+                            @onclick="() => _invTable?.CollapseAllGroups()">▸ Collapse</button>
+                </ActionButtons>
+
+                <Columns>
+
+                    <ColumnDef TItem="InventoryItem" Key="isel" Header="✓" Align="center"
+                               SearchSelector="@(r => r.Selected ? "1" : "0")">
+                        <CellTemplate Context="r">
+                            <input type="checkbox" checked="@r.Selected"
+                                   @onchange="e => r.Selected = (bool)(e.Value ?? false)" />
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="InventoryItem" Key="iname" Header="Item"
+                               SearchSelector="@(r => r.Name)"
+                               ExcelValueSelector="@(r => r.Name)">
+                        <CellTemplate Context="r">
+                            <span style="font-weight:500;">@r.Name</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="InventoryItem" Key="icat" Header="Category"
+                               SearchSelector="@(r => r.Category)"
+                               ExcelValueSelector="@(r => r.Category)">
+                        <CellTemplate Context="r">
+                            <span style="font-size:11px;color:#6b7280;">@r.Category</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="InventoryItem" Key="isku" Header="SKU"
+                               SearchSelector="@(r => r.Sku)"
+                               ExcelValueSelector="@(r => r.Sku)">
+                        <CellTemplate Context="r">
+                            <span style="font-family:monospace;font-size:11px;color:#9ca3af;">@r.Sku</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="InventoryItem" Key="iqty" Header="Qty" Align="right"
+                               SearchSelector="@(r => r.Qty.ToString())"
+                               ExcelValueSelector="@(r => r.Qty.ToString())">
+                        <CellTemplate Context="r">
+                            <span style="color:@(r.Qty < 10 ? "#dc2626" : "#15803d");font-weight:600;">@r.Qty</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="InventoryItem" Key="iprice" Header="Price" Align="right"
+                               SearchSelector="@(r => r.Price.ToString("F2"))"
+                               ExcelValueSelector="@(r => r.Price.ToString("F2"))">
+                        <CellTemplate Context="r">
+                            <span style="color:#16a34a;font-weight:600;">$@r.Price.ToString("F2")</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                    <ColumnDef TItem="InventoryItem" Key="iloc" Header="Location"
+                               SearchSelector="@(r => r.Location)"
+                               ExcelValueSelector="@(r => r.Location)">
+                        <CellTemplate Context="r">
+                            <span style="font-size:11px;color:#6b7280;">@r.Location</span>
+                        </CellTemplate>
+                    </ColumnDef>
+
+                </Columns>
+            </DataTable>
+        </div>
+    </section>
+
+</div>
+
+@code {
+
+    // ── Models ───────────────────────────────────────────────────────────────
+
+    record Product(int Id, string Name, string Category, decimal Price,
+                   int Stock, double Rating, bool InStock, DateTime Added);
+
+    record Order(int Id, string Customer, string Product,
+                 int Quantity, decimal Total, string Status, DateTime Date);
+
+    // ── State ────────────────────────────────────────────────────────────────
+
+    private List<Product> _products = [];
+    private List<Order> _allOrders = [];
+    private Product? _selectedProduct;
+    private int? _selectedOrderId;
+    private bool _prodFullscreen;
+    private string _statusFilter = "All";
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    // ── Table 3 — Inventory (GroupBy demo) ──────────────────────────────────
+
+    private class InventoryItem
+    {
+        public string Name     { get; set; } = "";
+        public string Category { get; set; } = "";
+        public string Sku      { get; set; } = "";
+        public int    Qty      { get; set; }
+        public decimal Price   { get; set; }
+        public string Location { get; set; } = "";
+        public bool   Selected { get; set; }
+    }
+
+    private List<InventoryItem> _invItems = [];
+    private DataTable<InventoryItem>? _invTable;
+    private GroupDefinition<InventoryItem, string> _invGroupDef = new();
+
+    private void BuildInvGroupDef()
+    {
+        _invGroupDef = new GroupDefinition<InventoryItem, string>
+        {
+            KeySelector    = r => r.Category,
+            DefaultExpanded = true,
+            GroupHeaderTemplate = ctx => __builder =>
+            {
+                var allSel  = ctx.Items.All(r => r.Selected);
+                var someSel = !allSel && ctx.Items.Any(r => r.Selected);
+
+                <tr style="background:#f3f4f6;border-bottom:1px solid #e5e7eb;
+                           cursor:pointer;user-select:none;"
+                    @onclick="ctx.ToggleExpand">
+
+                    @* Checkbox + chevron *@
+                    <td style="padding:4px 6px;width:32px;" @onclick:stopPropagation>
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span style="font-size:11px;color:#9ca3af;
+                                         display:inline-block;transition:transform .15s;
+                                         transform:@(ctx.IsExpanded ? "rotate(90deg)" : "rotate(0deg)")">▶</span>
+                            <input type="checkbox" checked="@allSel"
+                                   style="width:13px;height:13px;cursor:pointer;"
+                                   @onchange="e => { var v = (bool)(e.Value ?? false); foreach(var r in ctx.Items) r.Selected = v; }"
+                                   @onclick:stopPropagation />
+                        </div>
+                    </td>
+
+                    @* Category badge + counts *@
+                    <td colspan="@(ctx.ColCount - 1)" style="padding:4px 8px;" @onclick:stopPropagation>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span style="font-size:12px;font-weight:600;padding:2px 8px;
+                                         border-radius:10px;background:#dbeafe;color:#1d4ed8;">
+                                @ctx.Key
+                            </span>
+                            <span style="font-size:11px;color:#9ca3af;">
+                                @ctx.Items.Count(r => r.Selected)/@ctx.Items.Count items
+                            </span>
+                            <span style="font-size:11px;color:#9ca3af;">
+                                Total value: <b style="color:#15803d;">
+                                    $@ctx.Items.Sum(r => r.Price * r.Qty).ToString("N2")
+                                </b>
+                            </span>
+                        </div>
+                    </td>
+                </tr>
+            }
+        };
+    }
+
+    private void GenerateInventory()
+    {
+        var rng = new Random(77);
+        var categories = new[] { "Resistors", "Capacitors", "ICs", "Connectors", "Cables", "Sensors" };
+        var locations  = new[] { "Shelf A1", "Shelf A2", "Shelf B1", "Shelf B2", "Bin C1", "Bin C2" };
+
+        _invItems = categories.SelectMany(cat =>
+            Enumerable.Range(1, rng.Next(4, 9)).Select(i => new InventoryItem
+            {
+                Name     = $"{cat} {rng.Next(100, 999)}",
+                Category = cat,
+                Sku      = $"{cat[..3].ToUpper()}-{rng.Next(10000, 99999)}",
+                Qty      = rng.Next(2, 150),
+                Price    = Math.Round((decimal)(rng.NextDouble() * 49 + 0.5), 2),
+                Location = locations[rng.Next(locations.Length)],
+                Selected = false
+            })
+        ).ToList();
+    }
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        GenerateProducts();
+        GenerateOrders();
+        GenerateInventory();
+        BuildInvGroupDef();
+    }
+
+    // ── Data generation ──────────────────────────────────────────────────────
+
+    private void GenerateProducts()
+    {
+        var rng = new Random(42);
+        var categories = new[] { "Electronics", "Clothing", "Books", "Home", "Sports", "Food" };
+        var adjectives = new[] { "Pro", "Ultra", "Smart", "Elite", "Compact", "Premium", "Eco" };
+        var nouns = new[] { "Widget", "Gadget", "Device", "Tool", "Kit", "Set", "Pack" };
+
+        _products = Enumerable.Range(1, 120).Select(i => new Product(
+            Id: i,
+            Name: $"{adjectives[rng.Next(adjectives.Length)]} {nouns[rng.Next(nouns.Length)]} {i}",
+            Category: categories[rng.Next(categories.Length)],
+            Price: Math.Round((decimal)(rng.NextDouble() * 490 + 10), 2),
+            Stock: rng.Next(0, 200),
+            Rating: Math.Round(rng.NextDouble() * 4 + 1, 1),
+            InStock: rng.NextDouble() > 0.2,
+            Added: DateTime.Today.AddDays(-rng.Next(0, 730))
+        )).ToList();
+    }
+
+    private void GenerateOrders()
+    {
+        var rng = new Random(99);
+        var customers = new[] { "Alice Smith","Bob Jones","Carol White","Dan Brown",
+                                 "Eva Green","Frank Black","Grace Lee","Henry Park" };
+        var products = new[] { "Laptop","Monitor","Keyboard","Mouse","Headphones",
+                                 "Webcam","USB Hub","Desk Lamp","Chair Mat","Cable" };
+        var statuses = new[] { "Pending", "Shipped", "Delivered", "Cancelled" };
+
+        _allOrders = Enumerable.Range(1, 280).Select(i =>
+        {
+            int qty = rng.Next(1, 10);
+            decimal price = Math.Round((decimal)(rng.NextDouble() * 200 + 20), 2);
+            return new Order(
+                Id: i,
+                Customer: customers[rng.Next(customers.Length)],
+                Product: products[rng.Next(products.Length)],
+                Quantity: qty,
+                Total: price * qty,
+                Status: statuses[rng.Next(statuses.Length)],
+                Date: DateTime.Today.AddDays(-rng.Next(0, 365))
+            );
+        }).ToList();
+    }
+
+    // ── Server-side DataSource ────────────────────────────────────────────────
+
+    private async Task<DataTableResult<Order>> FetchOrders(DataTableRequest req)
+    {
+        // Simulate async DB call with small delay
+        await Task.Delay(60);
+
+        var q = _allOrders.AsEnumerable();
+
+        // Status filter chip
+        if (_statusFilter != "All")
+            q = q.Where(o => o.Status == _statusFilter);
+
+        // Search
+        if (!string.IsNullOrEmpty(req.Search))
+        {
+            var term = req.Search.ToLowerInvariant();
+            q = q.Where(o =>
+                o.Customer.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                o.Product.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                o.Status.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                o.Id.ToString("D5").Contains(term));
+        }
+
+        var list = q.ToList();
+        int total = list.Count;
+        var page = list.Skip((req.Page - 1) * req.PageSize).Take(req.PageSize).ToList();
+
+        return new DataTableResult<Order> { Rows = page, TotalRows = total };
+    }
+
+    private void SetStatusFilter(string status)
+    {
+        _statusFilter = status;
+        _selectedOrderId = null;
+        // DataTable will call FetchOrders automatically on next param change,
+        // but we need to trigger a refresh — simplest: StateHasChanged causes
+        // OnParametersSetAsync in the child which calls DataSource.
+        StateHasChanged();
+    }
+
+    // ── Style helpers ─────────────────────────────────────────────────────────
+
+    private static string CategoryStyle(string cat) => cat switch
+    {
+        "Electronics" => "background:#dbeafe; color:#1d4ed8;",
+        "Clothing" => "background:#fce7f3; color:#be185d;",
+        "Books" => "background:#fef9c3; color:#92400e;",
+        "Home" => "background:#d1fae5; color:#065f46;",
+        "Sports" => "background:#ffedd5; color:#c2410c;",
+        "Food" => "background:#ede9fe; color:#6d28d9;",
+        _ => "background:#f3f4f6; color:#374151;",
+    };
+
+    private static string StatusStyle(string s) => s switch
+    {
+        "Pending" => "background:#fef9c3; color:#92400e;",
+        "Shipped" => "background:#dbeafe; color:#1d4ed8;",
+        "Delivered" => "background:#d1fae5; color:#065f46;",
+        "Cancelled" => "background:#fee2e2; color:#dc2626;",
+        _ => "background:#f3f4f6; color:#374151;",
+    };
+
+    private static RenderFragment RatingStars(double r) => __builder =>
+    {
+        __builder.OpenElement(0, "span");
+        __builder.AddAttribute(1, "title", r.ToString("F1") + " / 5");
+        __builder.AddAttribute(2, "style", "font-size:11px; letter-spacing:-1px;");
+        for (int i = 1; i <= 5; i++)
+        {
+            __builder.OpenElement(3, "span");
+            __builder.AddAttribute(4, "style", $"color:{(i <= r ? "#f59e0b" : "#d1d5db")};");
+            __builder.AddContent(5, "★");
+            __builder.CloseElement();
+        }
+        __builder.AddContent(6, $" {r:F1}");
+        __builder.CloseElement();
+    };
+}

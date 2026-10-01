@@ -1,0 +1,142 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Form
+@typeparam TValue
+@using System.Linq.Expressions
+
+<FormItem @ref="_formItem">
+    @ChildContent(_fieldData)
+</FormItem>
+
+@code {
+    [CascadingParameter]
+    private EditContext? EditContext { get; set; }
+
+    [Parameter, EditorRequired]
+    public Expression<Func<TValue>>? For { get; set; }
+
+    [Parameter]
+    public RenderFragment<FormFieldContextData<TValue>>? ChildContent { get; set; }
+
+    private FormItem? _formItem;
+    private FieldIdentifier _fieldIdentifier;
+    private TValue? _value;
+    private FormFieldContextData<TValue> _fieldData = new();
+
+    protected override void OnInitialized()
+    {
+        if (EditContext == null)
+            throw new InvalidOperationException($"{nameof(FormField<TValue>)} requires a cascading parameter of type {nameof(EditContext)}.");
+
+        if (For == null)
+            throw new InvalidOperationException($"{nameof(FormField<TValue>)} requires a value for the {nameof(For)} parameter.");
+
+        _fieldIdentifier = FieldIdentifier.Create(For);
+        _value = GetModelValue();
+
+        UpdateFieldData();
+
+        EditContext.OnValidationStateChanged += HandleValidationStateChanged;
+    }
+
+    private void UpdateFieldData()
+    {
+        _fieldData = new FormFieldContextData<TValue>
+        {
+            FieldId = GetFieldId(),
+            Value = _value,
+            ValueChanged = EventCallback.Factory.Create<TValue>(this, OnValueChanged),
+            IsInvalid = IsInvalid
+        };
+    }
+
+    private string GetFieldId() => _formItem?._uniqueId ?? "";
+
+    private bool IsInvalid => EditContext?.GetValidationMessages(_fieldIdentifier).Any() ?? false;
+
+    private async Task OnValueChanged(TValue value)
+    {
+        _value = value;
+        SetModelValue(value);
+        EditContext?.NotifyFieldChanged(_fieldIdentifier);
+        UpdateFieldData();
+        await InvokeAsync(StateHasChanged);
+        UpdateFormItemContext();
+    }
+
+    private TValue? GetModelValue()
+    {
+        if (For == null) return default;
+        var accessor = For.Compile();
+        return accessor();
+    }
+
+    private void SetModelValue(TValue value)
+    {
+        if (For?.Body is MemberExpression memberExpression)
+        {
+            var propertyInfo = memberExpression.Member as System.Reflection.PropertyInfo;
+            var target = GetModelInstance();
+
+            if (propertyInfo == null || target == null) return;
+
+            try
+            {
+                var targetType = propertyInfo.PropertyType;
+                var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+                object? converted = value == null
+                    ? null
+                    : Convert.ChangeType(value, underlyingType);
+
+                propertyInfo.SetValue(target, converted);
+            }
+            catch
+            {
+                // type conversion failed — set null for nullable types
+                var targetType = propertyInfo.PropertyType;
+                if (Nullable.GetUnderlyingType(targetType) != null)
+                    propertyInfo.SetValue(target, null);
+            }
+        }
+    }
+
+    private object? GetModelInstance()
+    {
+        if (For?.Body is MemberExpression memberExpression)
+        {
+            if (memberExpression.Expression is ConstantExpression constantExpression)
+            {
+                return constantExpression.Value;
+            }
+            else if (memberExpression.Expression != null)
+            {
+                var lambda = Expression.Lambda(memberExpression.Expression);
+                return lambda.Compile().DynamicInvoke();
+            }
+        }
+        return null;
+    }
+
+    private void HandleValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
+    {
+        UpdateFieldData();
+        UpdateFormItemContext();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateFormItemContext()
+    {
+        var messages = EditContext?.GetValidationMessages(_fieldIdentifier).ToList() ?? new List<string>();
+        var hasError = messages.Any();
+        var errorMessage = hasError ? messages.First() : null;
+
+        _formItem?.SetFieldContext(_fieldIdentifier.FieldName, hasError, errorMessage);
+    }
+
+    public void Dispose()
+    {
+        if (EditContext != null)
+        {
+            EditContext.OnValidationStateChanged -= HandleValidationStateChanged;
+        }
+    }
+}

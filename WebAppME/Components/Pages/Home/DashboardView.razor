@@ -1,0 +1,1150 @@
+﻿@page "/Dashboard"
+@attribute [Authorize]
+@attribute [StreamRendering]
+@inject ToastService Toast
+@implements IDisposable
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+@inject TabService tbService
+
+<PageTitle>Dashboard</PageTitle>
+@inject IDeviceChannelServices DCService
+@inject ChannelManager CM
+@using System.Dynamic
+@using BatteryTestingSystem.Components.UI
+@using BatteryTestingSystem.Components.UI.Dashboard
+@using BatteryTestingSystem.Models.DTOs
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Models.SqliteEntities
+@using BatteryTestingSystem.Services.Implementations
+@using BatteryTestingSystem.Services.Interfaces
+@using static BatteryTestingSystem.Components.UI.Dashboard.DeviceChannel
+@using static BatteryTestingSystem.Components.UI.Dashboard.TransferResultsDialog
+@inject ServerSessionStorageService sessionStorage
+@inject IUserCircuitAccessService CircuitAccessService
+@inject BatteryTestingSystem.Services.Implementations.DashboardRenderBatcher Batcher
+
+
+<div class="flex flex-col p-2 gap-2" style="font-size: @(CConfig?.FontSize)px;">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between px-2 gap-2">
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-[1em]">
+            <span class="cursor-pointer transition-opacity @(_statusChip == null && !_onlineOnly ? "font-semibold" : "opacity-60 hover:opacity-100")"
+                  @onclick="ClearStatusFilter" title="Show all circuits">
+                circuits: @circuits.Count
+            </span>
+            @foreach (CircuitStatus status in Enum.GetValues(typeof(CircuitStatus)))
+            {
+                var isActive = _statusChip == status;
+                <span class="text-status-@status.ToString().ToLower() cursor-pointer transition-opacity @(isActive ? "font-semibold underline underline-offset-2" : (_statusChip != null || _onlineOnly ? "opacity-50 hover:opacity-100" : "hover:opacity-80"))"
+                      @onclick="() => SetStatusChip(isActive ? null : status)"
+                      title="@(isActive ? "Click to clear filter" : $"Filter by {status}")">
+                    @if (status != CircuitStatus.Idle)
+                    {
+                        @($"{status}: {circuits.Count(c => c.RealTime.RealTimeRecord.CircuitStatus == status)}")
+                    }
+                    else
+                    {
+                        @($"Stop: {circuits.Count(c => c.RealTime.RealTimeRecord.CircuitStatus == status)}")
+                    }
+                </span>
+            }
+
+            @* "Online" is not a CircuitStatus member - it is the complement of Offline, so it
+               needs its own filter flag rather than a _statusChip value. Kept mutually exclusive
+               with the status chips: picking one always clears the other. Reuses the already-defined
+               --status-continue green because there is no --status-online var and app.min.css has
+               no rebuild pipeline (see ADR-2). *@
+            <span class="text-status-continue cursor-pointer transition-opacity @(_onlineOnly ? "font-semibold underline underline-offset-2" : (_statusChip != null ? "opacity-50 hover:opacity-100" : "hover:opacity-80"))"
+                  @onclick="ToggleOnlineOnly"
+                  title="@(_onlineOnly ? "Click to clear filter" : "Show only online circuits")">
+                @($"Online: {circuits.Count(c => c.RealTime?.RealTimeRecord?.CircuitStatus != CircuitStatus.Offline)}")
+            </span>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+
+            @* Layer 2 — view preference filter *@
+            <ChannelFilter
+                AccessChannels="@_accessCircuitsList"
+                @bind-VisibleChannels="_visibleCircuits" />
+
+            @* Bulk selection over the CURRENT filtered view (FilteredCircuits) - the same set
+               VirtualRows renders, so these never act on off-screen cards. *@
+            <Button variant="ButtonVariant.Outline" size="ButtonSize.Small" Class="gap-2"
+                    OnClick="@SelectAll" disabled="@(FilteredCircuits.Count == 0)"
+                    title="Select all circuits in the current view that share the anchor's state">
+                <Blazicon Svg="@Lucide.CheckCheck" class="h-4 w-4" />
+                @SelectAllLabel
+            </Button>
+
+            <Button variant="ButtonVariant.Outline" size="ButtonSize.Small" Class="gap-2"
+                    OnClick="@DeselectAll" disabled="@(selectedCircuits.Count == 0)"
+                    title="Clear the current selection">
+                <Blazicon Svg="@Lucide.X" class="h-4 w-4" />
+                Clear
+            </Button>
+
+            <CardSettings @bind-Config=@CConfig />
+            <ColorsSettings/>
+
+            @* Detail panel toggle *@
+            <Button variant="ButtonVariant.Outline" size="ButtonSize.Icon" Class="gap-2" OnClick="@ToggleDbcPanel"
+                    title="@(_panelOpen ? "Close detail DBC" : "Open detail DBC")">
+                <Blazicon Svg="@(_panelOpen ? Lucide.Minimize2 : Lucide.Layers)" class="h-4 w-4" />
+            </Button>
+
+        </div>
+    </div>
+</div>
+
+@* Flex row: grid on left, detail panel on right (docked) or floating over *@
+<div class="flex flex-row relative" style="min-height: 0;">
+    <div class="flex-1 min-w-0">
+
+<div id="@GridContainerElementId" class="overflow-y-auto" style="max-height: calc(100vh - 160px); padding-top: @(EdgePadPx)px;">
+@* Virtualized by ROW, not by card - Blazor's <Virtualize> assumes a uniform-height
+   vertical list, which doesn't compose with GridLayout's own CSS-grid auto-fill.
+   Chunking into fixed-size rows first (ColumnsPerRow) is the standard way to
+   virtualize a grid: each row is one Virtualize "item", and only rows near the
+   viewport ever mount their DeviceChannel cards - with up to 64 channels/device,
+   this caps how many cards are ever live at once, regardless of total channel count. *@
+<Virtualize Items="@VirtualRows" Context="row" ItemSize="@((float)(CConfig.CardSize + EdgePadPx))">
+    <div class="flex" style="gap: @(RowGapPx(row.Count))px; padding: 0 @(EdgePadPx)px @(EdgePadPx)px @(EdgePadPx)px;">
+        @foreach (var dev in row)
+        {
+            <div style="width: @(CConfig.CardSize)px; flex-shrink: 0;">
+            <ContextMenu>
+                <!-- Trigger wraps the card -->
+                <ContextMenuTrigger>
+                    <DeviceChannel
+                    Channel="dev"
+                    Selected=@(selectedCircuits.Contains((dev.Channel.DeviceID, dev.Channel.SecondaryBoardNumber, dev.Channel.ChannelNumber)))
+                    OnSelected="UpdateSelectedCircuits"
+                    MaxDigit="CConfig.ShowDecimal"
+                    ChartMaxDataPoints="100"
+                    Mode="CConfig.DisplayMode"
+                    FontSize="CConfig.FontSize"
+                    RefreshRate="CConfig.RefreshRate"
+                    VisibleProperties="CConfig.VisibleProperties"/>
+                </ContextMenuTrigger>
+
+                <!-- Menu content -->
+                <ContextMenuContent>
+                    <AuthorizeView Roles="Administrator,Supervisor">
+                        <ContextMenuItem
+                            Disabled="@(!CanContextAction(dev, "transfer"))"
+                            OnClick="@(() => DoAction("transfer"))">
+                            <Blazicon Svg="Lucide.Send" class="mr-2 h-4 w-4 text-green-500" />
+                            Transfer
+                        </ContextMenuItem>
+                    </AuthorizeView>
+
+                    <DropdownMenuSeparator />
+
+                    <ContextMenuItem
+                        Disabled="@(!CanContextAction(dev, "start"))"
+                        OnClick="@(() => DoAction("start"))">
+                        <Blazicon Svg="Lucide.Play" class="mr-2 h-4 w-4 text-green-500" />
+                        Start
+                    </ContextMenuItem>
+
+                    <ContextMenuItem
+                        Disabled="@(!CanContextAction(dev, "stop"))"
+                        OnClick="@(() => DoAction("stop"))">
+                        <Blazicon Svg="Lucide.Square" class="mr-2 h-4 w-4 text-red-500" />
+                        Stop
+                    </ContextMenuItem>
+
+                    <ContextMenuItem
+                        Disabled="@(!CanContextAction(dev, "pause"))"
+                        OnClick="@(() => DoAction("pause"))">
+                        <Blazicon Svg="Lucide.Pause" class="mr-2 h-4 w-4 text-yellow-500" />
+                        Interrupt
+                    </ContextMenuItem>
+
+                    <ContextMenuItem
+                        Disabled="@(!CanContextAction(dev, "continue"))"
+                        OnClick="@(() => DoAction("continue"))">
+                        <Blazicon Svg="Lucide.CirclePlay" class="mr-2 h-4 w-4 text-blue-500" />
+                        Continue
+                    </ContextMenuItem>
+
+                    <ContextMenuItem
+                        Disabled="@(!CanContextAction(dev, "liveEdit"))"
+                        OnClick="@(() => DoAction("liveEdit"))">
+                        <Blazicon Svg="Lucide.Pencil" class="mr-2 h-4 w-4 text-blue-500" />
+                        Edit Current Step
+                    </ContextMenuItem>
+
+                    <ContextMenuItem
+                        Disabled="@(!CanContextAction(dev, "jump"))"
+                        OnClick="@(() => OpenJumpDialog(dev))">
+                        <Blazicon Svg="Lucide.Redo2" class="mr-2 h-4 w-4 text-blue-500" />
+                        Jump to Step...
+                    </ContextMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    <AuthorizeView Roles="Administrator,Maintenance">
+                        <ContextMenuItem
+                            Disabled="@(!CanContextAction(dev, "calibration"))"
+                            OnClick="@(() => DoAction("calibration"))">
+                            <Blazicon Svg="Lucide.Info" class="mr-2 h-4 w-4 text-gray-500" />
+                            Calibration
+                        </ContextMenuItem>
+                    </AuthorizeView>
+
+
+
+                </ContextMenuContent>
+            </ContextMenu>
+            </div>
+        }
+    </div>
+</Virtualize>
+</div>
+
+    </div>@* end grid wrapper *@
+
+    @* Right-side detail panel: docked = takes real space, undocked = absolute float *@
+    <DbcValuePanel
+        IsOpen="@_panelOpen"
+        IsOpenChanged="@(v => { _panelOpen = v; SaveDbcPanelState(); StateHasChanged(); })"
+        IsDocked="@_panelDocked"
+        IsDockedChanged="@(v => { _panelDocked = v; SaveDbcPanelState(); StateHasChanged(); })"
+        Circuit="@DetailCircuit" />
+
+</div>@* end flex-row container *@
+
+<!-- #region name -->
+
+<Processing IsLoading="@IsLoading" ActionName="@ActionName" Cancel="@(() => _cts?.Cancel())" Completed="@CompletedSteps" Total="@TotalSteps" />
+
+<TransferDialog @bind-Open="@openTransferDialog" selectedCircuits="selectedList" OnTransferCompleted="@HandleTransferCompleted" />
+
+<TransferResultsDialog title="@TransferTitle" @bind-Open="@openTransferResults" Results="@results" />
+
+<JumpToStepDialog @bind-IsOpen="@_jumpDialogOpen" Circuit="@_jumpTargetCircuit" />
+
+<LiveStepUpdateDialog @bind-Open="@openLiveEditDialog" Circuit="@_liveEditCircuit" />
+
+<!-- #endregion -->
+
+@code {
+
+    private List<IChannelCommandHandler> circuits = new();
+    private List<IChannelCommandHandler> selectedList = new();
+    public List<ChannelDto> dbCircuits { get; set; } = new();
+    private bool IsLoading = false;
+    private string ActionName = string.Empty;
+    private CardConfig CConfig = new();
+
+    // ── Detail panel ──────────────────────────────────────────────────
+    private bool _panelOpen  = false;
+    private bool _panelDocked = true;
+    private const string DbcPanelKey = "dbc_panel_state";
+
+    /// <summary>The first selected circuit — shown in the detail panel.</summary>
+    private IChannelCommandHandler? DetailCircuit =>
+        selectedCircuits.Count == 0 ? null :
+        circuits.FirstOrDefault(c =>
+            c.Channel.DeviceID  == selectedCircuits.First().DeviceID &&
+            c.Channel.SecondaryBoardNumber == selectedCircuits.First().SecondaryBoardNumber &&
+            c.Channel.ChannelNumber == selectedCircuits.First().ChannelID);
+    CancellationTokenSource? _cts;
+    int CompletedSteps;
+    int TotalSteps;
+    Dictionary<int, SemaphoreSlim> _deviceLocks = new();
+
+    #region Filters and Selection
+
+    /// <summary>Layer 1 — circuits this user may see (from DB, immutable at runtime).</summary>
+    private HashSet<(int DeviceID, int SecondaryBoardNumber, int ChannelID)> _accessCircuits = new();
+
+    /// <summary>Cached flat list for CircuitFilter binding — rebuilt whenever _accessCircuits changes.</summary>
+    private List<(int DeviceID, int SecondaryBoardNumber, int ChannelID, string Name)> _accessCircuitsList = new();
+
+    /// <summary>Layer 2 — circuits the user chose to show (subset of _accessCircuits).</summary>
+    private HashSet<(int DeviceID, int SecondaryBoardNumber, int ChannelID)> _visibleCircuits = new();
+
+    /// <summary>Status filter, set by clicking a status count in the header. null = All.</summary>
+    private CircuitStatus? _statusChip = null;
+
+    /// <summary>
+    /// "Online" header filter - every circuit whose status is anything other than Offline.
+    /// Deliberately a separate flag, not a CircuitStatus value: Online is the complement of
+    /// Offline, not a member of the enum. Mutually exclusive with <see cref="_statusChip"/>.
+    /// </summary>
+    private bool _onlineOnly = false;
+
+    /// <summary>Picks a status chip, clearing the Online filter (the two are exclusive).</summary>
+    private void SetStatusChip(CircuitStatus? status)
+    {
+        _statusChip = status;
+        _onlineOnly = false;
+    }
+
+    /// <summary>Toggles the Online filter, clearing any status chip (the two are exclusive).</summary>
+    private void ToggleOnlineOnly()
+    {
+        _onlineOnly = !_onlineOnly;
+        _statusChip = null;
+    }
+
+    /// <summary>"circuits: N" resets both header filters back to Show All.</summary>
+    private void ClearStatusFilter()
+    {
+        _statusChip = null;
+        _onlineOnly = false;
+    }
+
+    private HashSet<(int DeviceID, int SecondaryBoardNumber, int ChannelID)> selectedCircuits = new();
+
+    /// <summary>
+    /// Fallback width used only until JS reports the real container size (first render,
+    /// or if ResizeObserver is unavailable). Kept in sync with the actual viewport via
+    /// ElementSize.observe/OnElementResized below - a hardcoded guess here previously
+    /// caused rows to be laid out wider than the real container, forcing horizontal scroll.
+    /// </summary>
+    private const int ReferenceContainerWidthPx = 1600;
+    private double _measuredContainerWidthPx = ReferenceContainerWidthPx;
+    private const string GridContainerElementId = "dashboard-grid-container";
+    private DotNetObjectReference<DashboardView>? _sizeDotNetRef;
+
+    private int ColumnsPerRow => Math.Max(1, Math.Min(8, (int)(AvailableRowWidthPx / (CConfig.CardSize + 12))));
+
+    private const double BaseGapPx = 12; // matches the prior fixed gap-3 (0.75rem = 12px)
+
+    /// <summary>
+    /// Horizontal breathing room on each side of a row, so the first/last card's border
+    /// does not sit flush against the scroll container (and the docked DBC panel) edge.
+    /// </summary>
+    private const double EdgePadPx = 12;
+
+    /// <summary>
+    /// Width actually usable by cards + gaps: the measured container minus the row padding
+    /// applied in markup. Both ColumnsPerRow and RowGapPx must use this, not the raw measured
+    /// width - otherwise rows are laid out 2 x EdgePadPx wider than they fit and the container
+    /// scrolls horizontally.
+    /// </summary>
+    private double AvailableRowWidthPx => Math.Max(0, _measuredContainerWidthPx - (2 * EdgePadPx));
+
+    /// <summary>
+    /// Distributes leftover width from a FULL row (ColumnsPerRow cards) evenly across the
+    /// gaps between them, instead of leaving it as trailing dead space after the last card.
+    /// Deliberately based on ColumnsPerRow, not the actual card count passed in - a partial
+    /// last row (fewer cards than ColumnsPerRow) must use the same gap as every other row,
+    /// not a hugely inflated one computed from a smaller card count.
+    /// </summary>
+    private double RowGapPx(int cardsInRow)
+    {
+        var columns = ColumnsPerRow;
+        if (columns <= 1) return BaseGapPx;
+        var usedWidth = columns * CConfig.CardSize;
+        var leftover = AvailableRowWidthPx - usedWidth;
+        var computedGap = leftover / (columns - 1);
+        return computedGap > BaseGapPx ? computedGap : BaseGapPx;
+    }
+
+    [JSInvokable]
+    public void OnElementResized(double widthPx)
+    {
+        if (widthPx <= 0 || Math.Abs(widthPx - _measuredContainerWidthPx) < 1) return;
+        _measuredContainerWidthPx = widthPx;
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// The circuits currently on screen: access filter + My Channels visibility filter +
+    /// header status chip + online-only chip.
+    ///
+    /// This is the single definition of "visible". <see cref="VirtualRows"/> renders it and
+    /// <see cref="SelectAll"/> selects from it, so "Select All" can never disagree with what
+    /// the user is actually looking at. It previously did - SelectAll checked only the access
+    /// and visibility sets and ignored both header chips, so it selected off-screen cards.
+    /// Keep them reading from here rather than re-implementing the predicate.
+    /// </summary>
+    private List<IChannelCommandHandler> FilteredCircuits =>
+        CircuitSelectionLogic.Filter(circuits, _accessCircuits, _visibleCircuits, _statusChip, _onlineOnly);
+
+    /// <summary>
+    /// Label for the Select All button.
+    ///
+    /// TODO (your call - see the note in chat): this currently shows how many circuits are in
+    /// the filtered VIEW, which is cheap but can overstate - if the view holds mixed states,
+    /// the anchor rule will select fewer than this number.
+    ///
+    /// The honest alternative is to count what would ACTUALLY be selected, i.e. filtered
+    /// circuits that are non-Offline and match the anchor's CircuitStatus + ProgramStatus
+    /// (falling back to the first eligible card when nothing is selected yet). That is a second
+    /// pass over the filtered set on every render, which matters here because this page
+    /// re-renders on every telemetry tick at 100+ circuits.
+    /// </summary>
+    private string SelectAllLabel => $"Select All ({FilteredCircuits.Count})";
+
+    /// <summary>Filtered circuits chunked into fixed-size rows for <Virtualize>.</summary>
+    private List<List<IChannelCommandHandler>> VirtualRows
+    {
+        get
+        {
+            var filtered = FilteredCircuits;
+
+            var columns = ColumnsPerRow;
+            var rows = new List<List<IChannelCommandHandler>>();
+            for (int i = 0; i < filtered.Count; i += columns)
+                rows.Add(filtered.GetRange(i, Math.Min(columns, filtered.Count - i)));
+            return rows;
+        }
+    }
+
+    /// <summary>
+    /// Returns the anchor circuit — the FIRST circuit that was selected.
+    /// All new selections must match its CircuitStatus + ProgramStatus.
+    /// </summary>
+    private IChannelCommandHandler? AnchorCircuit =>
+        CircuitSelectionLogic.ResolveAnchor(circuits, selectedCircuits);
+
+    private void UpdateSelectedCircuits((int DeviceID, int BoardNumber, int ChannelID, bool Selected) tuple)
+    {
+        var key = (tuple.DeviceID, tuple.BoardNumber, tuple.ChannelID);
+
+        if (!tuple.Selected)
+        {
+            // Always allow deselect
+            selectedCircuits.Remove(key);
+            StateHasChanged();
+            return;
+        }
+
+        // Find the handler for the circuit being selected
+        var incoming = circuits.FirstOrDefault(c =>
+            c.Channel.DeviceID == key.DeviceID &&
+            c.Channel.SecondaryBoardNumber == key.BoardNumber &&
+            c.Channel.ChannelNumber == key.ChannelID);
+
+        if (incoming == null) return;
+
+        // Reject offline circuits immediately — no action is possible on them
+        if (incoming.RealTime.RealTimeRecord.CircuitStatus == CircuitStatus.Offline)
+        {
+            Toast.Warning($"{key.DeviceID}-{key.BoardNumber}-{key.ChannelID} is Offline. Cannot select an offline circuit.");
+            StateHasChanged();
+            return;
+        }
+
+        // If nothing is selected yet — this becomes the anchor, always allow
+        if (selectedCircuits.Count == 0)
+        {
+            selectedCircuits.Add(key);
+            // if (!_panelOpen) _panelOpen = true; // auto-open panel on first selection
+            StateHasChanged();
+            return;
+        }
+
+        // Validate against the anchor
+        var anchor = AnchorCircuit;
+        if (anchor == null)
+        {
+            selectedCircuits.Add(key);
+            StateHasChanged();
+            return;
+        }
+
+        var anchorCS = anchor.RealTime.RealTimeRecord.CircuitStatus;
+        var anchorPS = anchor.RealTime.RealTimeRecord.ProgramStatus;
+
+        var incomingCS = incoming.RealTime.RealTimeRecord.CircuitStatus;
+        var incomingPS = incoming.RealTime.RealTimeRecord.ProgramStatus;
+
+        bool statusMatch = incomingCS == anchorCS;
+        bool programMatch = incomingPS == anchorPS;
+
+        if (statusMatch && programMatch)
+        {
+            selectedCircuits.Add(key);
+            StateHasChanged();
+            return;
+        }
+
+        // Build a helpful message
+        var parts = new List<string>();
+        if (!statusMatch)
+            parts.Add($"Circuit status: {incomingCS} ≠ {anchorCS}");
+        if (!programMatch)
+            parts.Add($"Program status: {incomingPS} ≠ {anchorPS}");
+
+        Toast.Warning(
+            $"Cannot select {key.DeviceID}-{key.BoardNumber}-{key.ChannelID}",
+            $"Select circuits with the same state. {string.Join(", ", parts)}."
+        );
+
+        // Do NOT add to selectedCircuits — selection is rejected
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Selects every circuit in the current filtered view that shares the anchor's
+    /// CircuitStatus + ProgramStatus, mirroring the per-card rule in
+    /// <see cref="UpdateSelectedCircuits"/> so a bulk action can never receive a mixed set.
+    /// </summary>
+    private void SelectAll()
+    {
+        var filtered = FilteredCircuits;
+        var result = CircuitSelectionLogic.SelectAll(filtered, AnchorCircuit, selectedCircuits);
+
+        switch (result.Outcome)
+        {
+            case SelectAllOutcome.NothingToSelect:
+                return;
+            case SelectAllOutcome.NoOnlineCircuit:
+                Toast.Warning("Select All: no online circuit in the current view.");
+                return;
+            case SelectAllOutcome.PartiallySelected:
+                Toast.Warning($"Select All: {result.Added} selected, {result.Skipped} skipped — different state from anchor ({result.AnchorCircuitStatus}/{result.AnchorProgramStatus}).");
+                break;
+            default:
+                Toast.Success($"Select All: {result.Added} circuit(s) selected.");
+                break;
+        }
+
+        StateHasChanged();
+    }
+
+    private void DeselectAll()
+    {
+        selectedCircuits.Clear();
+        StateHasChanged();
+    }
+
+    #endregion
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The batcher dispatches its flushed render batch through THIS page's
+        // InvokeAsync - every card's Batcher.RequestRender ends up running on the
+        // same circuit sync context, just coalesced into one dispatch per tick.
+        Batcher.AttachDispatcher(InvokeAsync);
+
+        circuits = CM._devices.Values.OrderBy(c => c.Channel.DeviceID).ThenBy(c => c.Channel.SecondaryBoardNumber).ThenBy(c => c.Channel.ChannelNumber).ToList();
+        CM.HardwareManagerChanged += HandleDeviceChange;
+        await SyncDevicesWithDatabase();
+        await LoadUserCircuitFilterAsync();
+        _visibleCircuits = new HashSet<(int DeviceID, int SecondaryBoardNumber, int ChannelID)>(_accessCircuits);
+    }
+
+    private void RefreshAccessCircuitsList()
+    {
+        var circuitMap = circuits.ToDictionary(c => (c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber), c => c.Channel.DeviceName);
+        _accessCircuitsList = _accessCircuits
+            .Select(k => (k.DeviceID, k.SecondaryBoardNumber, k.ChannelID, circuitMap.TryGetValue(k, out var name) ? name ?? $"Dev {k.DeviceID}" : $"Dev {k.DeviceID}"))
+            .ToList();
+    }
+
+    private async Task LoadUserCircuitFilterAsync()
+    {
+        try
+        {
+            bool isAdmin = CurrentUser.User?.IsInRole("Administrator") ?? false;
+            if (isAdmin)
+            {
+                _accessCircuits = circuits
+                    .Select(c => (c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber))
+                    .ToHashSet();
+                RefreshAccessCircuitsList();
+                return;
+            }
+
+            if (string.IsNullOrEmpty(CurrentUser.UserId)) return;
+
+            var result = await CircuitAccessService.GetByUserIdAsync(CurrentUser.UserId);
+            if (!result.Success)
+            {
+                Toast.Error("Access Error", "Could not load your circuit access list. Contact an administrator.");
+                return;
+            }
+
+            if (result.Data?.Count > 0)
+            {
+                var hwKeys = circuits.Select(c => (c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber)).ToHashSet();
+                _accessCircuits = result.Data
+                    .Select(x => (x.DeviceId, 1, x.CircuitId))
+                    .Where(k => hwKeys.Contains(k))
+                    .ToHashSet();
+            }
+            else
+            {
+                Toast.Warning("No Circuits Assigned", "You have no circuits assigned. Contact an administrator.");
+            }
+            RefreshAccessCircuitsList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading circuit access: {ex.Message}");
+            Toast.Error("Access Error", "Could not load your circuit access list.");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadConfigFromLocalStorage();
+            _sizeDotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("ElementSize.observe", GridContainerElementId, _sizeDotNetRef);
+        }
+    }
+
+    private async Task LoadConfigFromLocalStorage()
+    {
+        try
+        {
+            var key = $"{CurrentUser.UserName}_card_config";
+            // var storedConfig = await JS.InvokeAsync<CardConfig?>("localStorageHelper.get", key);
+            CardConfig storedConfig = new();
+
+            if (CurrentUser.User != null)
+            {
+                storedConfig = sessionStorage.GetComponentState<CardConfig>(key);
+            }
+
+            if (storedConfig != null)
+            {
+                CConfig.CardSize = storedConfig.CardSize;
+                CConfig.FontSize = storedConfig.FontSize;
+                CConfig.RefreshRate = storedConfig.RefreshRate;
+                CConfig.ShowDecimal = storedConfig.ShowDecimal;
+                CConfig.DisplayMode = storedConfig.DisplayMode;
+            }
+            else
+            {
+                CConfig.CardSize = 210;
+                CConfig.FontSize = 12;
+                CConfig.RefreshRate = 200;
+                CConfig.ShowDecimal = 2;
+                CConfig.DisplayMode = DisplayMode.Normal;
+            }
+
+            // Restore DBC panel state
+            var panelState = sessionStorage.GetComponentState<DbcPanelState>(
+                $"{CurrentUser.UserName}_{DbcPanelKey}");
+            if (panelState != null)
+            {
+                _panelOpen   = panelState.IsOpen;
+                _panelDocked = panelState.IsDocked;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading config from localStorage: {ex.Message}");
+            CConfig = new CardConfig
+            {
+                CardSize = 210,
+                DisplayMode = DisplayMode.Normal,
+                FontSize = 12,
+                RefreshRate = 200,
+                ShowDecimal = 2,
+            };
+        }
+    }
+
+    private void SaveDbcPanelState()
+    {
+        if (CurrentUser.User == null) return;
+        sessionStorage.SetComponentState(
+            $"{CurrentUser.UserName}_{DbcPanelKey}",
+            new DbcPanelState { IsOpen = _panelOpen, IsDocked = _panelDocked },
+            Permanent: false);
+    }
+
+    private void ToggleDbcPanel()
+    {
+        _panelOpen = !_panelOpen;
+        SaveDbcPanelState();
+    }
+
+    private sealed record DbcPanelState
+    {
+        public bool IsOpen   { get; init; }
+        public bool IsDocked { get; init; } = true;
+    }
+
+    private async Task SyncDevicesWithDatabase()
+    {
+        var dtoList = await DCService.GetChannelsAsync();
+        if (dtoList.Success)
+            dbCircuits = dtoList.Data!;
+
+        if (dtoList.Success)
+        {
+            circuits = CM._devices.Values.OrderBy(c => c.Channel.DeviceID).ThenBy(c => c.Channel.SecondaryBoardNumber).ThenBy(c => c.Channel.ChannelNumber).ToList();
+
+            circuits = circuits
+                .Where(cmd =>
+                    dbCircuits.Any(e =>
+                        (e.DeviceID == cmd.Channel.DeviceID &&
+                        e.SecondaryBoardNumber == cmd.Channel.SecondaryBoardNumber &&
+                        e.ChannelNumber == cmd.Channel.ChannelNumber) && e.IsRegistered
+                    )
+                )
+                .OrderBy(c => c.Channel.DeviceID)
+                .ThenBy(c => c.Channel.SecondaryBoardNumber)
+                .ThenBy(c => c.Channel.ChannelNumber)
+                .ToList();
+
+            _accessCircuits = _accessCircuits
+                .Where(fc => circuits.Any(c => c.Channel.DeviceID == fc.DeviceID && c.Channel.SecondaryBoardNumber == fc.SecondaryBoardNumber && c.Channel.ChannelNumber == fc.ChannelID))
+                .ToHashSet();
+            _visibleCircuits = _visibleCircuits
+                .Where(fc => _accessCircuits.Contains(fc))
+                .ToHashSet();
+            RefreshAccessCircuitsList();
+        }
+
+    }
+
+    private async Task DoAction(string action)
+    {
+
+        // 🎯 selected circuits
+        selectedList = circuits
+            .Where(c => selectedCircuits.Contains((c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber)))
+            .ToList();
+
+        if (selectedList.Count == 0)
+        {
+            Toast.Error("Action failed. Select a circuit before proceeding.");
+            return;
+        }
+
+        if (action == "calibration" && selectedList.Count > 1)
+        {
+            Toast.Error("Please select Circuit one at a time.");
+            return;
+        }
+
+        if (action == "liveEdit" && selectedList.Count > 1)
+        {
+            Toast.Error("Please select Circuit one at a time.");
+            return;
+        }
+
+
+        // 🛑 prevent double trigger (Enter / double click)
+        if (IsLoading)
+            return;
+        
+        // 🔁 cancel previous run
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+
+        // 🔄 reset UI state
+        openTransferResults = false;
+        openTransferDialog = false;
+        openLiveEditDialog = false;
+        results = null;
+        CompletedSteps = 0;
+
+        ActionName = action;
+
+        // ⏳ show loader
+        IsLoading = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Yield();
+
+        TotalSteps = selectedList.Count;
+        var res = new List<TransferResult>();
+
+        try
+        {
+            // ⚡ parallel by DEVICE, sequential per device
+            var tasks = selectedList.Select(async cr =>
+            {
+                token.ThrowIfCancellationRequested();
+
+                // 🔒 get device lock
+                SemaphoreSlim deviceLock;
+                lock (_deviceLocks)
+                {
+                    if (!_deviceLocks.TryGetValue(cr.Channel.DeviceID, out deviceLock))
+                    {
+                        deviceLock = new SemaphoreSlim(1, 1);
+                        _deviceLocks[cr.Channel.DeviceID] = deviceLock;
+                    }
+                }
+
+                await deviceLock.WaitAsync(token);
+                try
+                {
+                    TransferResult? result = null;
+
+                    switch (action)
+                    {
+                        case "start":
+                            TransferTitle = "Start Circuit Result!";
+                            var s1 = await cr.StartProgram();
+                            result = new TransferResult
+                            {
+                                DeviceId = cr.Channel.DeviceID,
+                                SecondaryBoardNumber = cr.Channel.SecondaryBoardNumber,
+                                CircuitId = cr.Channel.ChannelNumber,
+                                OverallSuccess = s1.Success,
+                                Steps = new()
+                                {
+                                    new StepResult
+                                    {
+                                        StepName = "Start Program",
+                                        Success = s1.Success,
+                                        Message = s1.Message
+                                    }
+                                }
+                            };
+                            break;
+
+                        case "stop":
+                            TransferTitle = "Stop Circuit Result!";
+                            var s2 = await cr.StopProgram();
+                            result = new TransferResult
+                                {
+                                    DeviceId = cr.Channel.DeviceID,
+                                    SecondaryBoardNumber = cr.Channel.SecondaryBoardNumber,
+                                    CircuitId = cr.Channel.ChannelNumber,
+                                    OverallSuccess = s2.Success,
+                                    Steps = new()
+                                    {
+                                        new StepResult
+                                        {
+                                            StepName = "Stop Program",
+                                            Success = s2.Success,
+                                            Message = s2.Message
+                                        }
+                                    }
+                                };
+                            break;
+
+                        case "pause":
+                            TransferTitle = "Interrupt Circuit Result!";
+                            var s3 = await cr.PauseProgram();
+                            result = new TransferResult
+                                {
+                                    DeviceId = cr.Channel.DeviceID,
+                                    SecondaryBoardNumber = cr.Channel.SecondaryBoardNumber,
+                                    CircuitId = cr.Channel.ChannelNumber,
+                                    OverallSuccess = s3.Success,
+                                    Steps = new()
+                                    {
+                                        new StepResult
+                                        {
+                                            StepName = "Interrupt Program",
+                                            Success = s3.Success,
+                                            Message = s3.Message
+                                        }
+                                    }
+                                };
+                            break;
+
+                        case "continue":
+                            TransferTitle = "Continue Circuit Result!";
+                            var s4 = await cr.ContinueProgram();
+                            result = new TransferResult
+                                {
+                                    DeviceId = cr.Channel.DeviceID,
+                                    SecondaryBoardNumber = cr.Channel.SecondaryBoardNumber,
+                                    CircuitId = cr.Channel.ChannelNumber,
+                                    OverallSuccess = s4.Success,
+                                    Steps = new()
+                                    {
+                                        new StepResult
+                                        {
+                                            StepName = "Continue Program",
+                                            Success = s4.Success,
+                                            Message = s4.Message
+                                        }
+                                    }
+                                };
+                            break;
+
+                        case "transfer":
+                            openTransferDialog = true;
+                            break;
+
+                        case "liveEdit":
+                            _liveEditCircuit = cr;
+                            openLiveEditDialog = true;
+                            break;
+
+                        case "calibration":
+
+                            string devCir = $"{cr.Channel.DeviceID}-{cr.Channel.SecondaryBoardNumber}-{cr.Channel.ChannelNumber}";
+
+                            // Circuit must be idle
+                            if (cr.RealTime.RealTimeRecord.CircuitStatus != CircuitStatus.Idle)
+                            {
+                                Toast.Error("Action failed. CircuitStatus Must be Stop!");
+                                break;
+                            }
+
+                            // Open calibration tab
+                            tbService.AddTab(new NavMenuItem
+                            {
+                                Title = $"Calibration {devCir}",
+                                Unique = true,
+                                keepAlive = true,
+                                Icon = Lucide.Cable,
+                                ComponentType = typeof(Calibration),
+                                Parameters = new Dictionary<string, dynamic>
+                                {
+                                    ["Id"] = devCir
+                                }
+                            });
+
+                            break;
+                    }
+
+                    Interlocked.Increment(ref CompletedSteps);
+                    await InvokeAsync(StateHasChanged);
+
+                    return result;
+                }
+                finally
+                {
+                    deviceLock.Release(); // 🔓 next circuit of same device
+                }
+            });
+
+            var taskArray = tasks.ToArray();   // 👈 force materialization
+            var completed = await Task.WhenAll(taskArray);
+            res = completed
+                .Where(r => r is not null)
+                .Select(r => r!)
+                .ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            Toast.Warning("Operation cancelled.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+
+        // ✅ hide loader first
+        IsLoading = false;
+        await InvokeAsync(StateHasChanged);
+
+        // 🪟 then show dialogs
+        if (res.Count > 0)
+        {
+            if (res.Any(e => e.OverallSuccess == false))
+            {
+                results = res;
+                openTransferResults = true;
+            }
+            else
+            {
+                Toast.Success($"{TransferTitle} Success!");
+            }
+
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    #region Transfer
+
+    private bool openTransferDialog = false;
+    private bool openTransferResults = false;
+    private string TransferTitle = string.Empty;
+    List<TransferResult>? results;
+
+    void HandleTransferCompleted(List<TransferResult> r)
+    {
+        results = r;
+        openTransferResults = true;
+    }
+
+    private Task OnChangeTransferResults(bool value)
+    {
+        openTransferResults = value;
+        if (!value)
+            results = null;
+        openTransferDialog = false;
+        return Task.CompletedTask;
+    }
+
+
+    #endregion
+
+    #region Jump to Step
+
+    private bool _jumpDialogOpen = false;
+    private IChannelCommandHandler? _jumpTargetCircuit;
+
+    /// <summary>Opens the Jump-to-Step dialog for the specific circuit that was right-clicked -
+    /// this is a single-circuit action, independent of whatever the checkbox multi-select holds.</summary>
+    private void OpenJumpDialog(IChannelCommandHandler dev)
+    {
+        _jumpTargetCircuit = dev;
+        _jumpDialogOpen = true;
+    }
+
+    #endregion
+
+    #region Live Step Update (Q9)
+
+    private bool openLiveEditDialog = false;
+    private IChannelCommandHandler? _liveEditCircuit;
+
+    #endregion
+
+    #region Event
+
+    // CM.HardwareManagerChanged is raised from hardware threads. This must NOT be async void:
+    // DCService is circuit-scoped, so every circuit-scoped service here shares one AppDbContext,
+    // and overlapping reloads made EF Core throw "A second operation was started on this context
+    // instance". The runner serialises them, and InvokeAsync puts the query back on the circuit's
+    // synchronization context - the only place a circuit-scoped DbContext may be touched.
+    private readonly CoalescingRunner _syncRunner = new();
+
+    public void HandleDeviceChange() =>
+        _syncRunner.Request(
+            () => InvokeAsync(async () =>
+            {
+                await SyncDevicesWithDatabase();
+                StateHasChanged();
+            }),
+            ex => Console.Error.WriteLine($"HandleDeviceChange error: {ex}"));
+    #endregion
+
+
+    #region Action State Helpers
+
+    /// <summary>
+    /// Derives the effective action bar state from selected circuits.
+    /// Uses the first selected circuit as the anchor.
+    /// Returns null if states are mixed (incompatible).
+    /// </summary>
+    private ChannelActionBar.ActionBarState? EffectiveActionState
+    {
+        get
+        {
+            if (selectedCircuits.Count == 0) return null;
+
+            var selected = circuits
+                .Where(c => selectedCircuits.Contains((c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber)))
+                .ToList();
+
+            if (!selected.Any()) return null;
+
+            var anchor = selected.First();
+            var anchorCS = anchor.RealTime.RealTimeRecord.CircuitStatus;
+            var anchorPS = anchor.RealTime.RealTimeRecord.ProgramStatus;
+
+            bool allMatch = selected.All(c =>
+                c.RealTime.RealTimeRecord.CircuitStatus == anchorCS &&
+                c.RealTime.RealTimeRecord.ProgramStatus == anchorPS);
+
+            if (!allMatch) return null;
+
+            bool allConnected = selected.All(c => c.IsConnected);
+
+            return new ChannelActionBar.ActionBarState
+            {
+                CircuitStatus  = anchorCS,
+                ProgramStatus  = anchorPS,
+                IsTcpConnected = allConnected
+            };
+        }
+    }
+
+    /// <summary>
+    /// Count of selected circuits that do not match the anchor state.
+    /// Shown as "(N incompatible)" in the action bar.
+    /// </summary>
+    private int IncompatibleCircuitCount
+    {
+        get
+        {
+            if (selectedCircuits.Count == 0) return 0;
+
+            var selected = circuits
+                .Where(c => selectedCircuits.Contains((c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber)))
+                .ToList();
+
+            if (!selected.Any()) return 0;
+
+            var anchor = selected.First();
+            var anchorCS = anchor.RealTime.RealTimeRecord.CircuitStatus;
+            var anchorPS = anchor.RealTime.RealTimeRecord.ProgramStatus;
+
+            return selected.Count(c =>
+                c.RealTime.RealTimeRecord.CircuitStatus != anchorCS ||
+                c.RealTime.RealTimeRecord.ProgramStatus != anchorPS);
+        }
+    }
+
+    /// <summary>
+    /// Used by ContextMenu Disabled= parameter.
+    /// Single-circuit check — same logic as ActionBar IsEnabled but per-card.
+    /// </summary>
+    private bool CanContextAction(IChannelCommandHandler dev, string actionId)
+    {
+        var cs  = dev.RealTime.RealTimeRecord.CircuitStatus;
+        var ps = (ProgramRunningStatus)dev.RealTime.RealTimeRecord.ProgramStatus;
+        var tcp = dev.IsConnected;
+
+        if (cs == CircuitStatus.Offline) return false;
+
+        return actionId switch
+        {
+            "start"       => ps == ProgramRunningStatus.Stop && tcp,
+            "stop" => tcp,
+            "pause"       => ps == ProgramRunningStatus.Running && tcp,
+            "continue"    => ps == ProgramRunningStatus.Running
+                             && (cs == CircuitStatus.Pause
+                                 || cs == CircuitStatus.Interrupt
+                                 || cs == CircuitStatus.Countinue
+                                 || cs == CircuitStatus.Error
+                                 || cs == CircuitStatus.Msg) && tcp,
+            // Q9 accepts a paused program too (unlike Q10/jump), so Pause is included here -
+            // bm_program_v3.2.md: "A paused program is accepted as well as a running one."
+            "liveEdit"    => ps == ProgramRunningStatus.Running
+                             && (cs == CircuitStatus.Charge || cs == CircuitStatus.Discharging || cs == CircuitStatus.Pause)
+                             && tcp,
+            "transfer"    => cs == CircuitStatus.Idle && ps == ProgramRunningStatus.Stop && tcp,
+            "calibration" => cs == CircuitStatus.Idle && ps == ProgramRunningStatus.Stop && tcp,
+            // Jump (bm_program_v3.2 Q10) is only accepted while genuinely executing - a paused,
+            // interrupted, or message-wait circuit is rejected by the hardware (2026-09-15 protocol
+            // correction), so Charge/Discharging are the only statuses worth offering it for.
+            "jump"        => ps == ProgramRunningStatus.Running
+                             && (cs == CircuitStatus.Charge || cs == CircuitStatus.Discharging) && tcp,
+            _             => false
+        };
+    }
+
+    #endregion
+
+    public void Dispose()
+    {
+        try
+        {
+            CM.HardwareManagerChanged -= HandleDeviceChange;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+
+        try
+        {
+            _ = JS.InvokeVoidAsync("ElementSize.dispose", GridContainerElementId);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+
+        _sizeDotNetRef?.Dispose();
+    }
+}

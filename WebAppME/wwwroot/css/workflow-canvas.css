@@ -1,0 +1,1261 @@
+/* Workflow canvas (experimental).
+   Loaded only on the Workflows tab. Written by hand because app.min.css has no rebuild
+   pipeline (ADR-2), so new Tailwind utilities are unavailable.
+   Theme vars are raw HSL triplets, e.g. --status-charge: 51 100% 50%, which is why every
+   colour below is written as hsl(var(--x) / alpha). */
+
+.wf-shell {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 8rem);
+    min-height: 32rem;
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
+}
+
+/* .wf-toolbar (the old "Workflows / N saved layout(s) / N device(s) available" header) was
+   removed - it displayed nothing actionable, and .wf-status-bar now occupies that strip. */
+
+.wf-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;      /* without this the flex children refuse to scroll */
+}
+
+.wf-dock,
+.wf-palette {
+    flex: 0 0 16rem;
+    overflow-y: auto;
+    padding: 0.75rem;
+    background: hsl(var(--card));
+    transition: flex-basis 150ms ease;
+}
+
+.wf-dock { border-right: 1px solid hsl(var(--border)); }
+.wf-palette { border-left: 1px solid hsl(var(--border)); }
+
+.wf-dock--collapsed,
+.wf-palette--collapsed { flex-basis: 2.5rem; overflow: hidden; }
+
+/* ---------------------------------------------------------------- canvas viewport */
+
+.wf-canvas-host {
+    position: relative;
+    flex: 1 1 auto;
+    overflow: hidden;
+    min-width: 0;
+    cursor: grab;
+    background-color: hsl(var(--background));
+    /* Line grid. background-position is updated by JS as the canvas pans, so the grid appears to
+       move with the content without re-rendering anything - two linear-gradients keep that exact
+       contract, they just draw ruled lines instead of the dots this used to render. */
+    background-image:
+        linear-gradient(to right, hsl(var(--border) / 0.55) 1px, transparent 1px),
+        linear-gradient(to bottom, hsl(var(--border) / 0.55) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+/* The cursor is the only hint about which drag gesture is active, so it tracks the mode:
+   an open hand when a drag will pan, a closed one mid-pan, crosshair when it will marquee. */
+.wf-canvas-host.wf-mode-pan { cursor: grab; }
+.wf-canvas-host:not(.wf-mode-pan) { cursor: crosshair; }
+.wf-canvas-host.wf-panning,
+.wf-canvas-host.wf-mode-pan.wf-panning { cursor: grabbing; }
+
+/* Never override the pointer on the controls floating over the canvas. */
+.wf-canvas-host .wf-toolbar-dock,
+.wf-canvas-host .wf-toolbar-dock *,
+.wf-canvas-host .wf-selection-action-bar,
+.wf-canvas-host .wf-selection-action-bar * { cursor: default; }
+.wf-canvas-host .wf-toolbar-dock button,
+.wf-canvas-host .wf-selection-action-bar button { cursor: pointer; }
+
+/* The single transformed layer. Pan and zoom change ONE transform here, never the
+   individual nodes, so the browser can composite the whole scene on the GPU. */
+.wf-world {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+
+/* ---------------------------------------------------------------- nodes */
+
+.wf-node {
+    position: absolute;
+    box-sizing: border-box;
+    width: 200px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    font-size: 0.8125rem;
+    user-select: none;
+    /* Position is a transform, not top/left, so dragging never triggers layout. */
+    will-change: transform;
+}
+
+.wf-node__header {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    border-bottom: 1px solid hsl(var(--border));
+    cursor: move;
+    font-weight: 600;
+}
+
+.wf-node__body { padding: 0.5rem; display: grid; gap: 0.25rem; }
+
+.wf-node--selected { border-color: hsl(var(--primary)); }
+
+.wf-node--selected::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 0.625rem;
+    border: 2px solid hsl(var(--primary) / 0.6);
+    pointer-events: none;
+}
+
+/* A node whose EntityId no longer resolves. Dimmed, never removed. */
+.wf-node--stale { opacity: 0.45; border-style: dashed; }
+
+.wf-node--device { width: 240px; }
+.wf-node--battery { width: 140px; }
+
+/* A board is a small pin dot on its device's own card (D18-revised), not a separate node. */
+.wf-pin {
+    position: absolute;
+    right: -5px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid hsl(var(--card));
+    background: hsl(var(--wf-status, 0 0% 62%));
+    transform: translateY(-50%);
+}
+
+/* Connection ports */
+.wf-port {
+    position: absolute;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    margin-top: -6px;
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--border));
+    background: hsl(var(--card));
+    cursor: crosshair;
+}
+
+.wf-port--out { right: -7px; }
+.wf-port--in { left: -7px; }
+.wf-port:hover { border-color: hsl(var(--primary)); }
+
+/* ---------------------------------------------------------------- edges */
+
+.wf-edge-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.wf-edge {
+    fill: none;
+    stroke: hsl(var(--border));
+    stroke-width: 2;
+}
+
+.wf-edge--power { stroke-width: 3; }
+
+/* ---------------------------------------------------------------- ghost connection */
+
+.wf-ghost-edge {
+    fill: none;
+    stroke: hsl(var(--primary) / 0.8);
+    stroke-width: 2;
+    stroke-dasharray: 4 4;
+}
+
+/* ---------------------------------------------------------------- status + badges */
+
+.wf-status-pill {
+    display: inline-block;
+    padding: 0 0.375rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    /* --wf-status is written by the telemetry bridge (Task 15); the fallback keeps the pill
+       readable before the first tick arrives. */
+    background: hsl(var(--wf-status, var(--status-idle)) / 0.18);
+    color: hsl(var(--wf-status, var(--status-idle)));
+}
+
+.wf-badge {
+    display: inline-block;
+    max-width: 100%;
+    padding: 0 0.3125rem;
+    border-radius: 0.25rem;
+    font-size: 0.6875rem;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.wf-btn {
+    padding: 0.1875rem 0.625rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+}
+
+.wf-btn:hover:not(:disabled) { border-color: hsl(var(--primary)); }
+.wf-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.wf-btn--sm { padding: 0 0.375rem; font-size: 0.6875rem; }
+
+/* ---------------------------------------------------------------- edge state */
+
+.wf-edge--stale { opacity: 0.35; stroke-dasharray: 6 4; }
+
+/* ---------------------------------------------------------------- drag state */
+
+.wf-node--dragging { opacity: 0.85; z-index: 10; }
+
+/* ---------------------------------------------------------------- palette */
+
+.wf-palette__tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+
+.wf-tab {
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.wf-tab--active { background: hsl(var(--primary) / 0.15); color: hsl(var(--primary)); }
+
+.wf-palette__item {
+    padding: 0.375rem 0.5rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    margin-bottom: 0.375rem;
+    font-size: 0.8125rem;
+}
+
+.wf-palette__channels { margin-top: 0.375rem; font-size: 0.75rem; }
+
+.wf-chip {
+    min-width: 1.75rem;
+    padding: 0.0625rem 0.375rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+}
+
+.wf-chip:hover:not(:disabled) { border-color: hsl(var(--primary)); }
+.wf-chip--on, .wf-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------- properties dock */
+
+.wf-dock__title { font-weight: 600; margin-bottom: 0.5rem; }
+
+.wf-dock__grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.wf-dock__grid dt { color: hsl(var(--muted-foreground)); }
+
+.wf-dock__label {
+    display: block;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    margin: 0.5rem 0 0.125rem;
+}
+
+.wf-select {
+    width: 100%;
+    padding: 0.25rem 0.375rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 0.8125rem;
+}
+
+.wf-warning {
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    background: hsl(var(--status-interrupt) / 0.15);
+    color: hsl(var(--status-interrupt));
+    margin-bottom: 0.5rem;
+}
+
+.wf-btn--danger { border-color: hsl(var(--status-error) / 0.5); color: hsl(var(--status-error)); }
+
+/* ---------------------------------------------------------------- panel collapse */
+
+/* Laid out as a flex column so the collapse button occupies its own row.
+   It used to be float:right, which takes it out of flow — the block that followed then overlapped
+   its box and, being later in DOM order, painted on top and swallowed every click. That is why the
+   button failed exactly when nothing was selected: the "Select a node…" placeholder is the block
+   that landed on it. */
+.wf-dock,
+.wf-palette {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.wf-collapse {
+    align-self: flex-end;
+    flex: 0 0 auto;
+    padding: 0 0.25rem;
+    color: hsl(var(--muted-foreground));
+}
+
+/* ================================================================ animation
+   Every animation below runs on the compositor: only transform, opacity and
+   stroke-dashoffset are animated. Animating box-shadow or height instead would repaint the
+   whole node on every frame, which at 64 nodes is the difference between smooth and unusable.
+
+   --wf-status, --wf-soc and --wf-flow are written directly onto elements by the telemetry
+   bridge (Task 15). CSS does everything else, so live data never causes a Blazor re-render. */
+
+/* ---------------------------------------------------------------- battery glyph */
+
+.wf-battery {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+    padding: 0.25rem 0;
+    --wf-soc: 0;
+    --wf-status: var(--status-offline);
+}
+
+.wf-cell {
+    position: relative;
+    width: 18px;
+    height: 34px;
+    border: 2px solid hsl(var(--wf-status) / 0.7);
+    border-radius: 3px;
+    overflow: hidden;
+    background: hsl(var(--muted) / 0.4);
+}
+
+/* The terminal nub. */
+.wf-cell::before {
+    content: "";
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    width: 8px;
+    height: 3px;
+    margin-left: -4px;
+    border-radius: 1px;
+    background: hsl(var(--wf-status) / 0.7);
+}
+
+/* Fill grows from the bottom via scaleY. transform-origin is what makes it fill upward
+   instead of stretching from the middle. */
+.wf-cell__fill {
+    position: absolute;
+    inset: 0;
+    transform-origin: 50% 100%;
+    transform: scaleY(var(--wf-soc));
+    background: hsl(var(--wf-status) / 0.75);
+    transition: transform 400ms ease-out;
+}
+
+/* Charging shimmer: a translucent band travelling up the cell. Paused rather than removed,
+   so toggling charge state costs nothing. */
+.wf-cell__shimmer {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to top,
+        transparent 0%,
+        hsl(var(--wf-status) / 0.55) 45%,
+        transparent 90%);
+    transform: translateY(100%);
+    animation: wf-shimmer 1.6s linear infinite;
+    animation-play-state: paused;
+    opacity: 0;
+}
+
+.wf-battery--charging .wf-cell__shimmer {
+    animation-play-state: running;
+    opacity: 1;
+}
+
+@keyframes wf-shimmer {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(-100%); }
+}
+
+/* Fault: diagonal hatching, no motion. An error state that pulses reads as activity. */
+.wf-battery--fault .wf-cell {
+    background-image: repeating-linear-gradient(
+        45deg,
+        hsl(var(--status-error) / 0.35) 0 3px,
+        transparent 3px 6px);
+}
+
+/* ---------------------------------------------------------------- node glow
+
+   The glow lives on a pseudo-element with a STATIC box-shadow; only its opacity animates.
+   Animating the box-shadow itself would repaint the node every frame. */
+
+.wf-node::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 0.625rem;
+    box-shadow: 0 0 12px 2px hsl(var(--wf-status, var(--status-idle)) / 0.75);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms ease;
+}
+
+/* Only actively working channels glow, and only they animate. An idle canvas is completely
+   still, which is what keeps a 64-node graph readable. */
+.wf-node--active::before {
+    opacity: 0.55;
+    animation: wf-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes wf-pulse {
+    0%, 100% { opacity: 0.30; }
+    50%      { opacity: 0.75; }
+}
+
+/* ---------------------------------------------------------------- edge flow
+
+   Dash offset animation is compositor-friendly, so 60 flowing edges cost about what one does.
+   --wf-flow is +1 (charging, toward the battery), -1 (discharging) or 0 (still). */
+
+.wf-edge--power {
+    stroke: hsl(var(--wf-status, var(--border)));
+    stroke-dasharray: 10 8;
+    stroke-dashoffset: 0;
+}
+
+/* The dash pattern lives HERE, not only on .wf-edge--power. Animating stroke-dashoffset on a
+   solid line moves nothing, so a device->channel topology edge could never show motion even with
+   the class applied - the animation only ever appeared on a Channel-Battery power wire. */
+.wf-edge--flowing {
+    stroke: hsl(var(--wf-status, var(--border)));
+    stroke-dasharray: 10 8;
+    animation: wf-flow 1.1s linear infinite;
+    animation-direction: normal;
+    filter: drop-shadow(0 0 4px hsl(var(--wf-status) / 0.6));
+}
+
+/* Reverse means discharging: current leaving the battery. */
+.wf-edge--flowing-reverse { animation-direction: reverse; }
+
+@keyframes wf-flow {
+    from { stroke-dashoffset: 36; }
+    to   { stroke-dashoffset: 0; }
+}
+
+/* ---------------------------------------------------------------- motion off
+
+   The operating system setting is the only switch now. The old .wf-anim-off toolbar toggle was
+   removed: flow animation already reflects ProgramRunningStatus.Running, so a manual override
+   could only hide real activity. */
+
+@media (prefers-reduced-motion: reduce) {
+    .wf-cell__shimmer,
+    .wf-bcell__march,
+    .wf-node--active::before,
+    .wf-edge--flowing {
+        animation: none !important;
+    }
+
+    .wf-cell__fill { transition: none; }
+
+    .wf-bcell__fill,
+    .wf-bcell__surface,
+    .wf-bcell__socicon::before { transition: none; }
+}
+
+/* ---------------------------------------------------------------- layout switcher */
+
+.wf-switcher { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
+
+.wf-switcher .wf-select { width: auto; min-width: 10rem; }
+
+.wf-input {
+    padding: 0.25rem 0.375rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 0.8125rem;
+}
+
+/* ---------------------------------------------------------------- minimap */
+
+.wf-minimap {
+    position: absolute;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    padding: 0.25rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    background: hsl(var(--card) / 0.9);
+    pointer-events: none;
+}
+
+.wf-minimap__node { fill: hsl(var(--muted-foreground) / 0.65); }
+
+/* ---------------------------------------------------------------- level of detail */
+
+/* Tier 1 (zoom 0.4-0.8): header + the first body row only. .wf-node__body's children are the
+   fixed status/soc row, then the property rows (Task 5), then the fixed program-status/last-
+   update row, then badges - nth-child(n+2) hides everything after the first of those.
+
+   Channel nodes are EXCLUDED: a channel is now a battery cell whose body has exactly ONE child,
+   so this selector matched nothing and the tier silently stopped working for them. They get the
+   explicit rules below instead. */
+.wf-world[data-lod="1"] .wf-node:not(.wf-node--channel) .wf-node__body > :nth-child(n+2) {
+    display: none;
+}
+
+/* Tier 1 for a channel cell: keep the cap, the outline and the fill - a battery whose level and
+   colour are still readable at distance - and drop the data. */
+.wf-world[data-lod="1"] .wf-bcell__sec,
+.wf-world[data-lod="1"] .wf-bcell__grid2,
+.wf-world[data-lod="1"] .wf-bcell__rows,
+.wf-world[data-lod="1"] .wf-bcell__spec,
+.wf-world[data-lod="1"] .wf-bcell__ft,
+.wf-world[data-lod="1"] .wf-bcell__badges { display: none; }
+
+/* Without content the well would collapse to the header's height, leaving no fill to read. */
+.wf-world[data-lod="1"] .wf-bcell__well { min-height: 46px; }
+
+/* Tier 2 (zoom < 0.4): a pure colour tile. Header/body text is hidden, not removed - the title
+   attribute (CanvasNode.razor) keeps the address available as a native tooltip on hover. */
+.wf-world[data-lod="2"] .wf-node {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    overflow: hidden;
+    background: hsl(var(--wf-status, var(--status-idle)));
+}
+
+.wf-world[data-lod="2"] .wf-node__header,
+.wf-world[data-lod="2"] .wf-node__body {
+    display: none;
+}
+
+/* Belt and braces for the channel cell: its 3px border and box-shadow live on .wf-bcell__body,
+   which would otherwise paint a ring inside a 32px tile if the body rule above ever changed. */
+.wf-world[data-lod="2"] .wf-bcell { display: none; }
+
+/* ---------------------------------------------------------------- node property picker */
+
+.wf-property-picker {
+    width: 220px;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 4px 16px hsl(0 0% 0% / 0.15);
+}
+
+.wf-property-picker__list { display: grid; gap: 0.25rem; margin-top: 0.5rem; }
+
+.wf-property-picker__item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.wf-property-picker__item:has(input:disabled) { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------- marquee selection */
+
+.wf-marquee {
+    position: absolute;
+    border: 1px solid hsl(var(--primary));
+    background: hsl(var(--primary) / 0.12);
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* ---------------------------------------------------------------- selection action bar */
+
+.wf-selection-action-bar {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 4px 16px hsl(0 0% 0% / 0.15);
+}
+
+/* ---------------------------------------------------------------- status legend */
+
+.wf-legend {
+    width: 160px;
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 4px 16px hsl(0 0% 0% / 0.15);
+}
+
+.wf-legend__row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    padding: 0.125rem 0;
+    text-transform: capitalize;
+}
+
+.wf-legend__swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------- canvas toolbar */
+
+/* The dock owns ALL positioning. Everything inside it is flow content in a flex column, so the
+   toolbar and whichever panel is open always stack with a real gap and can never overlap - the
+   bug the previous per-panel `top: 3rem` approach caused once the toolbar grew a second row. */
+.wf-toolbar-dock {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    z-index: 21;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    max-height: calc(100% - 2rem);
+    pointer-events: none;
+}
+
+.wf-toolbar-dock > * { pointer-events: auto; }
+
+.wf-canvas-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.375rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 4px 16px hsl(0 0% 0% / 0.15);
+}
+
+.wf-icon-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.375rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    cursor: pointer;
+    color: inherit;
+}
+
+.wf-icon-btn:hover { background: hsl(var(--accent)); }
+
+.wf-refresh-rate input {
+    width: 3.5rem;
+    background: transparent;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.25rem;
+    color: inherit;
+    font-size: 0.75rem;
+    padding: 0.125rem 0.25rem;
+}
+
+.wf-toolbar-popover {
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 4px 16px hsl(0 0% 0% / 0.15);
+}
+
+/* ---------------------------------------------------------------- status filter */
+
+.wf-node--dimmed {
+    opacity: 0.25;
+}
+
+.wf-status-chip {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid hsl(var(--border));
+    cursor: pointer;
+    padding: 0;
+}
+
+.wf-status-chip--active {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 1px;
+}
+
+/* Was referenced by CanvasToolbar from the start but never defined - without display:flex the
+   9 chips stacked as blocks, inflating the toolbar far past its intended single-row height and
+   pushing every top:3rem popover underneath it. */
+.wf-status-chip-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: 0.25rem;
+    padding-left: 0.375rem;
+    border-left: 1px solid hsl(var(--border));
+}
+
+/* ---------------------------------------------------------------- status filter bar
+
+   Occupies the strip the old "Workflows / N saved layout(s) / N device(s)" header used, which
+   displayed nothing actionable. Same space, now a labelled click-to-filter colour key. */
+
+.wf-status-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    border-bottom: 1px solid hsl(var(--border));
+    flex: 0 0 auto;
+}
+
+.wf-status-bar__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    background: transparent;
+    color: inherit;
+    font-size: 0.75rem;
+    text-transform: capitalize;
+    cursor: pointer;
+}
+
+.wf-status-bar__item:hover { background: hsl(var(--accent)); }
+
+.wf-status-bar__item--active {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--primary) / 0.12);
+    font-weight: 600;
+}
+
+.wf-status-bar__swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* "online" groups every non-offline status rather than being one, so it gets a hollow ring
+   instead of a colour fill - there is no single colour that would be honest here. */
+.wf-status-bar__swatch--group {
+    background: transparent;
+    border: 2px solid hsl(var(--muted-foreground));
+}
+
+.wf-status-bar__clear {
+    margin-left: 0.5rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    background: hsl(var(--card));
+    color: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+/* Legend rows carry an editable swatch plus the status's operational meaning. */
+.wf-legend { width: 260px; }
+
+.wf-legend__row { align-items: flex-start; }
+
+.wf-legend__swatch {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid hsl(var(--border));
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.wf-legend__text { display: flex; flex-direction: column; line-height: 1.2; }
+.wf-legend__name { text-transform: capitalize; font-weight: 600; }
+.wf-legend__meaning { font-size: 0.6875rem; opacity: 0.65; text-transform: none; }
+
+/* ---------------------------------------------------------------- channel detail dialog (C2/C3) */
+
+.wf-detail-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: hsl(0 0% 0% / 0.35);
+}
+
+.wf-detail-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 41;
+    display: flex;
+    flex-direction: column;
+    width: min(560px, calc(100vw - 2rem));
+    max-height: min(70vh, 40rem);
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 8px 32px hsl(0 0% 0% / 0.25);
+}
+
+.wf-detail-dialog__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid hsl(var(--border));
+    flex: 0 0 auto;
+}
+
+.wf-detail-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem 0;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
+}
+
+.wf-detail-tab {
+    padding: 0.1875rem 0.625rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem 0.375rem 0 0;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.wf-detail-tab:hover { background: hsl(var(--accent)); }
+
+.wf-detail-tab--active {
+    border-color: hsl(var(--border));
+    border-bottom-color: hsl(var(--card));
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    font-weight: 600;
+}
+
+.wf-detail-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.75rem;
+    border-top: 1px solid hsl(var(--border));
+}
+
+.wf-detail-rows { display: grid; gap: 0.125rem; }
+
+.wf-detail-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.1875rem 0;
+    font-size: 0.8125rem;
+    border-bottom: 1px dashed hsl(var(--border) / 0.5);
+}
+
+.wf-detail-row__label { color: hsl(var(--muted-foreground)); }
+.wf-detail-row__value { font-weight: 500; text-align: right; word-break: break-word; }
+
+.wf-dbc-view { display: grid; gap: 0.5rem; }
+
+/* ---------------------------------------------------------------- channel battery cell
+
+   Prefix is wf-bcell, NOT wf-cell: .wf-cell / .wf-cell__fill / .wf-cell__shimmer already belong
+   to BatteryGlyph (the Battery node), and reusing them would restyle every battery on the canvas.
+
+   The whole API is two custom properties the telemetry bridge writes: --wf-soc (0..1) and
+   --wf-status (a raw HSL triplet). No Blazor re-render is involved in a live update. */
+
+.wf-bcell {
+    --wf-soc: 0;
+    --wf-status: var(--status-idle);
+    /* No padding on TOP: the cap must sit flush against the cell body, the way a terminal sits on
+       a real cell. A top gap makes the cap read as a separate stacked box. */
+    padding: 0 2px 2px;
+}
+
+/* ---- the channel node IS the battery, so it must not also be a card ----
+
+   CanvasNode's shared chrome (.wf-node border + background + radius, .wf-node__header padding and
+   bottom border, .wf-node__body padding and grid gap) is right for the Device and Battery nodes,
+   but on a channel it draws a SECOND frame around the battery outline and pushes the cap 15.6px
+   above the cell - so the cap and the body read as two separate stacked boxes rather than one
+   battery with a terminal on top. Measured before this rule: node border 1px, node background
+   white, cap-to-cell gap 15.6px.
+
+   Scoped to .wf-node--channel so Device/Battery nodes keep the card look they are designed for.
+   Specificity note: the LOD tier-2 rule (.wf-world[data-lod="2"] .wf-node) is 3 selectors and so
+   still wins for the colour tile - the tile keeps its status fill. */
+
+.wf-node--channel {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.wf-node--channel .wf-node__header {
+    padding: 0;
+    border-bottom: none;
+}
+
+.wf-node--channel .wf-node__body {
+    padding: 0;
+    gap: 0;
+}
+
+/* The cap. Lives inside .wf-node__header (see ChannelNode.razor) so dragging still works. */
+.wf-bcap {
+    /* line-height pinned: WorkflowAutoLayout.ChannelNodeHeight depends on this box. */
+    line-height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    min-width: 76px;
+    margin: 0 auto;
+    padding: 1px 8px;
+    border-radius: 6px 6px 0 0;
+    background: hsl(var(--wf-status));
+    color: hsl(var(--background));
+    font-weight: 800;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+}
+
+.wf-bcell__body {
+    border: 3px solid hsl(var(--wf-status));
+    border-radius: 12px;
+    background: hsl(var(--card));
+    padding: 4px;
+    box-shadow: 0 0 14px hsl(var(--wf-status) / 0.18);
+}
+
+.wf-bcell__well {
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px;
+    background: hsl(var(--muted) / 0.55);
+}
+
+/* ---- geometry layers, all behind the content ----
+   Percentages, not pixels: the cell height changes with the property selection, and a pixel fill
+   would desynchronise from the real charge the moment a user picks more fields. */
+
+.wf-bcell__fill {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 0;
+    height: calc(var(--wf-soc) * 100%);
+    background: linear-gradient(to top, hsl(var(--wf-status) / 0.55), hsl(var(--wf-status) / 0.95));
+    /* Alpha is capped ON PURPOSE (T1). Status colours are user-changeable, so text legibility
+       cannot depend on which hue someone picks. Raised 0.20 -> 0.32 after the user's live report
+       that the background didn't read as carrying the circuit-status colour - 0.32 is the
+       highest step that stayed safe across charge/discharge/pause/error in every theme. */
+    opacity: 0.32;
+    transition: height 400ms ease-out;
+}
+
+.wf-bcell__surface {
+    position: absolute;
+    inset-inline: 0;
+    bottom: calc(var(--wf-soc) * 100%);
+    z-index: 0;
+    height: 1.5px;
+    background: hsl(var(--wf-status));
+    opacity: 0.75;
+    transition: bottom 400ms ease-out;
+}
+
+/* The march. steps(10, end) on a scaleY transform is what makes the fill climb ONE SEGMENT AT A
+   TIME instead of interpolating - one animation, no per-segment CSS, composited on the GPU.
+   Paused rather than removed, so toggling state costs nothing. */
+.wf-bcell__march {
+    position: absolute;
+    inset-inline: 0;
+    z-index: 0;
+    background: hsl(var(--wf-status));
+    opacity: 0;
+    /* Slowed from 2.6s per the user's live feedback - 6.5s means each of the 10 segments takes
+       0.65s to light, a pace that reads as motion rather than a flicker. */
+    animation: wf-bcell-march 6.5s steps(10, end) infinite;
+    animation-play-state: paused;
+}
+
+/* Charging: motion lives in the EMPTY region above the real charge surface, growing upward. */
+.wf-bcell--charging .wf-bcell__march {
+    top: 0;
+    height: calc(100% - var(--wf-soc) * 100%);
+    transform-origin: 50% 100%;
+    opacity: 0.22;
+    animation-play-state: running;
+}
+
+/* Discharging: the mirror - motion lives INSIDE the fill, growing downward from the surface. */
+.wf-bcell--discharging .wf-bcell__march {
+    bottom: 0;
+    height: calc(var(--wf-soc) * 100%);
+    transform-origin: 50% 0%;
+    opacity: 0.22;
+    animation-play-state: running;
+}
+
+@keyframes wf-bcell-march {
+    from { transform: scaleY(0); }
+    to   { transform: scaleY(1); }
+}
+
+/* Fixed 18px segments, so the COUNT derives itself from the cell height and a tall cell simply
+   has more of them - no arithmetic anywhere. */
+.wf-bcell__segs {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        to top,
+        transparent 0 16px,
+        hsl(var(--card) / 0.75) 16px 18px);
+}
+
+/* Fault: hatching, no motion. An error state that moves reads as activity. */
+.wf-bcell--fault .wf-bcell__well {
+    background-image: repeating-linear-gradient(
+        45deg,
+        hsl(var(--status-error) / 0.35) 0 3px,
+        transparent 3px 6px);
+}
+
+/* Unknown charge is not empty charge: hide the fill entirely rather than show a 0% that reads as
+   a flat cell on a bench. */
+.wf-bcell--soc-unknown .wf-bcell__fill,
+.wf-bcell--soc-unknown .wf-bcell__surface,
+.wf-bcell--soc-unknown .wf-bcell__march { display: none; }
+
+/* ---- content, in normal flow ---- */
+
+.wf-bcell__content {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    padding: 4px 6px;
+}
+
+.wf-bcell__hd {
+    line-height: 14px;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.625rem;
+    padding-bottom: 3px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid hsl(var(--border) / 0.6);
+}
+
+.wf-bcell__tcp {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex: none;
+    background: hsl(var(--status-continue));
+}
+
+.wf-bcell__cs {
+    font-weight: 700;
+    color: hsl(var(--wf-status));
+    text-transform: capitalize;
+}
+
+.wf-bcell__soc {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+/* A phone status-bar battery: body, terminal nub, and an inner bar tracking --wf-soc. */
+.wf-bcell__socicon {
+    position: relative;
+    width: 20px;
+    height: 10px;
+    flex: none;
+    border: 1.2px solid hsl(var(--wf-status));
+    border-radius: 2px;
+}
+
+.wf-bcell__socicon::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: -3.4px;
+    width: 2px;
+    height: 4px;
+    border-radius: 0 1px 1px 0;
+    background: hsl(var(--wf-status));
+}
+
+.wf-bcell__socicon::before {
+    content: "";
+    position: absolute;
+    top: 1.4px;
+    bottom: 1.4px;
+    left: 1.4px;
+    width: calc((100% - 2.8px) * var(--wf-soc));
+    background: hsl(var(--wf-status));
+    transition: width 400ms ease-out;
+}
+
+.wf-bcell--soc-unknown .wf-bcell__socicon::before { display: none; }
+
+.wf-bcell__sec {
+    line-height: 12px;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin: 5px 0 2px;
+}
+
+/* Primary Data: two columns, value + unit, no labels. Left column aligns left and right column
+   right, so each pair spans the cell two edges in the same rhythm as the labelled rows. */
+.wf-bcell__grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px 10px;
+}
+
+.wf-bcell__v--left  { text-align: left; }
+.wf-bcell__v--right { text-align: right; }
+
+.wf-bcell__rows { display: grid; gap: 1px; }
+
+.wf-bcell__row {
+    line-height: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.wf-bcell__k {
+    line-height: 15px;
+    font-size: 0.625rem;
+    opacity: 0.62;
+    white-space: nowrap;
+}
+
+.wf-bcell__v {
+    line-height: 15px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wf-bcell__spec {
+    line-height: 12px;
+    font-size: 0.5rem;
+    opacity: 0.58;
+    text-align: center;
+    letter-spacing: 0.04em;
+    /* min-height keeps the strip reserved when empty - see ChannelBatteryCell.razor. */
+    min-height: 12px;
+}
+
+.wf-bcell__ft {
+    line-height: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.375rem;
+    font-size: 0.5625rem;
+    margin-top: 5px;
+    padding-top: 3px;
+    border-top: 1px solid hsl(var(--border) / 0.6);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ALWAYS rendered, even with nothing attached, and its line box is pinned. The badges are
+   conditional CONTENT, but the strip cannot be conditional GEOMETRY: ChannelNodeHeight is
+   computed from the selected-property list alone, so a strip that appears only when a program is
+   attached would make every channel with an attachment 20px taller than the formula says -
+   attaching its edges off-centre and letting rows overlap. Same reasoning as .wf-bcell__spec. */
+.wf-bcell__badges {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    padding: 2px 4px 0;
+    min-height: 16px;
+}
+
+/* Scoped to the cell so the shared .wf-badge on other node kinds keeps its own metrics. */
+.wf-bcell__badges .wf-badge { line-height: 14px; }

@@ -1,0 +1,34 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="icon" type="image/png" href="images/adorflower-removebg-preview.png" />
+    <link rel="stylesheet" href="css/app.min.css" />
+    <link rel="stylesheet" href="css/workflow-canvas.css?version=1.0" />
+    <link rel="stylesheet" href="BatteryTestingSystem.styles.css" />
+    <script src="js/highcharts/highstock.js"></script>
+    <script src="js/highcharts/modules/exporting.js"></script>
+    <script src="js/highcharts/modules/accessibility.js"></script>
+
+    <HeadOutlet />
+</head>
+
+<body class="h-screen overflow-hidden">
+    <script src="js/indexedDb.js?version=0.5"></script>
+    <script src="js/popup-interop.js?version=0.6"></script>
+    <script src="js/download.js?version=0.6"></script>
+    <script src="js/highcharts/bms-chart.js?version=0.6"></script>
+    <script src="js/bms-export.js?version=0.6"></script>
+    <script src="js/infiniteScroll.js?version=0.6"></script>
+    <script src="js/elementSize.js?version=0.1"></script>
+    <script src="js/alarm-sound.js?version=0.1"></script>
+    <script src="js/workflow-canvas.js?version=1.3"></script>
+
+    <Routes @rendermode="@InteractiveServer" />
+    <script src="_framework/blazor.web.js"></script>
+</body>
+
+</html>

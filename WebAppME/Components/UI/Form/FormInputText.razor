@@ -1,0 +1,47 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Form
+
+@typeparam TValue
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+
+<FormLabel>@Label</FormLabel>
+<FormControl>
+    <input type="@Type"
+           id="@FieldId"
+           class="@InputCss"
+           value="@Value"
+           disabled="@Disabled"
+           @onchange="@HandleChange"
+           placeholder="@Placeholder" />
+</FormControl>
+@if (!string.IsNullOrEmpty(Description))
+{
+    <FormDescription Text="@Description" />
+}
+<FormMessage />
+
+@code {
+    [Parameter] public string FieldId { get; set; } = "";
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue> ValueChanged { get; set; }
+    [Parameter] public bool IsInvalid { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string? Type { get; set; } = "text";
+
+    private string InputCss => $"flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 {(IsInvalid ? "border-destructive" : "")}";
+
+    private async Task HandleChange(ChangeEventArgs e)
+    {
+        if (e.Value != null)
+        {
+            var stringValue = e.Value.ToString();
+            TValue convertedValue = (TValue)Convert.ChangeType(stringValue, typeof(TValue))!;
+            await ValueChanged.InvokeAsync(convertedValue);
+        }
+    }
+}

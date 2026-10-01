@@ -1,0 +1,50 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Services.Implementations.Workflow
+
+@* Takes over the strip the old "Workflows / N saved layout(s) / N device(s) available" bar used to
+   occupy - that bar displayed nothing actionable. Here the same space carries a labelled,
+   click-to-filter colour key, so the swatch and its meaning are visible without opening anything.
+   Colours resolve through the same HslFor(status, overrides) call the node faces use. *@
+
+<div class="wf-status-bar">
+    @foreach (CircuitStatus status in Enum.GetValues(typeof(CircuitStatus)))
+    {
+        var name = WorkflowStatusCss.Name(status);
+        var active = ActiveStatusFilter == name;
+        <button class="wf-status-bar__item @(active ? "wf-status-bar__item--active" : "")"
+                data-status="@name"
+                title="@(active ? $"Showing only {name} - click to clear" : $"Show only {name}")"
+                @onclick="@(() => OnStatusFilterChanged.InvokeAsync(active ? null : name))">
+            <span class="wf-status-bar__swatch"
+                  style="background: hsl(@(WorkflowTelemetryBridge.HslFor(status, StatusColors)));"></span>
+            <span class="wf-status-bar__label">@name</span>
+        </button>
+    }
+
+    @* "online" is not a CircuitStatus member — the dashboard defines it as the complement of
+       Offline, so it can never come out of the enum loop above and was simply absent here. Drawn
+       with a hollow swatch because it is a grouping of statuses, not a status with a colour. *@
+    <button class="wf-status-bar__item @(ActiveStatusFilter == OnlineFilter ? "wf-status-bar__item--active" : "")"
+            data-status="@OnlineFilter"
+            title="@(ActiveStatusFilter == OnlineFilter ? "Showing only channels that are not offline - click to clear" : "Show only channels that are not offline")"
+            @onclick="@(() => OnStatusFilterChanged.InvokeAsync(ActiveStatusFilter == OnlineFilter ? null : OnlineFilter))">
+        <span class="wf-status-bar__swatch wf-status-bar__swatch--group"></span>
+        <span class="wf-status-bar__label">@OnlineFilter</span>
+    </button>
+
+    @if (ActiveStatusFilter is not null)
+    {
+        <button class="wf-status-bar__clear" title="Clear the status filter"
+                @onclick="@(() => OnStatusFilterChanged.InvokeAsync(null))">Clear filter</button>
+    }
+</div>
+
+@code {
+    /// <summary>Must match the name workflow-canvas.js special-cases in setStatusFilter.</summary>
+    private const string OnlineFilter = "online";
+
+    [Parameter] public string? ActiveStatusFilter { get; set; }
+    [Parameter] public EventCallback<string?> OnStatusFilterChanged { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? StatusColors { get; set; }
+}

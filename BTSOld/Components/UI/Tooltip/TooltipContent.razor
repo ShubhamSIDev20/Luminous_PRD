@@ -1,0 +1,87 @@
+@namespace BatteryTestingSystem.Components.UI.Tooltip
+
+@if (ParentTooltip?._isOpen == true)
+{
+    @* Rendered with position:fixed using viewport coords from getBoundingClientRect.
+       This means it is painted relative to the VIEWPORT, not any scroll/overflow
+       ancestor — so it can never be clipped by overflow:hidden or overflow:auto.
+       pointer-events:none ensures the tooltip itself never triggers a mouseleave
+       on the parent wrapper. *@
+    <div class="@GetClasses()"
+         style="@GetStyle()"
+         role="tooltip"
+         @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Tooltip? ParentTooltip { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string?         Class        { get; set; }
+    [Parameter] public TooltipSide     Side         { get; set; } = TooltipSide.Top;
+    [Parameter] public int             SideOffset   { get; set; } = 4;
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetClasses()
+    {
+        // pointer-events-none is critical: without it the tooltip div itself
+        // can receive mouseenter/mouseleave events and cause the tooltip to
+        // flicker or get stuck open when the user moves from trigger → tooltip.
+        const string Base =
+            "fixed z-[9999] rounded-md border bg-popover px-3 py-1.5 text-sm " +
+            "text-popover-foreground shadow-md whitespace-nowrap pointer-events-none " +
+            "animate-in fade-in-0 zoom-in-95";
+        return string.IsNullOrWhiteSpace(Class) ? Base : $"{Base} {Class}";
+    }
+
+    private string GetStyle()
+    {
+        var r = ParentTooltip?._rect ?? new Tooltip.DOMRect();
+        int o = SideOffset;
+
+        // Horizontal centre of trigger / vertical centre of trigger
+        double cx = r.l + r.w / 2.0;
+        double cy = r.t + r.h / 2.0;
+
+        // We use CSS translate(-50%, 0) / translate(0, -50%) to centre the
+        // tooltip on the axis without needing to know its rendered size.
+        //
+        // All values are derived from getBoundingClientRect() which already
+        // accounts for scroll position, so no additional scroll offset is needed.
+        return Side switch
+        {
+            // Above trigger, horizontally centred
+            TooltipSide.Top =>
+                $"left:{cx.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"top:{(r.t - o).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"transform:translate(-50%,-100%);",
+
+            // Below trigger, horizontally centred
+            TooltipSide.Bottom =>
+                $"left:{cx.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"top:{(r.b + o).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"transform:translate(-50%,0);",
+
+            // Left of trigger, vertically centred
+            TooltipSide.Left =>
+                $"left:{(r.l - o).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"top:{cy.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"transform:translate(-100%,-50%);",
+
+            // Right of trigger, vertically centred
+            TooltipSide.Right =>
+                $"left:{(r.ri + o).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"top:{cy.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"transform:translate(0,-50%);",
+
+            _ =>
+                $"left:{cx.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"top:{(r.t - o).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}px; " +
+                $"transform:translate(-50%,-100%);",
+        };
+    }
+}

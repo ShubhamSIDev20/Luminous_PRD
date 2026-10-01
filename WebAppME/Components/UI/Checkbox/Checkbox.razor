@@ -1,0 +1,55 @@
+@namespace BatteryTestingSystem.Components.UI.Checkbox
+
+<button type="button"
+        role="checkbox"
+        aria-checked="@Checked"
+        class="@GetCheckboxClasses()"
+        @onclick="HandleClick"
+        disabled="@Disabled"
+        @attributes="AdditionalAttributes">
+    @if (Checked)
+    {
+        <svg class="h-4 w-4 text-current" 
+             xmlns="http://www.w3.org/2000/svg" 
+             viewBox="0 0 24 24" 
+             fill="none" 
+             stroke="currentColor" 
+             stroke-width="2" 
+             stroke-linecap="round" 
+             stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+    }
+</button>
+
+@code {
+    [Parameter]
+    public bool Checked { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> CheckedChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (!Disabled)
+        {
+            await CheckedChanged.InvokeAsync(!Checked);
+        }
+    }
+
+    private string GetCheckboxClasses()
+    {
+        var baseClasses = "peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+        var stateClasses = Checked ? "bg-primary text-primary-foreground" : "";
+        return $"{baseClasses} {stateClasses} {Class ?? ""}".Trim();
+    }
+}
