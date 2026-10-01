@@ -1,0 +1,50 @@
+@namespace BatteryTestingSystem.Components.UI.Select
+
+<button type="button"
+        role="combobox"
+        aria-expanded="@Parent?.IsOpen"
+        class="@GetTriggerClasses()"
+        @onclick="HandleClick"
+        @onclick:stopPropagation="true"
+        disabled="@(Parent?.Disabled ?? false)"
+        @attributes="AdditionalAttributes">
+    @ChildContent
+    <svg class="ml-2 h-4 w-4 opacity-50" 
+         xmlns="http://www.w3.org/2000/svg" 
+         viewBox="0 0 24 24" 
+         fill="none" 
+         stroke="currentColor" 
+         stroke-width="2" 
+         stroke-linecap="round" 
+         stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
+</button>
+
+@code {
+    [CascadingParameter]
+    public Select? Parent { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (Parent != null)
+        {
+            await Parent.ToggleOpen();
+        }
+    }
+
+    private string GetTriggerClasses()
+    {
+        var baseClasses = "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+        return $"{baseClasses} {Class ?? ""}".Trim();
+    }
+}

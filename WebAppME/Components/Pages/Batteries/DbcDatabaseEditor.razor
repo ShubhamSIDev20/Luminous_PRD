@@ -1,0 +1,489 @@
+@*
+    DbcDatabaseEditor.razor
+    ──────────────────────────────────────────────────────────────────────────
+    Viewer / editor for a parsed DbcDatabase.
+    Uses <DataTable> with GroupBy= for collapsible Message → Signal rows.
+    All DataTable features (search, paging, Excel export, column visibility,
+    font-size, drag-reorder) work as-is — GroupBy is purely additive.
+    Remote Frame toggle/interval lives on the Message row only.
+    ──────────────────────────────────────────────────────────────────────────
+*@
+@namespace BatteryTestingSystem.Components.UI
+@using BatteryTestingSystem.Services
+@using BatteryTestingSystem.Components.UI.Datatable
+@inject IJSRuntime JS
+
+<div class="flex flex-col gap-2 h-full overflow-hidden p-3
+            bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
+
+    @* ── Header bar ──────────────────────────────────────────────────────── *@
+    <div class="flex flex-wrap items-center gap-3 border-b border-[hsl(var(--border))] pb-3">
+
+        <div class="flex flex-col">
+            <span class="text-sm font-semibold text-[hsl(var(--foreground))]">DBC Configuration</span>
+            <span class="text-xs text-[hsl(var(--muted-foreground))]">
+                File ID: @DbFileId · @Database.Messages.Count messages
+                · @_rows.Count signals · @_rows.Count(r => r.Signal.IsSelected) selected
+            </span>
+        </div>
+
+        <div class="flex items-center gap-2 ml-auto flex-wrap">
+
+            @* Baudrate *@
+            <div class="flex items-center gap-1.5">
+                <label class="text-xs font-medium text-[hsl(var(--muted-foreground))] whitespace-nowrap">Baudrate</label>
+                <select class="h-8 rounded-[calc(var(--radius)-.125rem)] border border-[hsl(var(--border))]
+                               bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+                               text-xs px-2 pr-7 outline-none focus:border-[hsl(var(--primary))]
+                               cursor-pointer appearance-none"
+                        @bind="Database.CBaudrate">
+                    @foreach (CanBaudrate br in Enum.GetValues<CanBaudrate>())
+                    {
+                        <option value="@br">@BaudrateLabel(br)</option>
+                    }
+                </select>
+            </div>
+
+            @* Select / Clear *@
+            <button class="h-8 px-3 rounded-[calc(var(--radius)-.125rem)] border border-[hsl(var(--border))]
+                           bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+                           text-xs hover:bg-[hsl(var(--accent))] transition-colors"
+                    @onclick="SelectAll">Select all</button>
+            <button class="h-8 px-3 rounded-[calc(var(--radius)-.125rem)] border border-[hsl(var(--border))]
+                           bg-[hsl(var(--background))] text-[hsl(var(--foreground))]
+                           text-xs hover:bg-[hsl(var(--accent))] transition-colors"
+                    @onclick="ClearAll">Clear</button>
+
+            @* Download Hex *@
+            <button class="h-8 px-4 rounded-[calc(var(--radius)-.125rem)]
+                           bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]
+                           text-xs font-semibold hover:opacity-90 transition-opacity"
+                    @onclick="DownloadHex">DownloadHex</button>
+
+            @* Save *@
+            <button class="h-8 px-4 rounded-[calc(var(--radius)-.125rem)]
+                           bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]
+                           text-xs font-semibold hover:opacity-90 transition-opacity"
+                    @onclick="HandleSave">Save</button>
+        </div>
+    </div>
+
+    @* ── Parse errors ─────────────────────────────────────────────────────── *@
+    @if (Database.ParseErrors.Count > 0)
+    {
+        <div class="rounded-[var(--radius)] border border-[hsl(var(--destructive)/.4)]
+                    bg-[hsl(var(--destructive)/.06)] text-xs">
+            <button class="flex w-full items-center gap-2 px-3 py-2
+                           text-[hsl(var(--destructive))] font-medium"
+                    @onclick="() => _showErrors = !_showErrors">
+                <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                </svg>
+                @Database.ParseErrors.Count parse warning(s) — click to @(_showErrors ? "hide" : "show")
+            </button>
+            @if (_showErrors)
+            {
+                <ul class="px-4 pb-3 space-y-0.5 text-[hsl(var(--destructive))] font-mono">
+                    @foreach (var e in Database.ParseErrors) { <li class="leading-5">• @e</li> }
+                </ul>
+            }
+        </div>
+    }
+
+    @* ── DataTable with GroupBy ───────────────────────────────────────────── *@
+    <DataTable TItem="SignalRow"
+               @ref="_table"
+               Title="Signals"
+               Subtitle="@($"{_rows.Count(r => r.Signal.IsSelected)} selected")"
+               Data="@_rows"
+               Search="true"
+               ExcelExport="true"
+               PdfExport="true"
+               ExcelFileName="dbc_signals"
+               GroupBy="@_groupDef">
+
+        <ActionButtons>
+            @* Expand / Collapse all — injected into DataTable toolbar *@
+            <button class="dt-tb-btn inline-flex items-center gap-1 shrink-0
+                           rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))]
+                           bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--muted-foreground,0_0%_50%))]
+                           cursor-pointer hover:bg-[hsl(var(--accent,0_0%_95%))]
+                           hover:text-[hsl(var(--foreground,0_0%_10%))] px-[.5em] h-[1.8em] text-[.82em]"
+                    @onclick="ExpandAll" title="Expand all groups">
+                <svg class="w-[.85em] h-[.85em]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+                Expand
+            </button>
+            <button class="dt-tb-btn inline-flex items-center gap-1 shrink-0
+                           rounded-[calc(var(--radius,.5rem)-2px)] border border-[hsl(var(--border,0_0%_88%))]
+                           bg-[hsl(var(--background,0_0%_100%))] text-[hsl(var(--muted-foreground,0_0%_50%))]
+                           cursor-pointer hover:bg-[hsl(var(--accent,0_0%_95%))]
+                           hover:text-[hsl(var(--foreground,0_0%_10%))] px-[.5em] h-[1.8em] text-[.82em]"
+                    @onclick="CollapseAll" title="Collapse all groups">
+                <svg class="w-[.85em] h-[.85em]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                </svg>
+                Collapse
+            </button>
+        </ActionButtons>
+
+        <Columns>
+
+            @* Signal checkbox *@
+            <ColumnDef TItem="SignalRow" Key="sel" Header="✓"
+                       SearchSelector="@(r => r.Signal.IsSelected ? "1" : "0")">
+                <CellTemplate Context="r">
+                    <input type="checkbox"
+                           class="w-3.5 h-3.5 rounded accent-[hsl(var(--primary))] cursor-pointer"
+                           checked="@r.Signal.IsSelected"
+                           @onchange="e => OnSignalChecked(r, e)" />
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Row number *@
+            <ColumnDef TItem="SignalRow" Key="no" Header="#" Align="right"
+                       SearchSelector="@(r => r.RowNo.ToString())"
+                       ExcelValueSelector="@(r => r.RowNo.ToString())">
+                <CellTemplate Context="r">
+                    <span class="text-[hsl(var(--muted-foreground))] text-[11px]">@r.RowNo</span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* BoName *@
+            <ColumnDef TItem="SignalRow" Key="boname" Header="BoName"
+                       SearchSelector="@(r => r.Message.Name)"
+                       ExcelValueSelector="@(r => r.Message.Name)">
+                <CellTemplate Context="r">
+                    <span class="inline-block rounded px-1.5 py-px text-[11px] font-medium
+                                 bg-[hsl(var(--primary)/.12)] text-[hsl(var(--primary))]">
+                        @r.Message.Name
+                    </span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* CAN ID *@
+            <ColumnDef TItem="SignalRow" Key="canid" Header="Command Frame"
+                       SearchSelector="@(r => $"0x{r.Message.Id:X}")"
+                       ExcelValueSelector="@(r => $"0x{r.Message.Id:X}")">
+                <CellTemplate Context="r">
+                    <span class="font-mono text-[11px]">0x@((r.Message.IsExtended ? (uint)r.Message.Id - 0x80000000 : (uint)r.Message.Id).ToString("X"))</span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Signal Name *@
+            <ColumnDef TItem="SignalRow" Key="signame" Header="Signal Name"
+                       SearchSelector="@(r => r.Signal.Name)"
+                       ExcelValueSelector="@(r => r.Signal.Name)">
+                <CellTemplate Context="r">
+                    <span class="font-medium text-[hsl(var(--foreground))] text-[12px]">@r.Signal.Name</span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Start Bit *@
+            <ColumnDef TItem="SignalRow" Key="sb" Header="Start Bit" Align="right"
+                       SearchSelector="@(r => r.Signal.StartBit.ToString())"
+                       ExcelValueSelector="@(r => r.Signal.StartBit.ToString())">
+                <CellTemplate Context="r">
+                    <span class="font-mono text-[11px]">@r.Signal.StartBit</span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Length *@
+            <ColumnDef TItem="SignalRow" Key="len" Header="Length" Align="right"
+                       SearchSelector="@(r => r.Signal.BitLength.ToString())"
+                       ExcelValueSelector="@(r => r.Signal.BitLength.ToString())">
+                <CellTemplate Context="r">
+                    <span class="font-mono text-[11px]">@r.Signal.BitLength</span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Byte Order *@
+            <ColumnDef TItem="SignalRow" Key="bo" Header="Byte Order"
+                       SearchSelector="@(r => r.Signal.ByteOrder.ToString())"
+                       ExcelValueSelector="@(r => r.Signal.ByteOrder.ToString())">
+                <CellTemplate Context="r">
+                    <span class="inline-block rounded px-1.5 py-px text-[10px] font-medium
+                                 @(r.Signal.ByteOrder == ByteOrder.Motorola
+                                     ? "bg-[hsl(38_92%_50%/.15)] text-[hsl(38_92%_50%)]"
+                                     : "bg-[hsl(142_71%_45%/.15)] text-[hsl(142_71%_45%)]")">
+                        @(r.Signal.ByteOrder == ByteOrder.Motorola ? "Motorola" : "Intel")
+                    </span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Numeric Type *@
+            <ColumnDef TItem="SignalRow" Key="vt" Header="Numeric" Align="center"
+                       SearchSelector="@(r => r.Signal.ValueType == DbcValueType.Unsigned ? "+" : "-")"
+                       ExcelValueSelector="@(r => r.Signal.ValueType == DbcValueType.Unsigned ? "+" : "-")">
+                <CellTemplate Context="r">
+                    <span class="font-mono font-bold text-[13px]
+                                 @(r.Signal.ValueType == DbcValueType.Unsigned
+                                     ? "text-[hsl(142_71%_45%)]"
+                                     : "text-[hsl(var(--destructive))]")">
+                        @(r.Signal.ValueType == DbcValueType.Unsigned ? "+" : "−")
+                    </span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Factor *@
+            <ColumnDef TItem="SignalRow" Key="factor" Header="Factor" Align="right"
+                       SearchSelector="@(r => r.Signal.Factor.ToString())"
+                       ExcelValueSelector="@(r => r.Signal.Factor.ToString())">
+                <CellTemplate Context="r"><span class="font-mono text-[11px]">@r.Signal.Factor</span></CellTemplate>
+            </ColumnDef>
+
+            @* Offset *@
+            <ColumnDef TItem="SignalRow" Key="offset" Header="Offset" Align="right"
+                       SearchSelector="@(r => r.Signal.Offset.ToString())"
+                       ExcelValueSelector="@(r => r.Signal.Offset.ToString())">
+                <CellTemplate Context="r"><span class="font-mono text-[11px]">@r.Signal.Offset</span></CellTemplate>
+            </ColumnDef>
+
+            @* Min *@
+            <ColumnDef TItem="SignalRow" Key="min" Header="Min" Align="right"
+                       SearchSelector="@(r => r.Signal.Minimum.ToString())"
+                       ExcelValueSelector="@(r => r.Signal.Minimum.ToString())">
+                <CellTemplate Context="r"><span class="font-mono text-[11px]">@r.Signal.Minimum</span></CellTemplate>
+            </ColumnDef>
+
+            @* Max *@
+            <ColumnDef TItem="SignalRow" Key="max" Header="Max" Align="right"
+                       SearchSelector="@(r => r.Signal.Maximum.ToString())"
+                       ExcelValueSelector="@(r => r.Signal.Maximum.ToString())">
+                <CellTemplate Context="r"><span class="font-mono text-[11px]">@r.Signal.Maximum</span></CellTemplate>
+            </ColumnDef>
+
+            @* Unit *@
+            <ColumnDef TItem="SignalRow" Key="unit" Header="Unit" Align="center"
+                       SearchSelector="@(r => r.Signal.Unit)"
+                       ExcelValueSelector="@(r => r.Signal.Unit)">
+                <CellTemplate Context="r">
+                    <span class="text-[11px] text-[hsl(var(--muted-foreground))]">@r.Signal.Unit</span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Transmitter *@
+            <ColumnDef TItem="SignalRow" Key="accept" Header="Accept"
+                       SearchSelector="@(r => r.Message.Transmitter)"
+                       ExcelValueSelector="@(r => r.Message.Transmitter)">
+                <CellTemplate Context="r">
+                    <span class="text-[11px] text-[hsl(var(--muted-foreground))]">@r.Message.Transmitter</span>
+                </CellTemplate>
+            </ColumnDef>
+
+            @* Comment *@
+            <ColumnDef TItem="SignalRow" Key="comment" Header="Comment" Visible="false"
+                       SearchSelector="@(r => r.Signal.Comment)"
+                       ExcelValueSelector="@(r => r.Signal.Comment)">
+                <CellTemplate Context="r">
+                    <span class="text-[11px] text-[hsl(var(--muted-foreground))] italic">@r.Signal.Comment</span>
+                </CellTemplate>
+            </ColumnDef>
+
+        </Columns>
+    </DataTable>
+
+</div>
+
+@code {
+
+    // ── Parameters ──────────────────────────────────────────────────────────
+    [Parameter, EditorRequired] public DbcDatabase Database { get; set; } = new();
+    [Parameter, EditorRequired] public long         DbFileId  { get; set; }
+    [Parameter]                 public EventCallback<DbcDatabase> OnSave { get; set; }
+
+    // ── Flat row model (TItem for DataTable) ─────────────────────────────────
+    private sealed record SignalRow(int RowNo, DbcMessage Message, DbcSignal Signal);
+
+    // ── State ────────────────────────────────────────────────────────────────
+    private List<SignalRow> _rows       = [];
+    private bool            _showErrors;
+    private bool            _isRender;
+
+    private DataTable<SignalRow>? _table;  // ref to DataTable for Expand/Collapse
+
+    // GroupDefinition wired to DataTable via GroupBy=
+    private GroupDefinition<SignalRow, DbcMessage> _groupDef = new();
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+    protected override void OnParametersSet() => BuildRows();
+
+    protected override void OnInitialized()
+    {
+        _groupDef = new GroupDefinition<SignalRow, DbcMessage>
+        {
+            // Group key = the parent DbcMessage (grouped by reference identity)
+            KeySelector = r => r.Message,
+
+            DefaultExpanded = true,
+
+            // ── Message header row ───────────────────────────────────────────
+            GroupHeaderTemplate = ctx => __builder =>
+            {
+                var msg      = ctx.Key;
+                var allSel   = ctx.Items.All(r => r.Signal.IsSelected);
+                var someSel  = !allSel && ctx.Items.Any(r => r.Signal.IsSelected);
+                var colSpan  = ctx.ColCount - 2; // remaining cols after checkbox + BoName
+
+                // Full-width message header row
+                <tr class="cursor-pointer select-none
+                           bg-[hsl(var(--muted,0_0%_96%))]
+                           hover:bg-[hsl(var(--accent,0_0%_93%))]
+                           border-b border-[hsl(var(--border,0_0%_88%))]
+                           transition-colors duration-75"
+                    @onclick="ctx.ToggleExpand">
+
+                    @* Chevron + message select checkbox *@
+                    <td class="px-[.5em] py-[.3em] w-[2em]">
+                        <div class="flex items-center gap-[.3em]" @onclick:stopPropagation>
+                            @* Chevron *@
+                            <svg class="w-[.85em] h-[.85em] shrink-0
+                                        text-[hsl(var(--muted-foreground,0_0%_50%))]
+                                        transition-transform duration-150
+                                        @(ctx.IsExpanded ? "rotate-90" : "")"
+                                 fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                 @onclick="ctx.ToggleExpand" @onclick:stopPropagation>
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                      stroke-width="2.5" d="M9 5l7 7-7 7"/>
+                            </svg>
+                            @* Message-level checkbox — selects/deselects all signals *@
+                            <input type="checkbox"
+                                   class="w-[.85em] h-[.85em] rounded accent-[hsl(var(--primary,220_90%_55%))] cursor-pointer"
+                                   checked="@allSel"
+                                   @onchange="e => OnMessageChecked(msg, e)"
+                                   @onclick:stopPropagation />
+                        </div>
+                    </td>
+
+                    @* BoName badge + signal count + Remote Frame (MESSAGE ONLY) *@
+                    <td class="px-[.5em] py-[.3em]" colspan="@(ctx.ColCount - 1)" @onclick:stopPropagation>
+                        <div class="flex items-center gap-[.6em] flex-wrap">
+                            <span class="inline-block rounded px-[.5em] py-px text-[.88em] font-semibold
+                                         bg-[hsl(var(--primary,220_90%_55%)/.15)]
+                                         text-[hsl(var(--primary,220_90%_55%))]">
+                                @msg.Name
+                            </span>
+                            <span class="font-mono text-[.85em] font-semibold
+                                         text-[hsl(var(--foreground,0_0%_10%))]">
+                                0x@((msg.IsExtended ? (uint)msg.Id - 0x80000000 : (uint)msg.Id).ToString("X"))
+                            </span>
+                            <span class="text-[.8em] text-[hsl(var(--muted-foreground,0_0%_50%))]">
+                                @ctx.Items.Count(r => r.Signal.IsSelected)/@ctx.Items.Count signals
+                            </span>
+                            <span class="text-[.8em] text-[hsl(var(--muted-foreground,0_0%_50%))]">
+                                Rx: @msg.Transmitter
+                            </span>
+
+                            @* ── Remote Frame toggle — MESSAGE LEVEL ONLY ── *@
+                            <label class="flex items-center gap-[.35em] cursor-pointer
+                                          text-[.8em] text-[hsl(var(--muted-foreground,0_0%_50%))]
+                                          ml-auto">
+                                <input type="checkbox"
+                                       class="w-[.85em] h-[.85em] rounded
+                                              accent-[hsl(var(--primary,220_90%_55%))] cursor-pointer"
+                                       checked="@msg.IsRemoteFrame"
+                                       @onchange="e => OnRemoteFrameChanged(msg, e)"
+                                       @onclick:stopPropagation />
+                                Remote Frame
+                                @if (msg.IsRemoteFrame)
+                                {
+                                    <input type="number"
+                                           class="w-[4em] h-[1.6em] rounded
+                                                  border border-[hsl(var(--border,0_0%_88%))]
+                                                  bg-[hsl(var(--background,0_0%_100%))]
+                                                  text-[hsl(var(--foreground,0_0%_10%))]
+                                                  text-[.9em] px-[.3em] font-mono
+                                                  focus:outline-none focus:border-[hsl(var(--primary,220_90%_55%))]"
+                                           placeholder="ms" min="1"
+                                           value="@(msg.IntervalMs?.ToString() ?? "")"
+                                           @onchange="e => OnIntervalChanged(msg, e)"
+                                           @onclick:stopPropagation />
+                                    <span>ms</span>
+                                }
+                            </label>
+                        </div>
+                    </td>
+                </tr>
+            },
+
+            // ── Signal child row — uses the normal DataTable column rendering ──
+            // Returning null here tells DataTable to use its standard flat <tr>
+            // for each child row, which means all ColumnDef CellTemplates render
+            // exactly as usual — with zebra striping, selection highlight, etc.
+            GroupRowTemplate = null
+        };
+    }
+
+    private void BuildRows()
+    {
+        int no = 1;
+        _rows = Database.Messages.Values
+            .SelectMany(msg => msg.Signals.Select(sig => new SignalRow(no++, msg, sig)))
+            .ToList();
+    }
+
+    // ── Expand / Collapse all — calls into DataTable via @ref ────────────────
+    private void ExpandAll()   => _table?.ExpandAllGroups();
+    private void CollapseAll() => _table?.CollapseAllGroups();
+
+    // ── Selection ────────────────────────────────────────────────────────────
+    private void OnMessageChecked(DbcMessage msg, ChangeEventArgs e)
+    {
+        bool val = e.Value is true or "true";
+        foreach (var r in _rows.Where(r => r.Message == msg))
+            r.Signal.IsSelected = val;
+        StateHasChanged();
+    }
+
+    private void OnSignalChecked(SignalRow row, ChangeEventArgs e)
+    {
+        row.Signal.IsSelected = e.Value is true or "true";
+    }
+
+    private void SelectAll() { foreach (var r in _rows) r.Signal.IsSelected = true; }
+    private void ClearAll()  { foreach (var r in _rows) r.Signal.IsSelected = false; }
+
+    // ── Remote Frame / Interval — message level only ─────────────────────────
+    private void OnRemoteFrameChanged(DbcMessage msg, ChangeEventArgs e)
+    {
+        msg.IsRemoteFrame = e.Value is true or "true";
+        if (!msg.IsRemoteFrame) msg.IntervalMs = null;
+        StateHasChanged();
+    }
+
+    private void OnIntervalChanged(DbcMessage msg, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int ms) && ms > 0)
+            msg.IntervalMs = ms;
+        else
+            msg.IntervalMs = null;
+    }
+
+    // ── Save / Download ──────────────────────────────────────────────────────
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) _isRender = true;
+    }
+
+    private async Task HandleSave() => await OnSave.InvokeAsync(Database);
+
+    private async Task DownloadHex()
+    {
+        if (!_isRender) return;
+        string hex = Database?.ToHexValue();
+        await JS.InvokeVoidAsync("BlazorDownloadFile", $"dbc_{DbFileId}.txt", "text/plain", hex);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    private static string BaudrateLabel(CanBaudrate br) => br switch
+    {
+       
+        CanBaudrate.BR_250K => "250 kbps",
+        CanBaudrate.BR_500K => "500 kbps",
+        CanBaudrate.BR_750K => "750 kbps",
+        CanBaudrate.BR_1M   => "1 Mbps",
+        _                   => br.ToString()
+    };
+}

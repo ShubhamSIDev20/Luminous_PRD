@@ -1,0 +1,36 @@
+﻿@page "/accessdenied"
+
+<div class="access-denied-wrapper d-flex justify-content-center align-items-center ">
+    <div class="card shadow-lg p-4 border-0" style="max-width: 480px; border-radius: 1.2rem;">
+        <div class="text-center mb-3">
+            <span class="bg-danger text-white rounded-circle d-inline-flex justify-content-center align-items-center"
+                  style="width: 70px; height: 70px; font-size: 36px;">
+                <i class="bi bi-x-lg"></i>
+            </span>
+        </div>
+
+        <h3 class="text-center text-danger fw-bold">Access Denied</h3>
+
+        <p class="text-muted text-center">
+            You do not have permission to access this page.<br />
+            If you believe this is a mistake, please contact the administrator.
+        </p>
+
+        <div class="d-grid mt-4 gap-2">
+            <button class="btn btn-outline-secondary" @onclick="GoBack">
+                <i class="bi bi-arrow-left"></i> Go Back
+            </button>
+
+            <button class="btn btn-primary" @onclick="GoHome">
+                <i class="bi bi-house-door"></i> Back to Home
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Inject] NavigationManager Nav { get; set; }
+
+    void GoBack() => Nav.NavigateTo("/", false);
+    void GoHome() => Nav.NavigateTo("/");
+}

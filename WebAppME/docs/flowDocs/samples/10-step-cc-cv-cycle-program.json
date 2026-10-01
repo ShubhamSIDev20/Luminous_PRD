@@ -1,0 +1,112 @@
+[
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000001",
+    "StepNumber": 1,
+    "OperatorCode": 10,
+    "Label": "Start",
+    "Comment": "SET: declares reusable cutoff variables and selects the logging Standard. Registrations must name an existing Standard configured under Program -> Registrations - rename 'STANDARD' to match yours.",
+    "NominalValues": ["(vmax = 4.2 V)", "(vmin = 3.0 V)"],
+    "Limits": [],
+    "Actions": [],
+    "Registrations": ["STANDARD"]
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000002",
+    "StepNumber": 2,
+    "OperatorCode": 1,
+    "Label": "Charge",
+    "Comment": "CC_CHG: constant-current charge at 10A until pack voltage reaches vmax (4.2V).",
+    "NominalValues": ["10 A"],
+    "Limits": [">= vmax"],
+    "Actions": ["STO"],
+    "Registrations": []
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000003",
+    "StepNumber": 3,
+    "OperatorCode": 2,
+    "Label": "ChargeTaper",
+    "Comment": "CV_CHG: hold at vmax (4.2V), taper off until current drops to 0.5A.",
+    "NominalValues": ["vmax"],
+    "Limits": ["<= 0.5 A"],
+    "Actions": ["STO"],
+    "Registrations": []
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000004",
+    "StepNumber": 4,
+    "OperatorCode": 8,
+    "Label": "Rest1",
+    "Comment": "PAU: 30-minute rest after charge. PAU forbids comparison operators - value is plain '30 min'. Blank Action is fine here; the operator-level STO at the end still terminates the program.",
+    "NominalValues": [],
+    "Limits": ["30 min"],
+    "Actions": [""],
+    "Registrations": []
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000005",
+    "StepNumber": 5,
+    "OperatorCode": 5,
+    "Label": "Discharge",
+    "Comment": "CC_DCHG: constant-current discharge at 10A until pack voltage falls to vmin (3.0V).",
+    "NominalValues": ["10 A"],
+    "Limits": ["<= vmin"],
+    "Actions": ["STO"],
+    "Registrations": []
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000006",
+    "StepNumber": 6,
+    "OperatorCode": 8,
+    "Label": "Rest2",
+    "Comment": "PAU: 15-minute rest after discharge, before the recharge check.",
+    "NominalValues": [],
+    "Limits": ["15 min"],
+    "Actions": [""],
+    "Registrations": []
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000007",
+    "StepNumber": 7,
+    "OperatorCode": 21,
+    "Label": "Recharge",
+    "Comment": "CC_RECHG (opcode 21, BM Program v3.2 / Q10): a lighter top-up charge at 5A, separate from the main Charge step, up to 4.1V.",
+    "NominalValues": ["5 A"],
+    "Limits": [">= 4.1 V"],
+    "Actions": ["STO"],
+    "Registrations": []
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000008",
+    "StepNumber": 8,
+    "OperatorCode": 2,
+    "Label": "RechargeTaper",
+    "Comment": "CV_CHG: hold the recharge at 4.1V, taper until current drops to 0.1A.",
+    "NominalValues": ["4.1 V"],
+    "Limits": ["<= 0.1 A"],
+    "Actions": ["STO"],
+    "Registrations": []
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000009",
+    "StepNumber": 9,
+    "OperatorCode": 15,
+    "Label": "FinalLog",
+    "Comment": "REG: re-asserts the Standard for the final capture. Nominal is an optional <=8-char grouping label only (never sent to the device) - left blank here. With no Registrations of its own it would inherit the nearest preceding SET, but it's set explicitly for clarity.",
+    "NominalValues": [],
+    "Limits": [],
+    "Actions": [],
+    "Registrations": ["STANDARD"]
+  },
+  {
+    "Id": "b16a1b1e-0000-4c2a-9c3e-000000000010",
+    "StepNumber": 10,
+    "OperatorCode": 11,
+    "Label": "End",
+    "Comment": "STO: terminates the program. Pinned as the last step by the editor's own rules.",
+    "NominalValues": [],
+    "Limits": [],
+    "Actions": [],
+    "Registrations": []
+  }
+]

@@ -1,0 +1,37 @@
+@namespace BatteryTestingSystem.Components.UI.Tabs
+
+<button type="button"
+        disabled="@Disabled"
+        class="@GetTriggerClasses()"
+        @onclick="HandleClick"
+        @attributes="AdditionalAttributes">
+    @ChildContent
+</button>
+
+@code {
+    [CascadingParameter] public Tabs? Tabs { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsActive => Tabs?.IsActive(Value ?? "") ?? false;
+
+    private async Task HandleClick()
+    {
+        if (!Disabled && Tabs != null && Value != null)
+        {
+            await Tabs.SetValue(Value);
+        }
+    }
+
+    private string GetTriggerClasses()
+    {
+        var baseClasses = "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+        var activeClasses = IsActive ? "bg-background text-foreground shadow-sm" : "";
+
+        return CN.Merge(baseClasses, activeClasses, Class);
+    }
+}

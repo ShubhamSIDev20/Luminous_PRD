@@ -1,0 +1,396 @@
+@* 
+    InfiniteScrollList.razor
+    Fully customizable, reusable infinite scroll component for Blazor + TailwindCSS
+    Supports: top bar, search, filter buttons, view toggle (grid/list), and card/list rendering
+    Usage: Drop into any page and pass your data + render fragments
+*@
+
+@using BatteryTestingSystem.Components.UI.InfiniteScroll
+
+@typeparam TItem
+@inject IJSRuntime JS
+
+<div class="flex flex-col h-full">
+
+    @* ── TOP BAR ── *@
+    @if (ShowTopBar)
+    {
+        <div class="flex flex-col gap-2 px-4 py-3 border-b border-border bg-background sticky top-0 z-20">
+
+            @* Row 1: Title + Actions *@
+            <div class="flex items-center justify-between gap-3">
+                @if (TitleContent != null)
+                {
+                    @TitleContent
+                }
+                else if (!string.IsNullOrEmpty(Title))
+                {
+                    <h2 class="text-lg font-semibold text-foreground truncate">@Title</h2>
+                }
+
+                <div class="flex items-center gap-2 shrink-0">
+                    @if (ActionButtons != null)
+                    {
+                        @ActionButtons
+                    }
+
+                    @* View Toggle *@
+                    @if (ShowViewToggle)
+                    {
+                        <div class="flex items-center border border-border rounded-md overflow-hidden">
+                            <button @onclick="() => SetView(ViewMode.Grid)"
+                                    class="@GetViewButtonClass(ViewMode.Grid) p-1.5 transition-colors"
+                                    title="Grid view">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/>
+                                    <rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/>
+                                    <rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/>
+                                    <rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/>
+                                </svg>
+                            </button>
+                            <button @onclick="() => SetView(ViewMode.List)"
+                                    class="@GetViewButtonClass(ViewMode.List) p-1.5 transition-colors border-l border-border"
+                                    title="List view">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <line x1="3" y1="6" x2="21" y2="6" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="3" y1="12" x2="21" y2="12" stroke-width="2" stroke-linecap="round"/>
+                                    <line x1="3" y1="18" x2="21" y2="18" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* Row 2: Search + Filter Buttons *@
+            @if (ShowSearch || FilterButtons != null)
+            {
+                <div class="flex items-center gap-2 flex-wrap">
+                    @if (ShowSearch)
+                    {
+                        <div class="relative flex-1 min-w-[180px]">
+                            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8" stroke-width="2"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <input type="text"
+                                   placeholder="@SearchPlaceholder"
+                                   value="@SearchText"
+                                   @oninput="OnSearchInput"
+                                   class="w-full pl-9 pr-3 py-1.5 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
+                            @if (!string.IsNullOrEmpty(SearchText))
+                            {
+                                <button @onclick="ClearSearch"
+                                        class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <line x1="18" y1="6" x2="6" y2="18" stroke-width="2" stroke-linecap="round"/>
+                                        <line x1="6" y1="6" x2="18" y2="18" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    @if (FilterButtons != null)
+                    {
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            @FilterButtons
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @* ── RESULTS COUNT ── *@
+    @if (ShowResultCount && _items.Count > 0)
+    {
+        <div class="px-4 py-1.5 text-xs text-muted-foreground border-b border-border bg-background/50">
+            Showing @_items.Count item@(_items.Count == 1 ? "" : "s")@(_hasMore ? "+" : "")
+        </div>
+    }
+
+    @* ── ITEM LIST ── *@
+    <div class="flex-1 overflow-y-auto" @ref="_scrollContainer" id="@_scrollContainerId">
+
+        @* Empty state *@
+        @if (_items.Count == 0 && !_isLoading)
+        {
+            @if (EmptyContent != null)
+            {
+                @EmptyContent
+            }
+            else
+            {
+                <div class="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                    <svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8" stroke-width="1.5"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <p class="text-sm">@EmptyMessage</p>
+                </div>
+            }
+        }
+
+        @* Grid or List view *@
+        @if (_items.Count > 0)
+        {
+            @if (_currentView == ViewMode.Grid && GridItemTemplate != null)
+            {
+                <div class="@GridContainerClass p-4">
+                    @foreach (var item in _items)
+                    {
+                        @GridItemTemplate(item)
+                    }
+                </div>
+            }
+            else if (_currentView == ViewMode.List && ListItemTemplate != null)
+            {
+                <div class="@ListContainerClass">
+                    @foreach (var item in _items)
+                    {
+                        @ListItemTemplate(item)
+                    }
+                </div>
+            }
+            else if (ItemTemplate != null)
+            {
+                @* Fallback: single template for both views *@
+                <div class="@(_currentView == ViewMode.Grid ? GridContainerClass + " p-4" : ListContainerClass)">
+                    @foreach (var item in _items)
+                    {
+                        @ItemTemplate(item)
+                    }
+                </div>
+            }
+        }
+
+        @* ── LOADER / SENTINEL ── *@
+        <div @ref="_sentinel" id="@_sentinelId">
+            @if (_isLoading)
+            {
+                @if (LoadingContent != null)
+                {
+                    @LoadingContent
+                }
+                else
+                {
+                    <div class="@(_currentView == ViewMode.Grid ? GridContainerClass + " p-4" : "flex flex-col gap-2 p-4")">
+                        @for (int i = 0; i < SkeletonCount; i++)
+                        {
+                            @if (_currentView == ViewMode.Grid)
+                            {
+                                <div class="rounded-lg border border-border bg-card animate-pulse">
+                                    <div class="bg-muted rounded-t-lg h-36"></div>
+                                    <div class="p-3 flex flex-col gap-2">
+                                        <div class="h-3 bg-muted rounded w-3/4"></div>
+                                        <div class="h-3 bg-muted rounded w-1/2"></div>
+                                        <div class="h-3 bg-muted rounded w-2/3"></div>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="flex gap-3 p-3 border-b border-border animate-pulse">
+                                    <div class="w-12 h-12 bg-muted rounded-lg shrink-0"></div>
+                                    <div class="flex-1 flex flex-col gap-2 py-1">
+                                        <div class="h-3 bg-muted rounded w-2/3"></div>
+                                        <div class="h-3 bg-muted rounded w-1/2"></div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            }
+            else if (!_hasMore && _items.Count > 0)
+            {
+                @if (EndOfListContent != null)
+                {
+                    @EndOfListContent
+                }
+                else
+                {
+                    <div class="text-center py-6 text-xs text-muted-foreground">
+                        ── End of list ──
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>Async function called to load a page. Receives (pageNumber, searchText, cancellationToken). Returns (items, hasMore).</summary>
+    [Parameter, EditorRequired]
+    public Func<int, string, CancellationToken, Task<(IEnumerable<TItem> Items, bool HasMore)>> LoadPageAsync { get; set; } = default!;
+
+    // -- Top Bar --
+    [Parameter] public bool ShowTopBar { get; set; } = true;
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? TitleContent { get; set; }
+    [Parameter] public RenderFragment? ActionButtons { get; set; }
+    [Parameter] public RenderFragment? FilterButtons { get; set; }
+
+    // -- Search --
+    [Parameter] public bool ShowSearch { get; set; } = true;
+    [Parameter] public string SearchPlaceholder { get; set; } = "Search…";
+    [Parameter] public int SearchDebounceMs { get; set; } = 350;
+    [Parameter] public EventCallback<string> OnSearch { get; set; }
+
+    // -- View Toggle --
+    [Parameter] public bool ShowViewToggle { get; set; } = true;
+    [Parameter] public ViewMode DefaultView { get; set; } = ViewMode.Grid;
+
+    // -- Templates --
+    [Parameter] public RenderFragment<TItem>? GridItemTemplate { get; set; }
+    [Parameter] public RenderFragment<TItem>? ListItemTemplate { get; set; }
+    /// <summary>Fallback template when GridItemTemplate/ListItemTemplate are not set separately.</summary>
+    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
+    [Parameter] public RenderFragment? LoadingContent { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public RenderFragment? EndOfListContent { get; set; }
+
+    // -- Layout --
+    [Parameter] public string GridContainerClass { get; set; } = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4";
+    [Parameter] public string ListContainerClass { get; set; } = "flex flex-col divide-y divide-border";
+    [Parameter] public int SkeletonCount { get; set; } = 6;
+
+    // -- Misc --
+    [Parameter] public bool ShowResultCount { get; set; } = false;
+    [Parameter] public string EmptyMessage { get; set; } = "No results found";
+
+    // ── Internal state ────────────────────────────────────────────────────────
+
+    private List<TItem> _items = new();
+    private int _page = 1;
+    private bool _isLoading;
+    private bool _hasMore = true;
+    private string _searchText = string.Empty;
+    private ViewMode _currentView;
+    private ElementReference _scrollContainer;
+    private ElementReference _sentinel;
+    private DotNetObjectReference<InfiniteScrollList<TItem>>? _dotNetRef;
+    private CancellationTokenSource _cts = new();
+    private Timer? _debounceTimer;
+    private string _scrollContainerId = $"scroll-{Guid.NewGuid():N}";
+    private string _sentinelId = $"sentinel-{Guid.NewGuid():N}";
+
+    public string SearchText => _searchText;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        _currentView = DefaultView;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("InfiniteScroll.init", _scrollContainerId, _sentinelId, _dotNetRef);
+            await LoadNextPageAsync();
+        }
+    }
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /// <summary>Call to reset and reload from page 1 (e.g., after external filter change).</summary>
+    public async Task ReloadAsync()
+    {
+        _items.Clear();
+        _page = 1;
+        _hasMore = true;
+        StateHasChanged();
+        await LoadNextPageAsync();
+    }
+
+    // ── JS interop callback ───────────────────────────────────────────────────
+
+    [JSInvokable]
+    public async Task OnSentinelVisible()
+    {
+        if (!_isLoading && _hasMore)
+            await LoadNextPageAsync();
+    }
+
+    // ── Internal ──────────────────────────────────────────────────────────────
+
+    private async Task LoadNextPageAsync()
+    {
+        if (_isLoading || !_hasMore) return;
+        _isLoading = true;
+        StateHasChanged();
+
+        _cts.Cancel();
+        _cts = new CancellationTokenSource();
+
+        try
+        {
+            var (items, hasMore) = await LoadPageAsync(_page, _searchText, _cts.Token);
+            _items.AddRange(items);
+            _hasMore = hasMore;
+            _page++;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"InfiniteScrollList error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? string.Empty;
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                if (OnSearch.HasDelegate)
+                    await OnSearch.InvokeAsync(_searchText);
+                await ReloadAsync();
+            });
+        }, null, SearchDebounceMs, Timeout.Infinite);
+    }
+
+    private async Task ClearSearch()
+    {
+        _searchText = string.Empty;
+        if (OnSearch.HasDelegate)
+            await OnSearch.InvokeAsync(_searchText);
+        await ReloadAsync();
+    }
+
+    private async Task SetView(ViewMode view)
+    {
+        _currentView = view;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private string GetViewButtonClass(ViewMode view) =>
+        _currentView == view
+            ? "bg-primary text-primary-foreground"
+            : "bg-background text-muted-foreground hover:bg-muted";
+
+    public async ValueTask DisposeAsync()
+    {
+        _debounceTimer?.Dispose();
+        _cts.Cancel();
+        _dotNetRef?.Dispose();
+        await JS.InvokeVoidAsync("InfiniteScroll.dispose", _scrollContainerId);
+    }
+
+    public enum ViewMode { Grid, List }
+}

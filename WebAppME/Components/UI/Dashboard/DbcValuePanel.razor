@@ -1,0 +1,195 @@
+@namespace BatteryTestingSystem.Components.UI.Dashboard
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Services.Interfaces
+@using BatteryTestingSystem.Services
+@implements IDisposable
+
+@if (IsOpen)
+{
+    <div class="@ContainerClass" style="@ContainerStyle">
+
+        @* ── Header ─────────────────────────────────────────── *@
+        <div class="flex items-center gap-1 px-3 py-2 border-b border-border flex-shrink-0">
+            <span class="text-xs font-medium flex-1 truncate">
+                @if (Circuit != null)
+                {
+                    @($"DBC Data {Circuit.Channel.DeviceID}-{Circuit.Channel.SecondaryBoardNumber}-{Circuit.Channel.ChannelNumber}")
+                }
+                else
+                {
+                    <span class="text-muted-foreground">No selection : DBC Data</span>
+                }
+            </span>
+
+            <Button Variant="ButtonVariant.Outline" size="ButtonSize.Icon" Class="gap-2" title="@(IsDocked ? "Undock panel" : "Dock panel")" OnClick="ToggleDock">
+                  @if (IsDocked)
+                {
+                    <Blazicon Svg="Lucide.Maximize2" class="w-3 h-3" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.Minimize2" class="w-3 h-3" />
+                }
+              
+            </Button>
+            <Button Variant="ButtonVariant.Outline" size="ButtonSize.Icon" Class="gap-2" title="Close" OnClick="ClosePanel">
+                <Blazicon Svg="Lucide.CircleX" class="w-3 h-3" />
+            </Button>
+
+        </div>
+
+        @* ── Body ───────────────────────────────────────────── *@
+        <div class="flex-1 overflow-y-auto">
+
+            @if (Circuit == null)
+            {
+                <div class="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground px-4 text-center">
+                    <Blazicon Svg="Lucide.Layers" class="w-6 h-6 opacity-30" />
+                    <span class="text-xs">Select a circuit card to inspect</span>
+                </div>
+            }
+            else
+            {
+                var cs = Circuit.RealTime.RealTimeRecord.CircuitStatus;
+
+                @* ── Status strip ─────────────────────────────── *@
+                <div class="flex items-center gap-2 px-3 py-1.5 border-b border-border/50">
+                    <span class="text-xs font-medium text-status-@cs.ToString().ToLower()">● @cs</span>
+                    <span class="text-[10px] text-muted-foreground">/ @Circuit.RealTime.RealTimeRecord.ProgramStatus</span>
+                </div>
+
+                @* ── DBC values table ─────────────────────────── *@
+                @if (Circuit?.dbcData?.DbcValues != null)
+                {
+                    <table class="w-full text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-border bg-muted/40">
+                                <th class="px-3 py-[5px] text-left font-medium text-muted-foreground">Property</th>
+                                <th class="pr-3 py-[5px] text-right font-medium text-muted-foreground" colspan="2">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var kv in Circuit.dbcData?.DbcValues)
+                            {
+                                var sigName = kv.Key;
+                                var sigUnit = "";
+                                if (int.TryParse(kv.Key, out var sid) && _signalMap.TryGetValue(sid, out var sig))
+                                {
+                                    sigName = sig.Name;
+                                    sigUnit = sig.Unit;
+                                }
+                                <tr class="border-b border-border/30 hover:bg-muted/20 transition-colors">
+                                    <td class="px-3 py-[5px] text-foreground truncate" style="max-width:96px" title="@sigName">@sigName</td>
+                                    <td class="px-2 py-[5px] font-mono text-right tabular-nums">@kv.Value</td>
+                                    <td class="pr-3 py-[5px] text-muted-foreground text-right text-[10px] w-7">@sigUnit</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div class="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground px-4 text-center">
+                        <Blazicon Svg="Lucide.Layers" class="w-5 h-5 opacity-30" />
+                        <span class="text-xs">No DBC data yet</span>
+                    </div>
+                }
+            }
+
+        </div>
+    </div>
+}
+
+<style>
+    .dbcvp-icon-btn {
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        border: none;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: var(--muted-foreground, #888);
+        flex-shrink: 0;
+        padding: 0;
+        transition: background 0.12s;
+    }
+    .dbcvp-icon-btn:hover {
+        background: var(--muted, #f1f5f9);
+        color: var(--foreground, #000);
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter] public bool IsDocked { get; set; } = true;
+    [Parameter] public EventCallback<bool> IsDockedChanged { get; set; }
+
+    /// <summary>The single selected circuit whose DBC values are displayed.</summary>
+    [Parameter] public IChannelCommandHandler? Circuit { get; set; }
+
+    // ── Internal state ────────────────────────────────────────────
+    private IChannelCommandHandler? _subscribedCircuit;
+    private Dictionary<int, DbcSignal> _signalMap = new();
+
+    // ── CSS helpers ───────────────────────────────────────────────
+    private string ContainerClass => IsDocked
+        ? "w-64 flex-shrink-0 border-l border-border bg-background flex flex-col"
+        : "absolute right-2 z-50 w-64 border border-border rounded-lg bg-background flex flex-col shadow-lg";
+
+    private string ContainerStyle => IsDocked
+        ? "min-height: 0;"
+        : "top: 8px; bottom: 8px;";
+
+    // ── Lifecycle ─────────────────────────────────────────────────
+    protected override void OnParametersSet()
+    {
+        if (Circuit == _subscribedCircuit) return;
+
+        if (_subscribedCircuit != null)
+            _subscribedCircuit.RealTime.OnDataChanged -= HandleDataChanged;
+
+        _subscribedCircuit = Circuit;
+        _signalMap.Clear();
+
+        if (_subscribedCircuit != null)
+        {
+            _subscribedCircuit.RealTime.OnDataChanged += HandleDataChanged;
+            BuildSignalMap();
+        }
+    }
+
+    private void BuildSignalMap()
+    {
+        if (_subscribedCircuit?.Session?.dbcDatabse?.Messages == null) return;
+        foreach (var msg in _subscribedCircuit.Session.dbcDatabse.Messages.Values)
+            foreach (var sig in msg.Signals)
+                if (!_signalMap.ContainsKey(sig.SingalId))
+                    _signalMap[sig.SingalId] = sig;
+    }
+
+    private async void HandleDataChanged() => await InvokeAsync(StateHasChanged);
+
+    // ── Actions ───────────────────────────────────────────────────
+    private async Task ToggleDock()
+    {
+        IsDocked = !IsDocked;
+        await IsDockedChanged.InvokeAsync(IsDocked);
+    }
+
+    private async Task ClosePanel()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    public void Dispose()
+    {
+        if (_subscribedCircuit != null)
+            _subscribedCircuit.RealTime.OnDataChanged -= HandleDataChanged;
+    }
+}

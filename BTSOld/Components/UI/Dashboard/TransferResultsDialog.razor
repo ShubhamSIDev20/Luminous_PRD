@@ -1,0 +1,142 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Dashboard
+
+<Dialog Open="@Open" OpenChanged="@OpenChanged">
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>@title</DialogTitle>
+            <DialogDescription>
+                @SuccessCount succeeded, @FailedCount failed
+            </DialogDescription>
+        </DialogHeader>
+
+        <div class="flex gap-4 text-sm mb-3">
+            <span class="flex items-center gap-1 text-success">
+                <Blazicon Svg="Lucide.CircleCheck" class="h-4 w-4 text-green-500" />
+                @SuccessCount Success
+            </span>
+            <span class="flex items-center gap-1 text-critical">
+                <Blazicon Svg="Lucide.CircleX" class="h-4 w-4 text-red-500" />
+                @FailedCount Failed
+            </span>
+        </div>
+        <ScrollArea Class="max-h-[400px]">
+            <div class="space-y-3">
+
+                @foreach (var result in results)
+                {
+                    <div class="p-4 rounded-lg border @(result.OverallSuccess 
+                        ? "border-success/30 bg-success/5"
+                        : "border-critical/30 bg-critical/5")">
+
+                        <!-- Circuit Header -->
+                        <div class="flex items-center gap-2 mb-3">
+                            @if (result.OverallSuccess)
+                            {
+                                <Blazicon Svg="Lucide.CircleCheck" class="h-5 w-5 text-green-500" />
+                            }
+                            else
+                            {
+                                <Blazicon Svg="Lucide.CircleX" class="h-5 w-5 text-red-500" />
+                            }
+                            <span class="font-semibold">@result.DeviceId - @result.CircuitId</span>
+                        </div>
+
+                        <!-- Steps -->
+                        <div class="ml-7 space-y-2">
+                            @foreach (var step in result.Steps)
+                            {
+                                <div class="flex items-start gap-2">
+
+                                    <div class="mt-0.5">
+                                        @if (step.Success)
+                                        {
+                                            <Blazicon Svg="Lucide.CircleCheck" class="h-4 w-4 text-success" />
+                                        }
+                                        else
+                                        {
+                                            <Blazicon Svg="Lucide.CircleX" class="h-4 w-4 text-critical" />
+                                        }
+                                    </div>
+
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium">@step.StepName</span>
+
+                                            <span class="text-xs px-1.5 py-0.5 rounded 
+                                              @(step.Success 
+                                                  ? "bg-success/20 text-success"
+                                                  : "bg-critical/20 text-critical")">
+                                                @(step.Success ? "Success" : "Failed")
+                                            </span>
+                                        </div>
+
+                                        <p class="text-xs text-muted-foreground mt-0.5">
+                                            @step.Message
+                                        </p>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+        </ScrollArea>
+
+        <DialogFooter>
+            <Button Variant="ButtonVariant.Outline" OnClick="handleClose">Close</Button>
+        </DialogFooter>
+
+    </DialogContent>
+</Dialog>
+
+
+@code {
+
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public List<TransferResult> results { get; set; } = new();
+    [Parameter] public string title { get; set; }
+
+    private int SuccessCount => results.Count(r => r.OverallSuccess);
+    private int FailedCount => results.Count(r => !r.OverallSuccess);
+
+    private string GetResultContainerClass(bool success)
+    {
+        return success
+            ? "p-4 rounded-lg border border-success/30 bg-success/5"
+            : "p-4 rounded-lg border border-critical/30 bg-critical/5";
+    }
+
+    private string GetStepBadgeClass(bool success)
+    {
+        return success
+            ? "text-xs px-1.5 py-0.5 rounded bg-success/20 text-success"
+            : "text-xs px-1.5 py-0.5 rounded bg-critical/20 text-critical";
+    }
+
+    private async Task handleClose()
+    {
+        await OpenChanged.InvokeAsync(false);
+    }
+
+
+
+    public class StepResult
+    {
+        public string StepName { get; set; } = string.Empty;
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public object? Data { get; set; }
+    }
+
+    public class TransferResult
+    {
+        public int DeviceId { get; set; }
+        public int CircuitId { get; set; }
+        public List<StepResult> Steps { get; set; } = new();
+        public bool OverallSuccess { get; set; }
+    }
+
+}

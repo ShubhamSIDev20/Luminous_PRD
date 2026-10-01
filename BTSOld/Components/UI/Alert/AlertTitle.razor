@@ -1,0 +1,22 @@
+@using BatteryTestingSystem.Components.UI.Alert
+
+<h5 class="@GetTitleClasses()" @attributes="AdditionalAttributes">
+    @ChildContent
+</h5>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetTitleClasses()
+    {
+        var baseClasses = "mb-1 font-medium leading-none tracking-tight";
+        return $"{baseClasses} {Class ?? ""}".Trim();
+    }
+}

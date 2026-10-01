@@ -1,0 +1,75 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+
+@* Shared chrome for every node kind: absolute positioning, selection ring, ports, drag handle.
+   Position is applied as a transform rather than top/left so that dragging a node never causes
+   the browser to run layout. data-node-id / data-x / data-y are read by workflow-canvas.js. *@
+
+<div class="wf-node wf-node--@Node.Kind.ToString().ToLowerInvariant() @(IsSelected ? "wf-node--selected" : "") @(IsStale ? "wf-node--stale" : "")"
+     style="transform: translate(@(Node.X.ToString(Culture))px, @(Node.Y.ToString(Culture))px);"
+     title="@Title"
+     data-node-id="@Node.Id"
+     data-x="@Node.X.ToString(Culture)"
+     data-y="@Node.Y.ToString(Culture)">
+
+    @* No @onclick here. A header click is always preceded by a pointerdown that begins tracking
+       a potential drag (workflow-canvas.js beginNodeDrag) and takes setPointerCapture on the
+       canvas host - which diverts the browser's native click synthesis away from this element,
+       so a Blazor click handler bound here would never fire with a real mouse (only a scripted
+       .click(), which bypasses pointer capture and would falsely appear to work). JS dispatches
+       "OnHeaderClick" directly from endNodeDrag instead, once it knows the gesture had no real
+       movement. See WorkflowCanvasPage.OnHeaderClick. *@
+    <div class="wf-node__header">
+        @if (HeaderContent is not null)
+        {
+            @* A node kind supplying its own header (the channel cell's cap) renders INSIDE
+               .wf-node__header, never instead of it: workflow-canvas.js gates node dragging on
+               e.target.closest(".wf-node__header"), so a header rendered outside this element
+               makes the node undraggable with no error anywhere. *@
+            @HeaderContent
+        }
+        else
+        {
+            @if (IsStale)
+            {
+                <span title="This hardware no longer exists in the database">&#9888;</span>
+            }
+            <span class="truncate">@Title</span>
+        }
+    </div>
+
+    <div class="wf-node__body">
+        @ChildContent
+    </div>
+
+    @if (ShowInPort)
+    {
+        <div class="wf-port wf-port--in" data-port="in" data-node-id="@Node.Id"></div>
+    }
+    @if (ShowOutPort)
+    {
+        <div class="wf-port wf-port--out" data-port="out" data-node-id="@Node.Id"></div>
+    }
+</div>
+
+@code {
+    /// <summary>Invariant culture matters: a comma decimal separator produces an invalid CSS
+    /// transform on a machine with e.g. a German locale, and the node silently stacks at 0,0.</summary>
+    private static readonly System.Globalization.CultureInfo Culture =
+        System.Globalization.CultureInfo.InvariantCulture;
+
+    [Parameter, EditorRequired] public WorkflowNode Node { get; set; } = default!;
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public bool IsSelected { get; set; }
+    [Parameter] public bool IsStale { get; set; }
+    [Parameter] public bool ShowInPort { get; set; } = true;
+    [Parameter] public bool ShowOutPort { get; set; } = true;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Replaces the default title row. Rendered inside .wf-node__header, which is what keeps the
+    /// drag gesture working — see the comment at the call site. A node kind that does not set this
+    /// renders exactly as before.
+    /// </summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+}

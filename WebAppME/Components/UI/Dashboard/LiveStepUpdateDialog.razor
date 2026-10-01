@@ -1,0 +1,216 @@
+@namespace BatteryTestingSystem.Components.UI.Dashboard
+@using BatteryTestingSystem.Services.Interfaces
+@inject ToastService Toast
+
+<Dialog Open="@Open" OpenChanged="@OpenChanged">
+    <DialogContent Size="DialogSize.Full">
+        <DialogHeader>
+            <DialogTitle>Edit Current Step@(_editStep != null ? $" (Step {_editStep.StepNumber})" : "")</DialogTitle>
+            <DialogDescription>
+                Live parameter update - applies to the step running right now on the hardware only.
+                The operator is locked and nothing here is saved to the stored program.
+            </DialogDescription>
+        </DialogHeader>
+
+        @if (_editStep != null)
+        {
+            <table class="w-full border-collapse">
+                <thead class="sticky top-0 z-10">
+                    <tr>
+                        <th class="grid-header-cell w-12">#</th>
+                        <th class="grid-header-cell w-8"></th>
+                        <th class="grid-header-cell w-24">Label</th>
+                        <th class="grid-header-cell w-32">Operator</th>
+                        <th class="grid-header-cell min-w-[160px]">Nominal Values</th>
+                        <th class="grid-header-cell min-w-[280px]" colspan="2">Limits → Actions</th>
+                        <th class="grid-header-cell min-w-[140px]">Registrations</th>
+                        <th class="grid-header-cell min-w-[120px]">Comment</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <StepRow Step="@_editStep"
+                             IsSelected="true"
+                             IsFirst="false"
+                             IsLast="false"
+                             LockOperator="true"
+                             Errors="@(new List<ValidationError>())"
+                             GlobalVariables="@_globalVariables"
+                             AllLabels="@_allLabels"
+                             AllStepNumbers="@_allStepNumbers"
+                             OnSelect="@((_) => Task.CompletedTask)"
+                             OnUpdateStep="@HandleUpdateStep"
+                             OnAddNominalValue="@((v) => { _editStep.NominalValues.Add(v); })"
+                             OnRemoveNominalValue="@((idx) => { _editStep.NominalValues.RemoveAt(idx); })"
+                             OnUpdateNominalValue="@((t) => { _editStep.NominalValues[t.Item1] = t.Item2; })"
+                             OnAddLimitActionPair="@((t) => { _editStep.Limits.Add(t.Item1); _editStep.Actions.Add(t.Item2); })"
+                             OnUpdateLimit="@((t) => { _editStep.Limits[t.Item1] = t.Item2; })"
+                             OnUpdateAction="@((t) => { _editStep.Actions[t.Item1] = t.Item2; })"
+                             OnRemoveLimitActionPair="@((idx) => { _editStep.Limits.RemoveAt(idx); _editStep.Actions.RemoveAt(idx); })"
+                             OnAddRegistration="@((v) => _editStep.Registrations.Add(v))"
+                             OnRemoveRegistration="@((idx) => _editStep.Registrations.RemoveAt(idx))"
+                             OnUpdateRegistration="@((t) => _editStep.Registrations[t.Item1] = t.Item2)" />
+                </tbody>
+            </table>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <p class="text-sm text-destructive mt-3">@_errorMessage</p>
+            }
+        }
+        else
+        {
+            <p class="text-sm text-muted-foreground">No step is currently executing on this circuit.</p>
+        }
+
+        <div class="flex justify-end gap-2 mt-4">
+            <Button Variant="ButtonVariant.Outline" Disabled="@_submitting" @onclick="Close">
+                Cancel
+            </Button>
+
+            <Button Disabled="@(_editStep == null || _submitting)" @onclick="Submit">
+                @if (_submitting)
+                {
+                    <Blazicon Svg="Lucide.Loader" class="h-4 w-4 mr-2 animate-spin" />
+                    <span>Sending...</span>
+                }
+                else
+                {
+                    <span>Submit</span>
+                }
+            </Button>
+        </div>
+    </DialogContent>
+</Dialog>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public IChannelCommandHandler? Circuit { get; set; }
+
+    private StepModel? _editStep;
+    private List<GlobalVariable> _globalVariables = new();
+    private HashSet<string> _allLabels = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<int> _allStepNumbers = new();
+    private string? _errorMessage;
+    private bool _submitting;
+    private bool _initializedForThisOpen;
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _initializedForThisOpen = false;
+            return;
+        }
+
+        if (_initializedForThisOpen)
+            return;
+
+        _initializedForThisOpen = true;
+        InitializeFromCircuit();
+    }
+
+    private void InitializeFromCircuit()
+    {
+        _errorMessage = null;
+        _editStep = null;
+
+        if (Circuit == null)
+            return;
+
+        int currentStepNumber = Circuit.RealTime?.RealTimeRecord?.StepNumber ?? 0;
+        var fullProgram = GetFullProgramSteps(Circuit);
+        var resident = fullProgram.FirstOrDefault(s => s.StepNumber == currentStepNumber);
+
+        if (resident == null)
+            return;
+
+        // If this same step was already amended earlier in this run, populate from that instead
+        // of the original resident values. Only pull the label/params from the cache;
+        // StepNumber/OperatorCode still come from the true resident step since those can never
+        // legitimately differ (operator is locked).
+        var source = LiveStepUpdateValidator.ResolveEditSource(resident, Circuit.LastLiveStepUpdate, currentStepNumber);
+
+        // Deep-copy so edits never leak back into ExpandedProgramSteps/Program.ProgramStepModel -
+        // this is session-only, never persisted, per the Q9 spec.
+        _editStep = new StepModel
+        {
+            StepNumber = resident.StepNumber,
+            OperatorCode = resident.OperatorCode,
+            Label = source.Label,
+            Comment = source.Comment,
+            NominalValues = new List<string>(source.NominalValues),
+            Limits = new List<string>(source.Limits),
+            Actions = new List<string>(source.Actions),
+            Registrations = new List<string>(source.Registrations)
+        };
+
+        _globalVariables = ProgramBuilder.ExtractGlobalVariables(fullProgram);
+        _allLabels = new HashSet<string>(
+            fullProgram.Where(s => !string.IsNullOrWhiteSpace(s.Label)).Select(s => s.Label.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+        _allStepNumbers = fullProgram.Select(s => s.StepNumber).ToHashSet();
+    }
+
+    private static List<StepModel> GetFullProgramSteps(IChannelCommandHandler circuit) =>
+        LiveStepUpdateValidator.ResolveFullProgramSteps(circuit.ExpandedProgramSteps, circuit.Program?.ProgramStepModel);
+
+    private void HandleUpdateStep(object updates)
+    {
+        // Mirrors ProgramEditor.razor's UpdateStep - StepRow.OnUpdateStep always carries an
+        // anonymous object with one settable StepModel property (Label or Comment here, since
+        // Operator is locked via LockOperator and there is no OnUpdateOperator wired up).
+        if (_editStep == null)
+            return;
+
+        foreach (var prop in updates.GetType().GetProperties())
+        {
+            var stepProp = typeof(StepModel).GetProperty(prop.Name);
+            stepProp?.SetValue(_editStep, prop.GetValue(updates));
+        }
+    }
+
+    private async Task Close()
+    {
+        _editStep = null;
+        _errorMessage = null;
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    private async Task Submit()
+    {
+        if (_editStep == null || Circuit == null || _submitting)
+            return;
+
+        int currentStepNumber = Circuit.RealTime?.RealTimeRecord?.StepNumber ?? 0;
+        var resident = GetFullProgramSteps(Circuit).FirstOrDefault(s => s.StepNumber == currentStepNumber);
+
+        var validationError = LiveStepUpdateValidator.Validate(resident, _editStep, currentStepNumber);
+        if (validationError != null)
+        {
+            _errorMessage = validationError;
+            return;
+        }
+
+        _submitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var response = await Circuit.LiveStepUpdateAsync(_editStep);
+            if (response.Success)
+            {
+                Toast.Success("Step updated on hardware.");
+                await Close();
+            }
+            else
+            {
+                _errorMessage = response.Message;
+            }
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

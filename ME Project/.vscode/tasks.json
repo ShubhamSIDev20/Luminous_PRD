@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run unit tests (native Windows)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", "${workspaceFolder}/me-primary/build-native.ps1"
+      ],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": "$gcc",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "Build for board (aarch64)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", "${workspaceFolder}/me-primary/build.ps1"
+      ],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$gcc",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "Deploy & run on board",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", "${workspaceFolder}/me-primary/deploy.ps1",
+        "-BoardIP", "${input:boardIP}",
+        "-ServerIP", "${input:serverIP}"
+      ],
+      "dependsOn": "Build for board (aarch64)",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "boardIP",
+      "type": "promptString",
+      "description": "IP address of the Verdin iMX8M Plus board"
+    },
+    {
+      "id": "serverIP",
+      "type": "promptString",
+      "description": "IP address of the Web Application (TCP server on port 9999)"
+    }
+  ]
+}

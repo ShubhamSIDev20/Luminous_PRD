@@ -1,0 +1,1419 @@
+@page "/program/editor/{id:long}"
+@attribute [Authorize]
+@attribute [StreamRendering]
+@inject ServerSessionStorageService SessionStorage
+
+@using System.Text.Json
+@using BatteryTestingSystem.Models.DTOs
+@using BatteryTestingSystem.Services.Interfaces
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JS
+@using BatteryTestingSystem.Components.UI
+@using BatteryTestingSystem.Utils
+@using System.Text.Encodings.Web
+@using System.Text
+@using static BatteryTestingSystem.Components.UI.OperatorConstants
+@inject IProgramServices ProgramService
+@inject IBatteryServices BatteryService
+@inject ToastService Toast
+@inject NavigationManager nav
+
+<div class="flex flex-col h-full bg-background">
+   
+
+    <Toolbar
+        ProgramName="@programName"
+        OnNameChange="@SetProgramName"
+        IsDirty="@_isDirty"
+        IsValid="@(errors.Count == 0)"
+        ErrorCount="@errors.Count"
+        OnSave="@HandleSave"
+        OnDownload="@DownloadHexPackets"
+        OnImport="@(() => JS.InvokeVoidAsync("selectFile", "fileInput"))"
+        OnAddStep="@(() => AddStep())"
+        OnDeleteSelected="@HandleDeleteSelected"
+        OnUpSelected="@(() => MoveStep(steps?.Where(e => selectedStepIds.Contains(e.Id)).Select(e => e.Id).ToList(), true))"
+        OnDownSelected="@(() => MoveStep(steps?.Where(e => selectedStepIds.Contains(e.Id)).Select(e => e.Id).ToList(), false))"
+        HasSelection="@(selectedStepIds.Count > 0 && steps != null && !selectedStepIds.Contains(steps.First().Id) && !selectedStepIds.Contains(steps.Last().Id))" />
+
+    <ScrollArea class="flex-1" Orientation="both">
+        <table class="w-full border-collapse">
+            <thead class="sticky top-0 z-10">
+                <tr>
+                    <th class="grid-header-cell w-12">#</th>
+                    <th class="grid-header-cell w-8"></th>
+                    <th class="grid-header-cell w-24">Label</th>
+                    <th class="grid-header-cell w-32">Operator</th>
+                    <th class="grid-header-cell min-w-[160px]">Nominal Values</th>
+                    <th class="grid-header-cell min-w-[280px]" colspan="2">Limits → Actions</th>
+                    <th class="grid-header-cell min-w-[140px]">Registrations</th>
+                    <th class="grid-header-cell min-w-[120px]">Comment</th>
+                </tr>
+            </thead>
+            <tbody @onkeydown="HandleKeyDown" tabindex="0">
+                @for (int i = 0; i < steps.Count; i++)
+                {
+                    var step = steps[i];
+                    var index = i;
+
+                    <StepRow Step="@step"
+                             IsSelected="@selectedStepIds.Contains(step.Id)"
+                             IsFirst="@(index == 0)"
+                             IsLast="@(index == steps.Count - 1)"
+                             Errors="@GetStepErrors(step.Id)"
+                             GlobalVariables="@globalVariables"
+                             AllLabels="@allLabels"
+                             AllStepNumbers="@allStepNumbers"
+                             OnSelect="@HandleSelect"
+                             OnUpdateOperator="@((code) => UpdateOperator(step.Id, code))"
+                             OnUpdateStep="@((updates) => UpdateStep(step.Id, updates))"
+                             OnMoveUp="@(() => MoveStep(step.Id, true))"
+                             OnMoveDown="@(() => MoveStep(step.Id, false))"
+                             OnDuplicate="@(() => DuplicateStep(step.Id))"
+                             OnRemove="@(() => RemoveStep(step.Id))"
+                             OnAddStep="@(() => AddStep(step.Id))"
+                             OnAddNominalValue="@((v) => AddNominalValue(step.Id, v))"
+                             OnRemoveNominalValue="@((idx) => RemoveNominalValue(step.Id, idx))"
+                             OnUpdateNominalValue="@((tuple) => UpdateNominalValue(step.Id, tuple.Item1, tuple.Item2))"
+                             OnAddLimitActionPair="@((tuple) => AddLimitActionPair(step.Id, tuple.Item1, tuple.Item2))"
+                             OnUpdateLimit="@((tuple) => UpdateLimit(step.Id, tuple.Item1, tuple.Item2))"
+                             OnUpdateAction="@((tuple) => UpdateAction(step.Id, tuple.Item1, tuple.Item2))"
+                             OnRemoveLimitActionPair="@((idx) => RemoveLimitActionPair(step.Id, idx))"
+                             OnAddRegistration="@((v) => AddRegistration(step.Id, v))"
+                             OnRemoveRegistration="@((idx) => RemoveRegistration(step.Id, idx))"
+                             OnUpdateRegistration="@((tuple) => UpdateRegistration(step.Id, tuple.Item1, tuple.Item2))"
+                             OnTabToNextRow="@NavigateToNextRow"
+                             OnShiftTabToPrevRow="NavigateToPrevRow"
+                             AllPrograms="@allPrograms"
+                             OnViewProducer="@HandleViewProducer"
+                             OnViewTable="@HandleViewTable"
+                             />
+
+                }
+            </tbody>
+        </table>
+    </ScrollArea>
+
+    <div class="px-4 py-2 bg-card border-t border-border flex items-center gap-4 text-xs text-muted-foreground">
+        <span class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-warning/30"></span>
+            <span>Unsaved</span>
+        </span>
+        <span><kbd class="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">Alt+N</kbd> AddNew</span>
+        <span><kbd class="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">Ctrl+S</kbd> Save</span>
+        <span><kbd class="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">Ctrl+Delete</kbd> Remove selected</span>
+        <span><kbd class="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">Ctrl+Click</kbd> Multi-select</span>
+        <span><kbd class="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">↑↓</kbd> Navigate rows</span>
+        <span><kbd class="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">PageUp/Down</kbd> Move selected</span>
+    </div>
+
+    <!-- PRODUCER Program Viewer Dialog -->
+    <Dialog @bind-Open="@showProducerDialog">
+        <DialogContent class="max-w-5xl w-full">
+            <DialogHeader>
+                <DialogTitle>@producerViewerName</DialogTitle>
+                <DialogDescription>Read-only view of the referenced program steps</DialogDescription>
+            </DialogHeader>
+            <div class="mt-2">
+                <ProgramViewer InitialSteps="@producerViewerSteps" InitialProgramName="@producerViewerName" />
+            </div>
+        </DialogContent>
+    </Dialog>
+
+    <!-- TABLE File Viewer Dialog -->
+    <Dialog @bind-Open="@showTableViewerDialog">
+        <DialogContent class="max-w-3xl w-full">
+            <DialogHeader>
+                <DialogTitle>@tableViewerFileName</DialogTitle>
+                <DialogDescription>Read-only view of the referenced table file</DialogDescription>
+            </DialogHeader>
+            <div class="mt-2">
+                <pre class="p-4 bg-muted rounded-lg overflow-auto max-h-96 font-mono text-sm whitespace-pre-wrap text-foreground">@tableViewerContent</pre>
+            </div>
+        </DialogContent>
+    </Dialog>
+
+    <!-- Unsaved Changes Confirmation Dialog -->
+    <Dialog @bind-Open="@showSaveDialog">
+
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Save changes?</DialogTitle>
+                <DialogDescription>
+                    You have unsaved changes. Do you want to save them before continuing?
+                </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter>
+                <Button Variant="ButtonVariant.Destructive"
+                OnClick="@HandleSaveDialogDiscard">
+                    Discard
+                </Button>
+
+                <Button Variant="ButtonVariant.Outline"
+                OnClick="@(() => { showSaveDialog = false; pendingAction = null; })">
+                    Cancel
+                </Button>
+
+                <Button Variant="ButtonVariant.Default"
+                OnClick="@HandleSaveDialogSave">
+                    Save
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <!-- Battery Selection Dialog (download/export) -->
+    <Dialog @bind-Open="@showDownloadBatteryDialog">
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Select a Battery</DialogTitle>
+                <DialogDescription>
+                    This program uses battery-relative units (ACNx, VN, CNom). Choose a battery so
+                    they can be resolved before the packets are generated.
+                </DialogDescription>
+            </DialogHeader>
+
+            <ScrollArea class="h-[200px] border rounded-lg p-3 bg-muted/30 mt-2">
+                <RadioGroup @bind-Value="selectedDownloadBatteryId">
+                    @foreach (var battery in downloadBatteries)
+                    {
+                        <div class="flex items-center space-x-2 p-2 rounded-md cursor-pointer hover:bg-muted"
+                             @onclick="() => selectedDownloadBatteryId = battery.Id.ToString()">
+                            <RadioGroupItem Value="@battery.Id.ToString()" id="@("dl-battery-" + battery.Id)" />
+                            <Label for="@("dl-battery-" + battery.Id)" class="cursor-pointer flex-1">
+                                @battery.Name
+                            </Label>
+                        </div>
+                    }
+                </RadioGroup>
+            </ScrollArea>
+
+            <DialogFooter>
+                <Button Variant="ButtonVariant.Outline" OnClick="@(() => showDownloadBatteryDialog = false)">
+                    Cancel
+                </Button>
+                <Button Variant="ButtonVariant.Default" OnClick="@ConfirmDownloadBattery">
+                    Download
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <InputFile id="fileInput" OnChange="@HandleFileUpload" accept=".json" style="display: none;" />
+    
+   
+</div>
+
+@code {
+    [Parameter] public long id { get; set; } = 0;
+    private List<StepModel> BeforeSaveSteps = new();
+    private List<StepModel> steps = new();
+    private HashSet<string> selectedStepIds = new();
+    private bool isDirty = false;
+    private bool _isDirty
+    {
+        get
+        {
+            if (isDirty)
+            {
+                SessionStorage.SetComponentState(programName, steps);
+            }
+            return isDirty;
+        }
+    }
+
+    private List<ValidationError> errors = new();
+    private List<GlobalVariable> globalVariables = new();
+    private HashSet<string> allLabels = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<int> allStepNumbers = new();
+    private string programName = "Untitled_Program";
+    private bool showSaveDialog = false;
+    private Action? pendingAction = null;
+
+    // PRODUCER viewer state
+    private List<ProgramDTO> allPrograms = new();
+    private bool showProducerDialog = false;
+    private List<StepModel> producerViewerSteps = new();
+    private string producerViewerName = string.Empty;
+
+    // TABLE file viewer state
+    private bool showTableViewerDialog = false;
+    private string tableViewerFileName = string.Empty;
+    private string tableViewerContent = string.Empty;
+
+    // Battery selection state (download/export) — only prompted when the program actually
+    // uses battery-relative tokens (ACNx, VN, CNom); see BatteryUnitResolver.ProgramUsesBatteryRelativeTokens.
+    private bool showDownloadBatteryDialog = false;
+    private List<BatteryDTO> downloadBatteries = new();
+    private string? selectedDownloadBatteryId = null;
+
+    protected override void OnInitialized()
+    {
+        InitializeProgram();
+        ValidateProgram();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                document.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                        e.preventDefault();
+                        const saveBtn = document.querySelector('[data-save-btn]');
+                        if (saveBtn) saveBtn.click();
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Delete') {
+                        e.preventDefault();
+                        const deleteBtn = document.querySelector('[data-delete-btn]');
+                        if (deleteBtn && !deleteBtn.disabled) deleteBtn.click();
+                    }
+
+                     // Alt + N → Add (Ctrl+N is blocked by browser)
+                    if (e.altKey && e.key === 'n') {
+                        e.preventDefault();
+                        const addnewBtn = document.querySelector('[data-addnew-btn]');
+                        if (addnewBtn && !addnewBtn.disabled) {
+                            addnewBtn.click();
+                        }
+                    }
+
+                    // PageUp → Move Up
+                    if (e.key === 'PageUp') {
+                        e.preventDefault();
+                        const upBtn = document.querySelector('[data-up-btn]');
+                        if (upBtn && !upBtn.disabled) upBtn.click();
+                        return;
+                    }
+
+                    // PageDown → Move Down
+                    if (e.key === 'PageDown') {
+                        e.preventDefault();
+                        const downBtn = document.querySelector('[data-down-btn]');
+                        if (downBtn && !downBtn.disabled) downBtn.click();
+                        return;
+                    }
+                });
+            ");
+        }
+    }
+
+    private async void InitializeProgram()
+    {
+
+        if (id == null || id == 0)
+        {
+            Toast.Error("Program Not found!");
+            nav.NavigateTo("/program-list");
+            return;
+        }
+
+        var Load = await ProgramService.GetProgramAsync(id);
+
+        if (Load.Success)
+        {
+            programName = Load.Data.ProgramName;
+            steps = Load.Data.ProgramStepModel;
+        }
+        else
+        {
+            Toast.Error("Program Not found!");
+            nav.NavigateTo("/program-list");
+            return;
+        }
+
+        if (steps.Count < 2)
+        {
+            steps = new()
+            {
+                new StepModel { StepNumber = 1, OperatorCode = OperatorConstants.SET, Registrations = new() { "STANDARD" } },
+                new StepModel { StepNumber = 2, OperatorCode = OperatorConstants.CC_CHG },
+                new StepModel { StepNumber = 3, OperatorCode = OperatorConstants.STO }
+            };
+        }
+
+        // Load all programs except current for PRODUCER dropdown
+        var allProgsResponse = await ProgramService.GetProgramsAsync();
+        if (allProgsResponse.Success)
+            allPrograms = allProgsResponse.Data?
+                .Where(p => p.ProgramId != id)
+                .ToList() ?? new();
+
+        BeforeSaveSteps = steps;
+
+        // if same in session that show as unchanged
+        var getUnSaved = SessionStorage.GetComponentState<List<StepModel>>(programName);
+
+        if (getUnSaved != null)
+        {
+            steps = getUnSaved;
+            isDirty = true;
+        }
+
+    }
+
+    private void SetProgramName(string name)
+    {
+        programName = name;
+        isDirty = true;
+    }
+
+    #region Keyboard Navigation
+
+    // private void HandleSelect((string stepId, bool multiSelect) args)
+    // {
+    //     if (args.multiSelect)
+    //     {
+    //         if (selectedStepIds.Contains(args.stepId))
+    //             selectedStepIds.Remove(args.stepId);
+    //         else
+    //             selectedStepIds.Add(args.stepId);
+    //     }
+    //     else
+    //     {
+    //         selectedStepIds.Clear();
+    //         selectedStepIds.Add(args.stepId);
+    //     }
+    // }
+
+    // Update HandleSelect to track focused index
+    private void HandleSelect((string stepId, bool multiSelect) args)
+    {
+        if (args.multiSelect)
+        {
+            if (selectedStepIds.Contains(args.stepId))
+                selectedStepIds.Remove(args.stepId);
+            else
+                selectedStepIds.Add(args.stepId);
+        }
+        else
+        {
+            selectedStepIds.Clear();
+            selectedStepIds.Add(args.stepId);
+        }
+
+        // Update focused index when selection changes
+        currentFocusedIndex = steps.FindIndex(s => s.Id == args.stepId);
+    }
+
+    private int currentFocusedIndex = -1;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (steps.Count == 0) return;
+
+        // Don't handle if user is typing in an input field
+        var target = e.Type;
+
+        var handled = false;
+        var oldIndex = currentFocusedIndex;
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                // Move to next row (skip first and last if they can't be modified)
+                currentFocusedIndex = Math.Min(currentFocusedIndex + 1, steps.Count - 1);
+                handled = true;
+                break;
+
+            case "ArrowUp":
+                // Move to previous row
+                currentFocusedIndex = Math.Max(currentFocusedIndex - 1, 0);
+                handled = true;
+                break;
+
+        }
+
+        if (handled && oldIndex != currentFocusedIndex)
+        {
+            // Select the new focused row
+            if (currentFocusedIndex >= 0 && currentFocusedIndex < steps.Count)
+            {
+                var step = steps[currentFocusedIndex];
+                HandleSelect((step.Id, e.CtrlKey || e.MetaKey));
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void NavigateToNextRow()
+    {
+        if (steps.Count == 0) return;
+
+        currentFocusedIndex = Math.Min(currentFocusedIndex + 1, steps.Count - 1);
+
+        if (currentFocusedIndex >= 0 && currentFocusedIndex < steps.Count)
+        {
+            var step = steps[currentFocusedIndex];
+            HandleSelect((step.Id, false)); // Select next row without multi-select
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateToPrevRow()
+    {
+        if (steps.Count == 0) return;
+
+        currentFocusedIndex = Math.Max(currentFocusedIndex - 1, 0);
+
+        if (currentFocusedIndex >= 0 && currentFocusedIndex < steps.Count)
+        {
+            var step = steps[currentFocusedIndex];
+            HandleSelect((step.Id, false)); // Select previous row without multi-select
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    private void AddStep(string? afterStepId = null)
+    {
+        var newStep = new StepModel { OperatorCode = OperatorConstants.CC_CHG };
+
+        // Find STO step (always last)
+        var stoIndex = steps.FindIndex(s => s.OperatorCode == OperatorConstants.STO);
+
+        if (afterStepId == null)
+        {
+            // Add before STO
+            if (stoIndex != -1)
+            {
+                steps.Insert(stoIndex, newStep);
+            }
+            else
+            {
+                steps.Add(newStep);
+            }
+        }
+        else
+        {
+            var index = steps.FindIndex(s => s.Id == afterStepId);
+            // If adding after STO, add before it instead
+            var targetStep = steps[index];
+            if (targetStep.OperatorCode == OperatorConstants.STO)
+            {
+                steps.Insert(index, newStep);
+            }
+            else
+            {
+                steps.Insert(index + 1, newStep);
+            }
+        }
+
+        RenumberSteps();
+        ValidateProgram();
+        isDirty = true;
+    }
+
+    private void RemoveStep(string stepId)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null && (step.StepNumber != 1 && step.OperatorCode != OperatorConstants.SET) && step.OperatorCode != OperatorConstants.STO)
+        {
+            steps.Remove(step);
+            RenumberSteps();
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void MoveStep(List<string?> stepIds, bool up)
+    {
+        foreach (var stepId in stepIds)
+        {
+            MoveStep(stepId, up);
+        }
+    }
+
+    private void MoveStep(string? stepId, bool up)
+    {
+        if (string.IsNullOrWhiteSpace(stepId)) return;
+
+        var index = steps.FindIndex(s => s.Id == stepId && steps.IndexOf(s) > 0 && steps.IndexOf(s) < steps.Count - 1);
+
+        if (index > 0 && index < steps.Count - 1)
+        {
+            var targetIndex = up ? index - 1 : index + 1;
+            if (targetIndex > 0 && targetIndex < steps.Count - 1)
+            {
+                var step = steps[index];
+                steps.RemoveAt(index);
+                steps.Insert(targetIndex, step);
+                RenumberSteps();
+                ValidateProgram();
+                isDirty = true;
+            }
+        }
+    }
+
+    private void DuplicateStep(string stepId)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null && step.OperatorCode != OperatorConstants.SET && step.OperatorCode != OperatorConstants.STO)
+        {
+            var newStep = new StepModel
+            {
+                OperatorCode = step.OperatorCode,
+                Label = step.Label,
+                Comment = step.Comment,
+                NominalValues = new List<string>(step.NominalValues),
+                Limits = new List<string>(step.Limits),
+                Actions = new List<string>(step.Actions),
+                Registrations = new List<string>(step.Registrations)
+            };
+
+            var index = steps.FindIndex(s => s.Id == stepId);
+            steps.Insert(index + 1, newStep);
+            RenumberSteps();
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void UpdateOperator(string stepId, byte code)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null)
+        {
+            step.OperatorCode = code;
+            step.NominalValues.Clear();
+            step.Limits.Clear();
+            step.Actions.Clear();
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void UpdateStep(string stepId, object updates)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null)
+        {
+            var props = updates.GetType().GetProperties();
+            foreach (var prop in props)
+            {
+                var value = prop.GetValue(updates);
+                var stepProp = typeof(StepModel).GetProperty(prop.Name);
+                stepProp?.SetValue(step, value);
+            }
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void AddNominalValue(string stepId, string value)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null)
+        {
+            step.NominalValues.Add(value);
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void RemoveNominalValue(string stepId, int index)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null && index >= 0 && index < step.NominalValues.Count)
+        {
+            step.NominalValues.RemoveAt(index);
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void UpdateNominalValue(string stepId, int index, string value)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null)
+        {
+            while (step.NominalValues.Count <= index)
+            {
+                step.NominalValues.Add("");
+            }
+            step.NominalValues[index] = value;
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void AddLimitActionPair(string stepId, string limit, string action)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null)
+        {
+            step.Limits.Add(limit);
+            step.Actions.Add(action);
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void UpdateLimit(string stepId, int index, string value)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null && index >= 0 && index < step.Limits.Count)
+        {
+            step.Limits[index] = value;
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void UpdateAction(string stepId, int index, string value)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null && index >= 0 && index < step.Actions.Count)
+        {
+            step.Actions[index] = value;
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void RemoveLimitActionPair(string stepId, int index)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null && index >= 0 && index < step.Limits.Count)
+        {
+            step.Limits.RemoveAt(index);
+            if (index < step.Actions.Count) step.Actions.RemoveAt(index);
+            ValidateProgram();
+            isDirty = true;
+        }
+    }
+
+    private void AddRegistration(string stepId, string value)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null)
+        {
+            step.Registrations.Add(value);
+            isDirty = true;
+        }
+    }
+
+    private void RemoveRegistration(string stepId, int index)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null && index >= 0 && index < step.Registrations.Count)
+        {
+            step.Registrations.RemoveAt(index);
+            isDirty = true;
+        }
+    }
+
+    private void UpdateRegistration(string stepId, int index, string value)
+    {
+        var step = steps.FirstOrDefault(s => s.Id == stepId);
+        if (step != null && index >= 0 && index < step.Registrations.Count)
+        {
+            step.Registrations[index] = value;
+            isDirty = true;
+        }
+    }
+
+    private void RenumberSteps()
+    {
+        for (int i = 0; i < steps.Count; i++)
+        {
+            steps[i].StepNumber = i + 1;
+        }
+    }
+
+    private void ValidateProgram()
+    {
+        errors.Clear();
+        globalVariables.Clear();
+        allLabels.Clear();
+        allStepNumbers.Clear();
+
+        foreach (var step in steps)
+        {
+            allStepNumbers.Add(step.StepNumber);
+
+            if (!string.IsNullOrWhiteSpace(step.Label))
+                allLabels.Add(step.Label.Trim());
+
+            if (step.OperatorCode == OperatorConstants.SET)
+            {
+                foreach (var nomVal in step.NominalValues)
+                {
+                    var veriable = ValidationHelper.ParseSetVariable(nomVal, step.Id);
+                    if (veriable != null)
+                        globalVariables.Add(veriable);
+                }
+            }
+        }
+
+        // Check for duplicate variables in SET - "Ah"/"Wh" are exempt: they're protocol
+        // global-parameter resets (OperatorConstants.SetGlobalParameterNames), not exclusive
+        // user-named variables, and a program legitimately declares "SET Ah = 0" more than once.
+        var duplicateVars = globalVariables.GroupBy(v => v.Name)
+            .Where(g => g.Count() > 1 && !OperatorConstants.SetGlobalParameterNames.Contains(g.Key))
+            .Select(g => g.Key).ToList();
+        if (duplicateVars.Any())
+        {
+            foreach (var dupVar in duplicateVars)
+            {
+                var setSteps = globalVariables.Where(v => v.Name == dupVar).Select(v => v.StepId).Distinct();
+                foreach (var stepId in setSteps)
+                {
+                    var step = steps.FirstOrDefault(s => s.Id == stepId);
+                    if (step != null)
+                    {
+                        errors.Add(new ValidationError
+                        {
+                            StepId = stepId,
+                            StepNumber = step.StepNumber,
+                            Field = "NominalValues",
+                            Message = $"Duplicate variable: {dupVar}"
+                        });
+                    }
+                }
+            }
+        }
+
+        // §12.3 "Using Battery Parameters" — CNom, INom, UGas, ... validate as bare identifiers
+        // even though no battery is selected while authoring (programs stay battery-agnostic,
+        // same as ACNx/VN). These are placeholders for validation only — the real values come
+        // from BatteryUnitResolver.GetBatteryGlobalVariables at transfer time, using whichever
+        // battery is actually selected. A step's own SET-defined variable always wins on a name
+        // collision (added above the duplicate-check, so it can never trigger a false
+        // "duplicate variable" error).
+        foreach (var placeholder in BatteryUnitResolver.GetPlaceholderGlobalVariables())
+        {
+            if (!globalVariables.Any(v => string.Equals(v.Name, placeholder.Name, StringComparison.OrdinalIgnoreCase)))
+                globalVariables.Add(placeholder);
+        }
+
+        foreach (var step in steps)
+        {
+            ValidateStep(step);
+        }
+
+
+    }
+
+    // private void ParseSetVariable(string value, string stepId)
+    // {
+    //     if (string.IsNullOrWhiteSpace(value)) return;
+
+    //     value = value.Trim().Trim('(', ')');
+    //     var parts = value.Split('=', StringSplitOptions.TrimEntries);
+    //     if (parts.Length == 2)
+    //     {
+    //         var varName = parts[0];
+    //         var valueParts = parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    //         if (valueParts.Length > 0)
+    //         {
+    //             var unit = valueParts.Length > 1 ? ValidationHelper.AutoCorrectUnit(valueParts[1]) : null;
+    //             globalVariables.Add(new GlobalVariable
+    //             {
+    //                 Name = varName,
+    //                 Value = valueParts[0],
+    //                 Unit = unit,
+    //                 StepId = stepId
+    //             });
+    //         }
+    //     }
+    // }
+
+    private void ValidateStep(StepModel step)
+    {
+        var config = NominalConfig.Configs.TryGetValue(step.OperatorCode, out var cfg)
+            ? cfg
+            : null;
+
+        /* -----------------------------
+         * 1️⃣ Nominal presence rules
+         * ----------------------------- */
+        if (config != null && !config.Disabled && !config.AllowCustom && config.Fields.Any())
+        {
+            if (step.NominalValues.Count < config.Fields.Count)
+            {
+                errors.Add(new ValidationError
+                    {
+                        StepId = step.Id,
+                        StepNumber = step.StepNumber,
+                        Field = "NominalValues",
+                        Message = "Missing required nominal values"
+                    });
+            }
+        }
+
+        /* -----------------------------
+         * 2️⃣ Nominal value validation
+         * ----------------------------- */
+        foreach (var (nominal, index) in step.NominalValues.Select((v, i) => (v, i)))
+        {
+            var result = ValidationHelper.ValidateNominal(
+                nominal,
+                index,
+                step.OperatorCode,
+                allLabels,
+                globalVariables,
+                allStepNumbers
+            );
+
+            if (!result.IsValid && !string.IsNullOrEmpty(result.Error))
+            {
+                errors.Add(new ValidationError
+                    {
+                        StepId = step.Id,
+                        StepNumber = step.StepNumber,
+                        Field = $"NominalValues[{index}]",
+                        Message = result.Error
+                    });
+            }
+        }
+
+        /* -----------------------------
+         * 3️⃣ Limit presence rules
+         * ----------------------------- */
+        if (OperatorConstants.LimitActionAllowed.TryGetValue(step.OperatorCode, out var allowed) &&
+            allowed &&
+            step.Limits.Count == 0 &&
+            step.OperatorCode != OperatorConstants.PAU)
+        {
+            errors.Add(new ValidationError
+                {
+                    StepId = step.Id,
+                    StepNumber = step.StepNumber,
+                    Field = "Limits",
+                    Message = "At least one limit-action pair required"
+                });
+        }
+
+        // PAU operator need on limit of time 
+        if (step.OperatorCode == OperatorConstants.PAU)
+        {
+            if (step.Limits.Count == 0)
+                errors.Add(new ValidationError
+                {
+                    StepId = step.Id,
+                    StepNumber = step.StepNumber,
+                    Field = "Limits",
+                    Message = "At least one limit-action pair required"
+                });
+        }
+
+        /* -----------------------------
+         * 4️⃣ Limit value validation
+         * ----------------------------- */
+        foreach (var (limit, index) in step.Limits.Select((v, i) => (v, i)))
+        {
+            var result = ValidationHelper.ValidateLimit(
+                limit,
+                step.OperatorCode,
+                globalVariables
+            );
+
+            if (!result.IsValid && !string.IsNullOrEmpty(result.Error))
+            {
+                errors.Add(new ValidationError
+                {
+                    StepId = step.Id,
+                    StepNumber = step.StepNumber,
+                    Field = $"Limits[{index}]",
+                    Message = result.Error
+                });
+            }
+        }
+
+        /* -----------------------------
+         * 5️⃣ Action validation
+         * ----------------------------- */
+        foreach (var (action, index) in step.Actions.Select((v, i) => (v, i)))
+        {
+            var result = ValidationHelper.ValidateAction(action, allLabels, allStepNumbers);
+
+            if (!result.IsValid && !string.IsNullOrEmpty(result.Error))
+            {
+                errors.Add(new ValidationError
+                    {
+                        StepId = step.Id,
+                        StepNumber = step.StepNumber,
+                        Field = $"Actions[{index}]",
+                        Message = result.Error
+                    });
+            }
+        }
+
+        /* -----------------------------
+         * 6️⃣ Registration validation
+         * ----------------------------- */
+        foreach (var (reg, index) in step.Registrations.Select((v, i) => (v, i)))
+        {
+            var result = ValidationHelper.ValidateRegistration(reg, step.OperatorCode, globalVariables);
+
+            if (!result.IsValid && !string.IsNullOrEmpty(result.Error))
+            {
+                errors.Add(new ValidationError
+                {
+                    StepId = step.Id,
+                    StepNumber = step.StepNumber,
+                    Field = $"Registrations[{index}]",
+                    Message = result.Error
+                });
+            }
+        }
+
+
+        /* -----------------------------
+         * PRODUCER reference validation
+         * ----------------------------- */
+        if (step.OperatorCode == OperatorConstants.PRODUCER)
+        {
+            var referencedName = step.NominalValues.FirstOrDefault() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(referencedName))
+            {
+                errors.Add(new ValidationError
+                {
+                    StepId = step.Id,
+                    StepNumber = step.StepNumber,
+                    Field = "NominalValues",
+                    Message = "PRODUCER: a program must be selected"
+                });
+            }
+            else if (!allPrograms.Any(p => p.ProgramName == referencedName))
+            {
+                errors.Add(new ValidationError
+                {
+                    StepId = step.Id,
+                    StepNumber = step.StepNumber,
+                    Field = "NominalValues",
+                    Message = $"PRODUCER: program '{referencedName}' not found"
+                });
+            }
+        }
+
+        var begStack = new Stack<StepModel>();
+
+        foreach (var s in steps.OrderBy(s => s.StepNumber))
+        {
+            // BEG → open loop
+            if (s.OperatorCode == OperatorConstants.BEG)
+            {
+                begStack.Push(s);
+            }
+
+            // CYC → close loop
+            else if (s.OperatorCode == OperatorConstants.CYC)
+            {
+                if (!begStack.Any())
+                {
+                    // ❌ CYC without BEG
+                    errors.Add(new ValidationError
+                        {
+                            StepId = s.Id,
+                            StepNumber = s.StepNumber,
+                            Field = "Operator",
+                            Message = "CYC requires a BEG before it"
+                        });
+                }
+                else
+                {
+                    // ✅ valid pair
+                    begStack.Pop();
+                }
+            }
+        }
+
+        // After processing all steps
+        while (begStack.Any())
+        {
+            var unclosedBeg = begStack.Pop();
+
+            errors.Add(new ValidationError
+            {
+                StepId = unclosedBeg.Id,
+                StepNumber = unclosedBeg.StepNumber,
+                Field = "Operator",
+                Message = "BEG requires a matching CYC after it"
+            });
+        }
+
+    }
+
+    // private void ValidateStep(StepModel step)
+    // {
+    //     var config = NominalConfig.Configs.ContainsKey(step.OperatorCode) ? NominalConfig.Configs[step.OperatorCode] : null;
+
+    //     if (config != null && !config.Disabled && !config.AllowCustom && config.Fields.Any())
+    //     {
+    //         if (step.NominalValues.Count < config.Fields.Count)
+    //         {
+    //             errors.Add(new ValidationError
+    //             {
+    //                 StepId = step.Id,
+    //                 StepNumber = step.StepNumber,
+    //                 Field = "NominalValues",
+    //                 Message = $"Missing required nominal values"
+    //             });
+    //         }
+    //     }
+
+    //     if (OperatorConstants.LimitActionAllowed.ContainsKey(step.OperatorCode) && 
+    //         OperatorConstants.LimitActionAllowed[step.OperatorCode] &&
+    //         step.Limits.Count == 0 &&
+    //         step.OperatorCode != OperatorConstants.PAU)
+    //     {
+    //         errors.Add(new ValidationError
+    //         {
+    //             StepId = step.Id,
+    //             StepNumber = step.StepNumber,
+    //             Field = "Limits",
+    //             Message = "At least one limit-action pair required"
+    //         });
+    //     }
+
+    //     if (step.OperatorCode == OperatorConstants.CYC)
+    //     {
+    //         var hasBegBefore = steps.Take(step.StepNumber - 1).Any(s => s.OperatorCode == OperatorConstants.BEG);
+    //         if (!hasBegBefore)
+    //         {
+    //             errors.Add(new ValidationError
+    //             {
+    //                 StepId = step.Id,
+    //                 StepNumber = step.StepNumber,
+    //                 Field = "Operator",
+    //                 Message = "CYC requires BEG step before it"
+    //             });
+    //         }
+    //     }
+    // }
+
+    private List<ValidationError> GetStepErrors(string stepId)
+    {
+        return errors.Where(e => e.StepId == stepId).ToList();
+    }
+
+    private void HandleDeleteSelected()
+    {
+        foreach (var id in selectedStepIds.ToList())
+        {
+            RemoveStep(id);
+        }
+        selectedStepIds.Clear();
+    }
+
+    private void HandleSave()
+    {
+        isDirty = false;
+        showSaveDialog = true;
+        StateHasChanged();
+    }
+
+    private async Task DownloadHexPackets()
+    {
+        // Battery-relative tokens (ACNx, VN, CNom) can't be resolved to wire values without a
+        // battery — prompt for one before generating packets. Programs that don't use any of
+        // these are unaffected and download exactly as before.
+        if (BatteryUnitResolver.ProgramUsesBatteryRelativeTokens(steps))
+        {
+            if (downloadBatteries.Count == 0)
+            {
+                var resp = await BatteryService.GetBatteries();
+                if (resp.Success && resp.Data != null)
+                    downloadBatteries = resp.Data;
+            }
+
+            if (downloadBatteries.Count == 0)
+            {
+                Toast.Error("This program uses battery-relative units (ACNx/VN/CNom), but no batteries are configured. Add one under Battery Management first.");
+                return;
+            }
+
+            selectedDownloadBatteryId = null;
+            showDownloadBatteryDialog = true;
+            return;
+        }
+
+        await PerformDownloadHexPackets(null);
+    }
+
+    private async Task ConfirmDownloadBattery()
+    {
+        var battery = downloadBatteries.FirstOrDefault(b => b.Id.ToString() == selectedDownloadBatteryId);
+        if (battery == null)
+        {
+            Toast.Error("Select a battery to continue.");
+            return;
+        }
+
+        showDownloadBatteryDialog = false;
+        await PerformDownloadHexPackets(battery);
+    }
+
+    private async Task PerformDownloadHexPackets(BatteryDTO? battery)
+    {
+        // 1️⃣ Resolve PRODUCER sub-programs so the hex is fully expanded
+        var producerNames = steps
+            .Where(s => s.OperatorCode == OperatorConstants.PRODUCER && s.NominalValues.Count > 0)
+            .Select(s => s.NominalValues[0])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var resolvedDict = new Dictionary<string, List<StepModel>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in producerNames)
+        {
+            var prog = allPrograms.FirstOrDefault(p => p.ProgramName == name);
+            if (prog == null)
+            {
+                var resp = await ProgramService.GetProgramByNameAsync(name);
+                if (resp.Success && resp.Data != null)
+                    prog = resp.Data;
+            }
+            if (prog?.ProgramStepModel != null)
+                resolvedDict[name] = prog.ProgramStepModel;
+        }
+
+        // 2️⃣ Generate packets (with PRODUCER steps expanded when present)
+        List<byte[]> packets;
+        try
+        {
+            packets = DecoderService.ConvertProgramIntoBytesPackets(steps, resolvedDict, battery);
+        }
+        catch (BatteryUnitResolutionException ex)
+        {
+            Toast.Error(ex.Message);
+            return;
+        }
+
+        // 3️⃣ Get expanded step list so the analysis report lines up with the packets
+        var expandedSteps = resolvedDict.Count > 0
+            ? ProgramBuilder.ExpandProducerSteps(steps, resolvedDict)
+            : steps;
+
+        // 4️⃣ Analyze packets against expanded steps
+        var analyses = PacketAnalyzer.AnalyzePackets(packets, expandedSteps);
+
+        // 5️⃣ Generate hex file content
+        var hexSb = new StringBuilder();
+        foreach (var packet in packets)
+        {
+            foreach (byte b in packet)
+                hexSb.AppendFormat("\\x{0:X2}", b);
+            hexSb.AppendLine(); // new line after each packet
+        }
+        string hexContent = hexSb.ToString();
+
+        // 6️⃣ Generate analysis report content
+        string analysisContent = PacketAnalyzer.GenerateAnalysisReport(analyses);
+
+        // 7️⃣ Convert both to bytes
+        byte[] hexFileBytes = Encoding.UTF8.GetBytes(hexContent);
+        byte[] analysisFileBytes = Encoding.UTF8.GetBytes(analysisContent);
+
+        // 8️⃣ Create unique filename base
+        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string baseFileName = $"Program_{timestamp}";
+
+        // 9️⃣ Download hex file
+        await JS.InvokeVoidAsync(
+            "BlazorDownloadFile",
+            $"{baseFileName}_packets.txt",
+            "text/plain",
+            hexFileBytes
+        );
+
+        // 🔟 Download analysis file (slight delay to ensure both downloads trigger)
+        await Task.Delay(100);
+        await JS.InvokeVoidAsync(
+            "BlazorDownloadFile",
+            $"{baseFileName}_analysis.txt",
+            "text/plain",
+            analysisFileBytes
+        );
+    }
+
+    private async Task HandleDownload()
+    {
+        var exportSteps = steps.Select(s => new
+        {
+            s.StepNumber,
+            s.OperatorCode,
+            s.Label,
+            s.Comment,
+            s.NominalValues,
+            s.Limits,
+            Action = s.Actions,
+            s.Registrations
+        }).ToList();
+
+        var options = new JsonSerializerOptions 
+        { 
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+        var json = JsonSerializer.Serialize(exportSteps, options);
+        await JS.InvokeVoidAsync("downloadFile", $"{programName.Replace(" ", "_")}.json", json);
+    }
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            if (file != null)
+            {
+                using var stream = file.OpenReadStream(maxAllowedSize: 1024 * 1024);
+                using var reader = new StreamReader(stream);
+                var content = await reader.ReadToEndAsync();
+
+                var importedSteps = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(content);
+                if (importedSteps != null && importedSteps.Count > 0)
+                {
+                    steps.Clear();
+                    foreach (var stepData in importedSteps)
+                    {
+                        var step = new StepModel
+                        {
+                            StepNumber = stepData["StepNumber"].GetInt32(),
+                            OperatorCode = stepData["OperatorCode"].GetByte(),
+                            Label = stepData.ContainsKey("Label") ? stepData["Label"].GetString() ?? "" : "",
+                            Comment = stepData.ContainsKey("Comment") ? stepData["Comment"].GetString() ?? "" : "",
+                            NominalValues = stepData.ContainsKey("NominalValues") ? 
+                                stepData["NominalValues"].EnumerateArray().Select(x => x.GetString() ?? "").ToList() : new(),
+                            Limits = stepData.ContainsKey("Limits") ? 
+                                stepData["Limits"].EnumerateArray().Select(x => x.GetString() ?? "").ToList() : new(),
+                            Actions = stepData.ContainsKey("Action") ? 
+                                stepData["Action"].EnumerateArray().Select(x => x.GetString() ?? "").ToList() : new(),
+                            Registrations = stepData.ContainsKey("Registrations") ? 
+                                stepData["Registrations"].EnumerateArray().Select(x => x.GetString() ?? "").ToList() : new()
+                        };
+                        steps.Add(step);
+                    }
+                    RenumberSteps();
+                    ValidateProgram();
+                    isDirty = false;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error importing file: {ex.Message}");
+        }
+    }
+
+    private async Task HandleSaveDialogSave()
+    {
+        try
+        {
+            long programId;
+
+            if (id == null || id == 0)
+            {
+                var createResponse = await ProgramService.CreateProgramAsync(
+                new CreateProgramRequest
+                {
+                    Name = programName,
+                    Description = programName,
+                    MaxAh = 0,
+                    ProgramTimeTicks = 0
+                });
+
+                if (!createResponse.Success)
+                {
+                    Toast.Error(createResponse.Message);
+                    return;
+                }
+
+                programId = createResponse.Data.ProgramId;
+                id = programId; // keep local state in sync
+            }
+            else
+            {
+                programId = id;
+            }
+
+            var updateResponse = await ProgramService.UpdateProgramAsync(
+            new ProgramDTO
+            {
+                ProgramId = programId,
+                ProgramName = programName,
+                ProgramSteps = steps.Count,
+                ProgramStepModel = steps,
+                IsVaild = errors.Count == 0
+            });
+
+            if (!updateResponse.Success)
+            {
+                Toast.Error(updateResponse.Message);
+                return;
+            }
+
+            BeforeSaveSteps = steps;
+            showSaveDialog = false;
+            pendingAction?.Invoke();
+            pendingAction = null;
+
+            SessionStorage.RemoveComponentState(programName);
+
+            Toast.Success(updateResponse.Message);
+        }
+        catch (Exception ex)
+        {
+            // TODO: Log exception + show toaster
+        }
+    }
+    
+    private async Task HandleViewProducer(string programName)
+    {
+        var prog = allPrograms.FirstOrDefault(p => p.ProgramName == programName);
+        if (prog == null)
+        {
+            // Try fetching from DB (in case allPrograms is stale)
+            var resp = await ProgramService.GetProgramByNameAsync(programName);
+            if (resp.Success && resp.Data != null)
+                prog = resp.Data;
+        }
+
+        if (prog == null)
+        {
+            Toast.Error($"Program '{programName}' not found.");
+            return;
+        }
+
+        producerViewerSteps = prog.ProgramStepModel ?? new();
+        producerViewerName = programName;
+        showProducerDialog = true;
+        StateHasChanged();
+    }
+
+    private void HandleViewTable(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return;
+
+        var result = FileManagerService.ReadFileContent(fileName);
+        if (!result.Success)
+        {
+            Toast.Error(result.Message);
+            return;
+        }
+
+        tableViewerFileName = fileName;
+        tableViewerContent = result.Data ?? string.Empty;
+        showTableViewerDialog = true;
+        StateHasChanged();
+    }
+
+    private void HandleSaveDialogDiscard()
+    {
+        // Reset Set In UnsaveStage
+        steps = BeforeSaveSteps;
+        showSaveDialog = false;
+        pendingAction?.Invoke();
+        pendingAction = null;
+        SessionStorage.RemoveComponentState(programName);
+    }
+
+   
+}

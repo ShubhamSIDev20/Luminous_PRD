@@ -1,0 +1,21 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+@using BatteryTestingSystem.Models.Enums
+
+<CanvasNode Node="@Node" Title="@Title" IsSelected="@IsSelected" IsStale="@IsStale"
+            ShowInPort="false" ShowOutPort="true">
+    <BatteryGlyph CellCount="@CellCount" StateOfCharge="@StateOfCharge"
+                  Status="@Status" IsCharging="@IsCharging" />
+    <div class="text-center opacity-70" data-role="soc">--%</div>
+</CanvasNode>
+
+@code {
+    [Parameter, EditorRequired] public WorkflowNode Node { get; set; } = default!;
+    [Parameter] public string Title { get; set; } = "Battery";
+    [Parameter] public bool IsSelected { get; set; }
+    [Parameter] public bool IsStale { get; set; }
+    [Parameter] public int CellCount { get; set; } = 1;
+    [Parameter] public double StateOfCharge { get; set; }
+    [Parameter] public CircuitStatus Status { get; set; } = CircuitStatus.Offline;
+    [Parameter] public bool IsCharging { get; set; }
+}

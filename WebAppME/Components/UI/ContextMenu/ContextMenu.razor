@@ -1,0 +1,37 @@
+@using BatteryTestingSystem.Components.UI.ContextMenu
+@inject PopupService PopupService
+
+<div class="relative block w-full" @oncontextmenu:preventDefault>
+    <CascadingValue Value="this">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+
+
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    public bool IsOpen { get; private set; } = false;
+    public double X { get; private set; } = 0;
+    public double Y { get; private set; } = 0;
+
+    public void Open(double x, double y)
+    {
+        PopupService?.CloseAll();
+        X = x;
+        Y = y;
+        IsOpen = true;
+        StateHasChanged();
+    }
+
+    public void Close()
+    {
+        IsOpen = false;
+        StateHasChanged();
+    }
+
+
+
+}

@@ -1,0 +1,64 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+@using BatteryTestingSystem.Services.Implementations.Workflow
+
+@* A channel is drawn as a battery cell: the channel number is stamped on the cap, the live data
+   fills the body, and the fill animates by circuit status.
+
+   The cap goes through CanvasNode's HeaderContent slot rather than replacing the header element,
+   because workflow-canvas.js gates node dragging on .wf-node__header.
+
+   The program/DBC badges sit OUTSIDE .wf-bcell deliberately. They are conditional, and anything
+   conditional inside the cell would make its height depend on state WorkflowAutoLayout cannot
+   see - the same reason the battery-spec strip inside is always reserved. *@
+
+<CanvasNode Node="@Node" Title="@Title" IsSelected="@IsSelected" IsStale="@IsStale">
+    <HeaderContent>
+        <span class="wf-bcap">
+            @if (IsStale)
+            {
+                <span title="This hardware no longer exists in the database">&#9888;</span>
+            }
+            <span class="truncate">@Title</span>
+        </span>
+    </HeaderContent>
+    <ChildContent>
+        @* Double-click opens the same realtime chart the dashboard's DeviceChannel.razor opens
+           (BmsDashboard, in a TabViewer tab) - not the "All details..." dialog the dock's button
+           opens, a different, existing surface. Safe to bind natively here: this is the cell
+           BODY, not the .wf-node__header drag handle, so no setPointerCapture ever runs over it
+           and native dblclick synthesis is never at risk (unlike a header click - see
+           CanvasNode.razor's comment on that trap). *@
+        <div @ondblclick="() => OnOpenDataViewer.InvokeAsync(Node.Id)">
+            <ChannelBatteryCell SelectedProperties="@SelectedProperties" />
+        </div>
+
+        @* The strip is ALWAYS rendered, only its contents are conditional. Measured: a badge strip
+           that appears only when something is attached adds 22.5px to the node, which
+           ChannelNodeHeight cannot predict from the property list - so edges would attach
+           off-centre and rows could overlap on exactly the channels that have a program running.
+           Same reasoning as the battery-spec strip inside the cell. *@
+        <div class="wf-bcell__badges">
+            @if (ProgramName is not null)
+            {
+                <span class="wf-badge" title="Attached program">@ProgramName</span>
+            }
+            @if (DbcName is not null)
+            {
+                <span class="wf-badge" title="Attached DBC file">@DbcName</span>
+            }
+        </div>
+    </ChildContent>
+</CanvasNode>
+
+@code {
+    [Parameter, EditorRequired] public WorkflowNode Node { get; set; } = default!;
+    [Parameter] public string Title { get; set; } = "Channel";
+    [Parameter] public bool IsSelected { get; set; }
+    [Parameter] public bool IsStale { get; set; }
+    [Parameter] public string? ProgramName { get; set; }
+    [Parameter] public string? DbcName { get; set; }
+    [Parameter] public IReadOnlyList<string> SelectedProperties { get; set; } =
+        WorkflowNodeProperties.DefaultVisibleProperties;
+    [Parameter] public EventCallback<string> OnOpenDataViewer { get; set; }
+}

@@ -1,0 +1,72 @@
+﻿
+@typeparam TValue
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+
+@namespace BatteryTestingSystem.Components.UI.Form
+
+<FormLabel>@Label</FormLabel>
+<FormControl>
+    <input 
+        type="number" 
+        id="@FieldId"
+        class="@InputCss"
+        value="@Value"
+        min="@GetMin()"
+        max="@GetMax()"
+        step="@Step"
+        @onchange="@HandleChange"
+        placeholder="@Placeholder" />
+</FormControl>
+@if (!string.IsNullOrEmpty(Description))
+{
+    <FormDescription Text="@Description" />
+}
+<FormMessage />
+
+@code {
+    [Parameter] public string FieldId { get; set; } = "";
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue> ValueChanged { get; set; }
+    [Parameter] public bool IsInvalid { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter]
+    public int? Min { get; set; }
+    [Parameter]
+    public int? Max { get; set; }
+    [Parameter]
+    public string? Step { get; set; } = "any";
+
+    private string InputCss => $"flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 {(IsInvalid ? "border-destructive" : "")}";
+
+    private async Task HandleChange(ChangeEventArgs e)
+    {
+        if (e.Value != null && TryConvertValue(e.Value.ToString(), out var result))
+        {
+            await ValueChanged.InvokeAsync(result);
+        }
+    }
+
+    private bool TryConvertValue(string? value, out TValue result)
+    {
+        try
+        {
+            result = (TValue)Convert.ChangeType(value, typeof(TValue))!;
+            return true;
+        }
+        catch
+        {
+            result = default!;
+            return false;
+        }
+    }
+    private string? GetMin()
+     => Min.HasValue ? Min.Value.ToString() : null;
+
+    private string? GetMax()
+        => Max.HasValue ? Max.Value.ToString() : null;
+
+
+}

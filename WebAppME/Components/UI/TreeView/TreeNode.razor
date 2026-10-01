@@ -1,0 +1,214 @@
+﻿@namespace BatteryTestingSystem.Components.UI.TreeView
+@typeparam TItem
+
+<div class="select-none">
+    <div class="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer group @GetNodeClasses()"
+         style="padding-left: @($"{Level * 20 + 8}px")"
+         @onclick="HandleClick"
+         @ondblclick="HandleDoubleClick"
+         @oncontextmenu="HandleContextMenu"
+         @oncontextmenu:preventDefault="true">
+
+        @* Expand/Collapse Button *@
+        @if (HasChildren)
+        {
+            <button @onclick="ToggleExpand"
+                    @onclick:stopPropagation="true"
+                    class="w-4 h-4 flex items-center justify-center hover:bg-muted rounded">
+                @if (IsExpanded)
+                {
+                    <Blazicon Svg="Lucide.ChevronDown" class="w-4 h-4 text-muted-foreground" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.ChevronRight" class="w-4 h-4 text-muted-foreground" />
+                }
+            </button>
+        }
+        else
+        {
+            <div class="w-4"></div>
+        }
+
+        @* Custom Node Content *@
+        @if (NodeContent != null)
+        {
+            @NodeContent(Item)
+        }
+        else
+        {
+            @* Default Icon & Label *@
+            var node = Item as TreeNodeModel;
+            if (node != null)
+            {
+                @if (node.Icon != null)
+                {
+                    <Blazicon Svg="@node.Icon" class="w-4 h-4" />
+                }
+                <span class="flex-1 text-sm text-foreground">@node.Label</span>
+            }
+        }
+
+        @* Custom Actions *@
+        @if (NodeActions != null)
+        {
+            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100" @onclick:stopPropagation="true">
+                @NodeActions(Item)
+            </div>
+        }
+
+        @* Context Menu Button *@
+        @if (ContextMenuItems != null)
+        {
+            <button @onclick="HandleContextMenuClick"
+                    @onclick:stopPropagation="true"
+                    class="opacity-0 group-hover:opacity-100 p-1 hover:bg-muted rounded">
+                <Blazicon Svg="Lucide.EllipsisVertical" class="w-4 h-4 text-muted-foreground" />
+            </button>
+        }
+    </div>
+
+    @* Context Menu *@
+    @if (ShowContextMenu && ContextMenuItems != null)
+    {
+        <TreeViewContextMenu TItem="TItem"
+                             Position="@ContextMenuPosition"
+                             Item="@Item"
+                             ContextMenuItems="@ContextMenuItems"
+                             OnAction="@HandleContextMenuAction"
+                             OnClose="@(() => ShowContextMenu = false)" />
+    }
+
+    @* Children *@
+    @if (IsExpanded && HasChildren)
+    {
+        var node = Item as TreeNodeModel;
+        if (node?.Children != null)
+        {
+            <div>
+                @foreach (var child in node.Children)
+                {
+                    <TreeNode TItem="TItem"
+                              Item="@((TItem)(object)child)"
+                              Level="@(Level + 1)"
+                              SelectedNodeId="@SelectedNodeId"
+                              OnNodeClick="@OnNodeClick"
+                              OnNodeDoubleClick="@OnNodeDoubleClick"
+                              NodeContent="@NodeContent"
+                              NodeActions="@NodeActions"
+                              ContextMenuItems="@ContextMenuItems"
+                              OnContextMenuAction="@OnContextMenuAction" />
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public TItem Item { get; set; }
+    [Parameter] public int Level { get; set; }
+    [Parameter] public string? SelectedNodeId { get; set; }
+
+    [Parameter] public RenderFragment<TItem>? NodeContent { get; set; }
+    [Parameter] public RenderFragment<TItem>? NodeActions { get; set; }
+    [Parameter] public RenderFragment<TItem>? ContextMenuItems { get; set; }
+
+    [Parameter] public EventCallback<TItem> OnNodeClick { get; set; }
+    [Parameter] public EventCallback<TItem> OnNodeDoubleClick { get; set; }
+    [Parameter] public EventCallback<(string ActionId, TItem Item)> OnContextMenuAction { get; set; }
+
+    private bool IsExpanded { get; set; }
+    private bool ShowContextMenu { get; set; }
+    private (double X, double Y) ContextMenuPosition { get; set; }
+
+    private bool HasChildren
+    {
+        get
+        {
+            var node = Item as TreeNodeModel;
+            return node?.Children?.Any() ?? false;
+        }
+    }
+
+    private bool IsSelected
+    {
+        get
+        {
+            var node = Item as TreeNodeModel;
+            return node?.Id == SelectedNodeId;
+        }
+    }
+
+    private bool IsParentOfSelected
+    {
+        get
+        {
+            var node = Item as TreeNodeModel;
+            if (node?.Children == null || string.IsNullOrEmpty(SelectedNodeId))
+                return false;
+
+            return IsDescendantSelected(node);
+        }
+    }
+
+    private bool IsDescendantSelected(TreeNodeModel node)
+    {
+        if (node.Children == null || !node.Children.Any())
+            return false;
+
+        foreach (var child in node.Children)
+        {
+            if (child.Id == SelectedNodeId)
+                return true;
+
+            if (IsDescendantSelected(child))
+                return true;
+        }
+
+        return false;
+    }
+
+    private string GetNodeClasses()
+    {
+        if (IsSelected)
+            return "bg-primary/20 hover:bg-primary/30";
+
+        if (IsParentOfSelected)
+            return "bg-primary/10 hover:bg-primary/15";
+
+        return "hover:bg-muted";
+    }
+
+    private void ToggleExpand()
+    {
+        IsExpanded = !IsExpanded;
+    }
+
+    private async Task HandleClick()
+    {
+        await OnNodeClick.InvokeAsync(Item);
+    }
+
+    private async Task HandleDoubleClick()
+    {
+        await OnNodeDoubleClick.InvokeAsync(Item);
+    }
+
+    private void HandleContextMenu(MouseEventArgs e)
+    {
+        ContextMenuPosition = (e.ClientX, e.ClientY);
+        ShowContextMenu = true;
+    }
+
+    private void HandleContextMenuClick(MouseEventArgs e)
+    {
+        ContextMenuPosition = (e.ClientX, e.ClientY);
+        ShowContextMenu = true;
+    }
+
+    private async Task HandleContextMenuAction((string ActionId, TItem Item) action)
+    {
+        ShowContextMenu = false;
+        await OnContextMenuAction.InvokeAsync(action);
+    }
+}

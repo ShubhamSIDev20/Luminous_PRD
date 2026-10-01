@@ -1,0 +1,98 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Services.Interfaces
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Services.Implementations.Workflow
+@using Blazicons
+
+@* Replaces the old always-visible top toolbar row (D23) with a compact icon-button box, same
+   visual language as the bottom SelectionActionBar.
+
+   The dock wrapper is load-bearing: the toolbar and EVERY panel it opens are flow children of one
+   flex column, so a panel can never land on top of the toolbar or another panel no matter how tall
+   the toolbar grows. The previous version positioned each panel independently at a hardcoded
+   top:3rem, which collided the moment the toolbar became taller than 3rem. All three panels
+   (Layouts / Legend / Node fields) route through this one _open enum, so only one is ever open. *@
+
+<div class="wf-toolbar-dock">
+<div class="wf-canvas-toolbar">
+    @* No animation toggle: flow animation is driven purely by ProgramRunningStatus.Running via
+       WorkflowTelemetryBridge.FlowFor, so an idle channel never animates and a running one always
+       should. A manual override could only ever hide real activity. *@
+    @* Which gesture a left-drag performs. Panning is the default because dragging to move the
+       view is what a canvas is expected to do; marquee select is a deliberate switch. *@
+    <button class="wf-icon-btn @(PanMode ? "wf-icon-btn--on" : "")"
+            title="@(PanMode ? "Drag pans the canvas - click to switch to box-select" : "Drag box-selects channels - click to switch to pan")"
+            @onclick="OnTogglePanMode">
+        <Blazicon Svg="@(PanMode ? Lucide.Hand : Lucide.SquareDashedMousePointer)" class="w-4 h-4" />
+    </button>
+    <button class="wf-icon-btn" title="Fit to content" @onclick="OnFit">
+        <Blazicon Svg="Lucide.Maximize" class="w-4 h-4" />
+    </button>
+    <button class="wf-icon-btn" title="Re-arrange nodes" @onclick="OnReArrange">
+        <Blazicon Svg="Lucide.LayoutGrid" class="w-4 h-4" />
+    </button>
+    <button class="wf-icon-btn" title="Node fields" @onclick="() => _open = _open == Popover.NodeFields ? Popover.None : Popover.NodeFields">
+        <Blazicon Svg="Lucide.SlidersHorizontal" class="w-4 h-4" />
+    </button>
+    <button class="wf-icon-btn" title="Layouts" @onclick="() => _open = _open == Popover.Layouts ? Popover.None : Popover.Layouts">
+        <Blazicon Svg="Lucide.Save" class="w-4 h-4" />
+    </button>
+    <button class="wf-icon-btn" title="Status legend" @onclick="() => _open = _open == Popover.Legend ? Popover.None : Popover.Legend">
+        <Blazicon Svg="Lucide.Palette" class="w-4 h-4" />
+    </button>
+    <label class="wf-icon-btn wf-refresh-rate" title="Telemetry refresh rate (ms)">
+        <Blazicon Svg="Lucide.Timer" class="w-4 h-4" />
+        <input type="number" min="50" max="5000" step="50" value="@RefreshRateMs"
+               @onchange="@(e => OnRefreshRateChanged.InvokeAsync(int.TryParse(e.Value?.ToString(), out var v) ? v : RefreshRateMs))" />
+    </label>
+</div>
+
+@if (_open == Popover.Layouts)
+{
+    <div class="wf-toolbar-popover">
+        <LayoutSwitcher Layouts="Layouts" CurrentId="CurrentLayoutId" IsDirty="IsDirty"
+                        OnLoad="OnLoadLayout" OnSave="OnSaveLayout"
+                        OnSaveAs="OnSaveLayoutAs" OnDelete="OnDeleteLayout" />
+    </div>
+}
+
+<StatusLegend Open="_open == Popover.Legend"
+              StatusColors="StatusColors"
+              OnStatusColorChanged="OnStatusColorChanged" />
+
+@if (_open == Popover.NodeFields && NodeFieldsContent is not null)
+{
+    @NodeFieldsContent
+}
+</div>
+
+@code {
+    private enum Popover { None, Layouts, Legend, NodeFields }
+    private Popover _open;
+
+    [Parameter] public EventCallback OnFit { get; set; }
+
+    /// <summary>True when a left-drag pans. Middle-button and Space+drag pan in either mode.</summary>
+    [Parameter] public bool PanMode { get; set; }
+    [Parameter] public EventCallback OnTogglePanMode { get; set; }
+
+    /// <summary>Re-runs the lane layout. Needed because a layout saved with tighter spacing
+    /// overlaps once taller cards are selected, and saved positions never move on their own.</summary>
+    [Parameter] public EventCallback OnReArrange { get; set; }
+
+    /// <summary>The node-field picker, supplied by the page (which owns the config and its
+    /// persistence) but rendered inside this dock so it shares the one-panel-open rule and can
+    /// never overlap the toolbar or another panel.</summary>
+    [Parameter] public RenderFragment? NodeFieldsContent { get; set; }
+    [Parameter] public IReadOnlyList<LayoutSummary> Layouts { get; set; } = Array.Empty<LayoutSummary>();
+    [Parameter] public long? CurrentLayoutId { get; set; }
+    [Parameter] public bool IsDirty { get; set; }
+    [Parameter] public EventCallback<long> OnLoadLayout { get; set; }
+    [Parameter] public EventCallback OnSaveLayout { get; set; }
+    [Parameter] public EventCallback<string> OnSaveLayoutAs { get; set; }
+    [Parameter] public EventCallback<long> OnDeleteLayout { get; set; }
+    [Parameter] public int RefreshRateMs { get; set; }
+    [Parameter] public EventCallback<int> OnRefreshRateChanged { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? StatusColors { get; set; }
+    [Parameter] public EventCallback<(string StatusName, string Hsl)> OnStatusColorChanged { get; set; }
+}

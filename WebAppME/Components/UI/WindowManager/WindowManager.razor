@@ -1,0 +1,517 @@
+﻿@namespace BatteryTestingSystem.Components.UI.WindowManager
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<CascadingValue Value="this">
+
+    <div class="@GetContainerClass()" style="@ContainerStyle">
+
+        @* Windows Area *@
+        <div class="@GetWindowsAreaClass()" style="@GetWindowsAreaStyle()">
+            @ChildContent
+
+            @* Dynamically created windows *@
+            @foreach (var window in windows.Where(w => !string.IsNullOrEmpty(w.Value.PageUrl)))
+            {
+                <Window Id="@window.Key"
+                Title="@window.Value.Title"
+                Icon="@GetIconFromName(window.Value.IconName)"
+                X="@window.Value.Position.X"
+                Y="@window.Value.Position.Y"
+                Width="@window.Value.Size.Width"
+                Height="@window.Value.Size.Height"
+                OnClose="@(() => CloseWindow(window.Key))">
+                    <div class="w-full h-full bg-background">
+                        <iframe src="@window.Value.PageUrl"
+                        class="w-full h-full border-0"
+                        sandbox="allow-same-origin allow-scripts allow-forms" />
+                    </div>
+                </Window>
+            }
+        </div>
+
+        @* Taskbar *@
+        <div class="@GetTaskbarClass()" @oncontextmenu="HandleTaskbarRightClick" @oncontextmenu:preventDefault="true">
+            <div class="flex items-center gap-2 @GetTaskbarContentClass()">
+                @foreach (var window in windows.OrderBy(w => w.Value.ZIndex))
+                {
+                    <button @onclick="() => RestoreWindow(window.Key)"
+                    @oncontextmenu="(e) => HandleWindowRightClick(window.Key)"
+                    @oncontextmenu:preventDefault="true"
+                    class="@GetTaskbarButtonClass(window.Value)"
+                    title="@window.Value.Title">
+                        @if (taskbarDisplayMode == TaskbarDisplayMode.IconOnly ||
+                       taskbarPosition == TaskbarPosition.Left ||
+                       taskbarPosition == TaskbarPosition.Right)
+                        {
+                            <Blazicon Svg="@GetIconFromName(window.Value.IconName)" class="w-4 h-4" />
+                        }
+                        else if (taskbarDisplayMode == TaskbarDisplayMode.IconWithText)
+                        {
+                            <Blazicon Svg="@GetIconFromName(window.Value.IconName)" class="w-4 h-4" />
+                            <span class="text-sm truncate max-w-[150px]">@window.Value.Title</span>
+                        }
+                        else
+                        {
+                            <span class="text-sm truncate max-w-[150px]">@window.Value.Title</span>
+                        }
+                    </button>
+                }
+
+                @* Taskbar Controls *@
+                <div class="ml-auto flex items-center gap-1">
+                    <button @onclick="CycleTaskbarPosition"
+                    class="p-1.5 hover:bg-muted rounded transition-colors"
+                    title="Change Taskbar Position">
+                        <Blazicon Svg="Lucide.LayoutDashboard" class="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        @* Context Menu for Taskbar *@
+        @if (showTaskbarContextMenu)
+        {
+            <div class="fixed bg-card border border-border rounded shadow-lg z-[9999] min-w-[180px]"
+            style="left: @(contextMenuX)px; top: @(contextMenuY)px;"
+            @onclick="HideContextMenus"
+            @onclick:stopPropagation="true">
+                <div class="py-1">
+                    <button @onclick="() => SetTaskbarDisplayMode(TaskbarDisplayMode.IconOnly)"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2">
+                        @if (taskbarDisplayMode == TaskbarDisplayMode.IconOnly)
+                        {
+                            <Blazicon Svg="Lucide.Check" class="w-4 h-4" />
+                        }
+                        else
+                        {
+                            <span class="w-4"></span>
+                        }
+                        <span>Show Icons Only</span>
+                    </button>
+                    <button @onclick="() => SetTaskbarDisplayMode(TaskbarDisplayMode.IconWithText)"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2">
+                        @if (taskbarDisplayMode == TaskbarDisplayMode.IconWithText)
+                        {
+                            <Blazicon Svg="Lucide.Check" class="w-4 h-4" />
+                        }
+                        else
+                        {
+                            <span class="w-4"></span>
+                        }
+                        <span>Show Icons & Text</span>
+                    </button>
+                    <button @onclick="() => SetTaskbarDisplayMode(TaskbarDisplayMode.TextOnly)"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2">
+                        @if (taskbarDisplayMode == TaskbarDisplayMode.TextOnly)
+                        {
+                            <Blazicon Svg="Lucide.Check" class="w-4 h-4" />
+                        }
+                        else
+                        {
+                            <span class="w-4"></span>
+                        }
+                        <span>Show Text Only</span>
+                    </button>
+                    <div class="h-px bg-border my-1"></div>
+                    <button @onclick="OpenTaskManager"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2">
+                        <Blazicon Svg="Lucide.Activity" class="w-4 h-4" />
+                        <span>Task Manager</span>
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Context Menu for Window *@
+        @if (showWindowContextMenu && !string.IsNullOrEmpty(contextWindowId))
+        {
+            <div class="fixed bg-card border border-border rounded shadow-lg z-[9999] min-w-[180px]"
+            style="left: @(contextMenuX)px; top: @(contextMenuY)px;"
+            @onclick="HideContextMenus"
+            @onclick:stopPropagation="true">
+                <div class="py-1">
+                    <button @onclick="() => RestoreWindow(contextWindowId)"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2">
+                        <Blazicon Svg="Lucide.Maximize2" class="w-4 h-4" />
+                        <span>Restore</span>
+                    </button>
+                    <button @onclick="() => MinimizeWindow(contextWindowId)"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2">
+                        <Blazicon Svg="Lucide.Minimize2" class="w-4 h-4" />
+                        <span>Minimize</span>
+                    </button>
+                    <button @onclick="() => MaximizeWindow(contextWindowId)"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2">
+                        <Blazicon Svg="Lucide.Maximize" class="w-4 h-4" />
+                        <span>Maximize</span>
+                    </button>
+                    <div class="h-px bg-border my-1"></div>
+                    <button @onclick="() => CloseWindow(contextWindowId)"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-destructive hover:text-destructive-foreground flex items-center gap-2">
+                        <Blazicon Svg="Lucide.X" class="w-4 h-4" />
+                        <span>Close</span>
+                    </button>
+                </div>
+            </div>
+        }
+
+    </div>
+
+
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment ChildContent { get; set; }
+    [Parameter] public string ContainerStyle { get; set; } = "position: relative; width: 100%; height: 100%;";
+    [Parameter] public TaskbarPosition InitialTaskbarPosition { get; set; } = TaskbarPosition.Bottom;
+    [Parameter] public string LocalStorageKey { get; set; } = "windowManagerState";
+    [Parameter] public EventCallback<string> OnWindowCreated { get; set; }
+    [Parameter] public EventCallback<string> OnWindowClosed { get; set; }
+    [Parameter] public EventCallback OnTaskManagerRequested { get; set; }
+
+    private Dictionary<string, WindowModel> windows = new();
+    private Dictionary<string, RenderFragment> windowContents = new();
+    private int maxZIndex = 1000;
+    private TaskbarPosition taskbarPosition;
+    private TaskbarDisplayMode taskbarDisplayMode = TaskbarDisplayMode.IconWithText;
+
+    private bool showTaskbarContextMenu = false;
+    private bool showWindowContextMenu = false;
+    private double contextMenuX;
+    private double contextMenuY;
+    private string contextWindowId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        taskbarPosition = InitialTaskbarPosition;
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // If you need JS interop, it is SAFE here
+            await LoadStateFromLocalStorage();
+
+            StateHasChanged();
+        }
+    }
+
+    internal void RegisterWindow(string id, WindowModel model, RenderFragment content)
+    {
+        model.Id = id;
+        if (!windows.ContainsKey(id))
+        {
+            model.ZIndex = ++maxZIndex;
+        }
+        windows[id] = model;
+        windowContents[id] = content;
+        StateHasChanged();
+        _ = SaveStateToLocalStorage();
+        OnWindowCreated.InvokeAsync(id);
+    }
+
+    internal void UnregisterWindow(string id)
+    {
+        windows.Remove(id);
+        windowContents.Remove(id);
+        StateHasChanged();
+    }
+
+    public async Task OpenPage(string pageUrl, string title, string iconName = null)
+    {
+        var existingWindow = windows.FirstOrDefault(w => w.Value.PageUrl == pageUrl);
+        if (existingWindow.Key != null)
+        {
+            FocusWindow(existingWindow.Key);
+            RestoreWindow(existingWindow.Key);
+            return;
+        }
+
+        var windowId = Guid.NewGuid().ToString();
+        var model = new WindowModel
+            {
+                Id = windowId,
+                Title = title,
+                IconName = iconName ?? "Lucide.File",
+                PageUrl = pageUrl,
+                ZIndex = ++maxZIndex,
+                Position = new WindowPosition { X = 100 + (windows.Count * 30), Y = 100 + (windows.Count * 30) },
+                Size = new WindowSize { Width = 900, Height = 700 }
+            };
+
+        windows[windowId] = model;
+        StateHasChanged();
+        await SaveStateToLocalStorage();
+        await OnWindowCreated.InvokeAsync(windowId);
+    }
+
+    public void CloseWindow(string id)
+    {
+        windows.Remove(id);
+        windowContents.Remove(id);
+        HideContextMenus();
+        StateHasChanged();
+        _ = SaveStateToLocalStorage();
+        OnWindowClosed.InvokeAsync(id);
+    }
+
+    public void MinimizeWindow(string id)
+    {
+        if (windows.TryGetValue(id, out var window))
+        {
+            window.State = WindowState.Minimized;
+            HideContextMenus();
+            StateHasChanged();
+            _ = SaveStateToLocalStorage();
+        }
+    }
+
+    public void MaximizeWindow(string id)
+    {
+        if (windows.TryGetValue(id, out var window))
+        {
+            window.State = window.State == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+            HideContextMenus();
+            StateHasChanged();
+            _ = SaveStateToLocalStorage();
+        }
+    }
+
+    public void RestoreWindow(string id)
+    {
+        if (windows.TryGetValue(id, out var window))
+        {
+            window.State = WindowState.Normal;
+            FocusWindow(id);
+            HideContextMenus();
+            StateHasChanged();
+        }
+    }
+
+    public void FocusWindow(string id)
+    {
+        if (windows.TryGetValue(id, out var window))
+        {
+            window.ZIndex = ++maxZIndex;
+            StateHasChanged();
+            _ = SaveStateToLocalStorage();
+        }
+    }
+
+    public List<WindowModel> GetAllWindows() => windows.Values.ToList();
+
+    private void CycleTaskbarPosition()
+    {
+        taskbarPosition = taskbarPosition switch
+        {
+            TaskbarPosition.Bottom => TaskbarPosition.Top,
+            TaskbarPosition.Top => TaskbarPosition.Left,
+            TaskbarPosition.Left => TaskbarPosition.Right,
+            TaskbarPosition.Right => TaskbarPosition.Bottom,
+            _ => TaskbarPosition.Bottom
+        };
+        StateHasChanged();
+        _ = SaveStateToLocalStorage();
+    }
+
+    private void HandleTaskbarRightClick(MouseEventArgs e)
+    {
+        contextMenuX = e.ClientX;
+        contextMenuY = e.ClientY;
+        showTaskbarContextMenu = true;
+        showWindowContextMenu = false;
+        StateHasChanged();
+    }
+
+    private void HandleWindowRightClick(string windowId)
+    {
+        contextWindowId = windowId;
+        showWindowContextMenu = true;
+        showTaskbarContextMenu = false;
+        StateHasChanged();
+    }
+
+    private void HideContextMenus()
+    {
+        showTaskbarContextMenu = false;
+        showWindowContextMenu = false;
+        contextWindowId = null;
+    }
+
+    private void SetTaskbarDisplayMode(TaskbarDisplayMode mode)
+    {
+        taskbarDisplayMode = mode;
+        HideContextMenus();
+        StateHasChanged();
+        _ = SaveStateToLocalStorage();
+    }
+
+    private void OpenTaskManager()
+    {
+        HideContextMenus();
+        OnTaskManagerRequested.InvokeAsync();
+    }
+
+    private async Task SaveStateToLocalStorage()
+    {
+        try
+        {
+            var state = new WindowManagerState
+                {
+                    MaxZIndex = maxZIndex,
+                    TaskbarPosition = taskbarPosition,
+                    TaskbarDisplayMode = taskbarDisplayMode,
+                    Windows = windows.Select(w => new WindowStateData
+                    {
+                        Id = w.Key,
+                        Title = w.Value.Title,
+                        IconName = w.Value.IconName,
+                        PageUrl = w.Value.PageUrl,
+                        State = w.Value.State,
+                        Position = w.Value.Position,
+                        Size = w.Value.Size,
+                        IsDocked = w.Value.IsDocked,
+                        DockPosition = w.Value.DockPosition,
+                        ZIndex = w.Value.ZIndex
+                    }).ToList()
+                };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(state);
+            try
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", LocalStorageKey, json);
+            }
+            catch
+            {
+                Console.WriteLine("Warning: Could not save to localStorage - circuit may be disconnected");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving state: {ex.Message}");
+        }
+    }
+
+    private async Task LoadStateFromLocalStorage()
+    {
+        try
+        {
+            string json = null;
+            try
+            {
+                // json = await JS.InvokeAsync<string>("localStorage.getItem", LocalStorageKey);
+            }
+            catch
+            {
+                Console.WriteLine("Warning: Could not load from localStorage - circuit may be disconnected");
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(json))
+            {
+                var state = System.Text.Json.JsonSerializer.Deserialize<WindowManagerState>(json);
+                if (state != null)
+                {
+                    maxZIndex = state.MaxZIndex;
+                    taskbarPosition = state.TaskbarPosition;
+                    taskbarDisplayMode = state.TaskbarDisplayMode;
+
+                    foreach (var windowData in state.Windows)
+                    {
+                        var model = new WindowModel
+                            {
+                                Id = windowData.Id,
+                                Title = windowData.Title,
+                                IconName = windowData.IconName,
+                                PageUrl = windowData.PageUrl,
+                                State = windowData.State,
+                                Position = windowData.Position,
+                                Size = windowData.Size,
+                                IsDocked = windowData.IsDocked,
+                                DockPosition = windowData.DockPosition,
+                                ZIndex = windowData.ZIndex
+                            };
+                        windows[windowData.Id] = model;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading state: {ex.Message}");
+        }
+    }
+
+    private string GetContainerClass() => "relative w-full h-full overflow-hidden bg-background";
+
+    private string GetWindowsAreaClass()
+    {
+        var padding = taskbarPosition switch
+        {
+            TaskbarPosition.Top => "pt-12",
+            TaskbarPosition.Bottom => "pb-12",
+            TaskbarPosition.Left => "pl-16",
+            TaskbarPosition.Right => "pr-16",
+            _ => "pb-12"
+        };
+        return $"absolute inset-0 {padding} overflow-hidden";
+    }
+
+    private string GetWindowsAreaStyle() => "position: relative; width: 100%; height: 100%;";
+
+    private string GetTaskbarClass()
+    {
+        return taskbarPosition switch
+        {
+            TaskbarPosition.Top => "absolute top-0 left-0 right-0 h-12 bg-card border-b border-border z-[1000]",
+            TaskbarPosition.Bottom => "absolute bottom-0 left-0 right-0 h-12 bg-card border-t border-border z-[1000]",
+            TaskbarPosition.Left => "absolute left-0 top-0 bottom-0 w-16 bg-card border-r border-border z-[1000]",
+            TaskbarPosition.Right => "absolute right-0 top-0 bottom-0 w-16 bg-card border-l border-border z-[1000]",
+            _ => "absolute bottom-0 left-0 right-0 h-12 bg-card border-t border-border z-[1000]"
+        };
+    }
+
+    private string GetTaskbarContentClass()
+    {
+        return taskbarPosition switch
+        {
+            TaskbarPosition.Left or TaskbarPosition.Right => "flex-col h-full overflow-y-auto py-2",
+            _ => "px-2 overflow-x-auto"
+        };
+    }
+
+    private string GetTaskbarButtonClass(WindowModel window)
+    {
+        var baseClass = taskbarPosition switch
+        {
+            TaskbarPosition.Left or TaskbarPosition.Right =>
+                "flex flex-col items-center gap-1 p-2 rounded hover:bg-muted transition-colors w-full",
+            _ => "flex items-center gap-2 px-3 py-1.5 rounded hover:bg-muted transition-colors"
+        };
+
+        var activeClass = window.State != WindowState.Minimized && window.ZIndex == maxZIndex
+            ? "bg-primary/20 border border-primary/30"
+            : "bg-background border border-border";
+        return $"{baseClass} {activeClass}";
+    }
+
+    private SvgIcon GetIconFromName(string iconName)
+    {
+        return iconName switch
+        {
+            "Lucide.Settings" => Lucide.Settings,
+            "Lucide.FolderTree" => Lucide.FolderTree,
+            "Lucide.ChartBar" => Lucide.ChartBar,
+            "Lucide.Settings2" => Lucide.Settings2,
+            "Lucide.File" => Lucide.File,
+            "Lucide.LayoutDashboard" => Lucide.LayoutDashboard,
+            "Lucide.Cpu" => Lucide.Cpu,
+            "Lucide.FileText" => Lucide.FileText,
+            _ => Lucide.Square
+        };
+    }
+
+}

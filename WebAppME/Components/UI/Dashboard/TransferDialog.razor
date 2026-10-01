@@ -1,0 +1,507 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Dashboard
+@using BatteryTestingSystem.Services.Interfaces
+@using static BatteryTestingSystem.Components.UI.Dashboard.TransferResultsDialog
+@inject IProgramServices PService
+@inject IBatteryServices BServices
+@inject IDbcService DServices
+
+@inject ToastService Toast
+@attribute [StreamRendering]
+
+
+@if (isProcessing)
+{
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center">
+            <Blazicon Svg="Lucide.Loader" class="h-8 w-8 mb-4 animate-spin" />
+            <p class="text-lg font-medium">Processing Transfer...</p>
+            @if (transferTotal > 0)
+            {
+                <p class="text-sm text-muted-foreground mt-1">@transferCompleted / @transferTotal circuit(s)</p>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <Dialog @ref="_dialog" Open="@Open" OpenChanged="@OpenChanged">
+        <DialogContent Size="DialogSize.XLarge">
+            <DialogHeader>
+                <DialogTitle>Transfer to @selectedCircuits?.Count Circuit(s)</DialogTitle>
+                <DialogDescription>
+                    Select a program, battery configuration to transfer
+                </DialogDescription>
+            </DialogHeader>
+
+            <div class="grid grid-cols-3 gap-4 mt-4">
+
+                <!-- Program Selection -->
+                <div class="space-y-2">
+                    <Label class="text-sm font-medium">Program</Label>
+
+                    <ScrollArea class="h-[200px] border rounded-lg p-3 bg-muted/30">
+                        <RadioGroup @bind-Value="selectedProgram">
+                            @foreach (var program in programs)
+                            {
+                                <div class="@ProgramClass(program.ProgramId)" @onclick="() => selectedProgram = program.ProgramId.ToString()">
+                                    <RadioGroupItem Value="@program.ProgramId.ToString()" id="@program.ProgramId" />
+                                    <Label for="@program.ProgramId.ToString()" class="cursor-pointer flex-1">
+                                        @program.ProgramName
+                                    </Label>
+                                </div>
+                            }
+                        </RadioGroup>
+                    </ScrollArea>
+                </div>
+
+
+                <!-- Battery Selection -->
+                <div class="space-y-2">
+                    <Label class="text-sm font-medium">Battery</Label>
+
+                    <ScrollArea class="h-[200px] border rounded-lg p-3 bg-muted/30">
+                        <RadioGroup @bind-Value="selectedBattery">
+
+                            @foreach (var battery in batteries)
+                            {
+                                <div class="@BatteryClass(battery.Id)" @onclick="async () => await OnBatterySelected(battery)">
+                                    <RadioGroupItem Value="@battery.Id.ToString()" id="@battery.Id" />
+                                    <Label for="@battery.Id.ToString()" class="cursor-pointer flex-1">
+                                        @battery.Name
+                                    </Label>
+                                </div>
+                            }
+
+                        </RadioGroup>
+                    </ScrollArea>
+                </div>
+
+
+                <!-- DBC Port Assignment -->
+                <div class="space-y-2">
+                    <Label class="text-sm font-medium">
+                        DBC Ports <span class="text-muted-foreground text-xs">(Optional)</span>
+                    </Label>
+
+                    <div class="flex flex-col gap-3 border rounded-lg p-3 bg-muted/30">
+
+                        @* Port 1 *@
+                        <div class="flex flex-col gap-1">
+                            <Label class="text-xs font-medium text-muted-foreground">Port 1</Label>
+                            <DropdownMenu @bind-Open="port1Open">
+                                <DropdownMenuTrigger>
+                                    <Button Variant="ButtonVariant.Outline"
+                                    Class="h-8 w-full justify-between text-xs px-2"
+                                    StopPropagation="true"
+                                    OnClick="@(() => port1Open = !port1Open)">
+                                        <span class="truncate">@DbcPortLabel(port1DbcId)</span>
+                                        <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-2 opacity-50 shrink-0" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent Class="w-full min-w-[220px] max-h-[240px] overflow-y-auto">
+                                    <DropdownMenuItem OnClick="@(async () => { port1DbcId = string.Empty; await OnPortAssignmentChanged(); })">
+                                        <span class="italic text-muted-foreground">None</span>
+                                    </DropdownMenuItem>
+                                    @foreach (var dbc in DbcFiles)
+                                    {
+                                        var dbcId = dbc.Id.ToString();
+                                        <DropdownMenuItem Disabled="@IsDbcUsedByOtherPort(dbcId, 0)"
+                                        OnClick="@(async () => { port1DbcId = dbcId; await OnPortAssignmentChanged(); })">
+                                            @dbc.Name (@dbc.dbcDatabase.CBaudrate)
+                                        </DropdownMenuItem>
+                                    }
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+
+                        @* Port 2 *@
+                        <div class="flex flex-col gap-1">
+                            <Label class="text-xs font-medium text-muted-foreground">Port 2</Label>
+                            <DropdownMenu @bind-Open="port2Open">
+                                <DropdownMenuTrigger>
+                                    <Button Variant="ButtonVariant.Outline"
+                                    Class="h-8 w-full justify-between text-xs px-2"
+                                    StopPropagation="true"
+                                    OnClick="@(() => port2Open = !port2Open)">
+                                        <span class="truncate">@DbcPortLabel(port2DbcId)</span>
+                                        <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-2 opacity-50 shrink-0" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent Class="w-full min-w-[220px] max-h-[240px] overflow-y-auto">
+                                    <DropdownMenuItem OnClick="@(async () => { port2DbcId = string.Empty; await OnPortAssignmentChanged(); })">
+                                        <span class="italic text-muted-foreground">None</span>
+                                    </DropdownMenuItem>
+                                    @foreach (var dbc in DbcFiles)
+                                    {
+                                        var dbcId = dbc.Id.ToString();
+                                        <DropdownMenuItem Disabled="@IsDbcUsedByOtherPort(dbcId, 1)"
+                                        OnClick="@(async () => { port2DbcId = dbcId; await OnPortAssignmentChanged(); })">
+                                            @dbc.Name (@dbc.dbcDatabase.CBaudrate)
+                                        </DropdownMenuItem>
+                                    }
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+
+                        @* Port 3 *@
+                        <div class="flex flex-col gap-1">
+                            <Label class="text-xs font-medium text-muted-foreground">Port 3</Label>
+                            <DropdownMenu @bind-Open="port3Open">
+                                <DropdownMenuTrigger>
+                                    <Button Variant="ButtonVariant.Outline"
+                                    Class="h-8 w-full justify-between text-xs px-2"
+                                    StopPropagation="true"
+                                    OnClick="@(() => port3Open = !port3Open)">
+                                        <span class="truncate">@DbcPortLabel(port3DbcId)</span>
+                                        <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5 ml-2 opacity-50 shrink-0" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent Class="w-full min-w-[220px] max-h-[240px] overflow-y-auto">
+                                    <DropdownMenuItem OnClick="@(async () => { port3DbcId = string.Empty; await OnPortAssignmentChanged(); })">
+                                        <span class="italic text-muted-foreground">None</span>
+                                    </DropdownMenuItem>
+                                    @foreach (var dbc in DbcFiles)
+                                    {
+                                        var dbcId = dbc.Id.ToString();
+                                        <DropdownMenuItem Disabled="@IsDbcUsedByOtherPort(dbcId, 2)"
+                                        OnClick="@(async () => { port3DbcId = dbcId; await OnPortAssignmentChanged(); })">
+                                            @dbc.Name (@dbc.dbcDatabase.CBaudrate)
+                                        </DropdownMenuItem>
+                                    }
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+
+            <!-- Footer Buttons -->
+            <div class="flex justify-end gap-2 mt-4">
+                <Button Variant="ButtonVariant.Outline" Disabled="@isProcessing" onclick="Close">
+                    Cancel
+                </Button>
+
+                <Button Disabled="@(!canTransfer)" @onclick="HandleTransfer">
+                    @if (isProcessing)
+                    {
+                        <Blazicon Svg="Lucide.Loader" class="h-4 w-4 mr-2 animate-spin" />
+                        <span>Transferring...</span>
+                    }
+                    else
+                    {
+                        <span>Transfer</span>
+                    }
+                </Button>
+            </div>
+
+        </DialogContent>
+    </Dialog>
+
+}
+
+
+@code {
+    // Dialog state
+    Dialog? _dialog;
+
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    [Parameter] public List<IChannelCommandHandler> selectedCircuits { get; set; }
+
+    [Parameter] public EventCallback<List<TransferResult>> OnTransferCompleted { get; set; }
+
+    private bool isProcessing = true;
+    private int transferTotal;
+    private int transferCompleted;
+
+    // Selections
+    private string? selectedProgram;
+    private string? selectedBattery;
+    private string? port1DbcId;
+    private string? port2DbcId;
+    private string? port3DbcId;
+    private bool port1Open;
+    private bool port2Open;
+    private bool port3Open;
+
+    // Example data
+    private List<ProgramDTO> programs = new();
+    private List<BatteryDTO> batteries = new();
+    private List<DbcFileRecordDto> DbcFiles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    public async Task LoadAsync()
+    {
+        var p =  await PService.GetProgramsAsync();
+
+        if (p.Success)
+            programs = p.Data?
+               .Where(e => e.IsVaild)
+               .ToList()
+               ?? new List<ProgramDTO>();
+
+        var b = await BServices.GetBatteries();
+
+        if (b.Success)
+            batteries = b.Data;
+
+
+        isProcessing = false;
+
+    }
+
+    private async Task OnBatterySelected(BatteryDTO battery)
+    {
+        selectedBattery = battery.Id.ToString();
+
+        var dbc = await DServices.GetByBatteryIdAsync(battery.Id);
+        DbcFiles = dbc.Success && dbc.Data != null ? dbc.Data : new();
+
+        // Pre-fill saved port assignments
+        port1DbcId = battery.Port1DbcId?.ToString() ?? string.Empty;
+        port2DbcId = battery.Port2DbcId?.ToString() ?? string.Empty;
+        port3DbcId = battery.Port3DbcId?.ToString() ?? string.Empty;
+    }
+
+    private async Task OnPortAssignmentChanged()
+    {
+        if (!long.TryParse(selectedBattery, out var batteryId)) return;
+
+        long? p1 = long.TryParse(port1DbcId, out var v1) ? v1 : null;
+        long? p2 = long.TryParse(port2DbcId, out var v2) ? v2 : null;
+        long? p3 = long.TryParse(port3DbcId, out var v3) ? v3 : null;
+
+        await BServices.UpdatePortAssignmentsAsync(batteryId, p1, p2, p3);
+    }
+
+    // CSS helpers (same dynamic logic as React)
+    private string ProgramClass(long id) =>
+        selectedProgram == id.ToString()
+            ? "flex items-center space-x-2 p-2 rounded-md cursor-pointer bg-primary/20 border border-primary/50"
+            : "flex items-center space-x-2 p-2 rounded-md cursor-pointer hover:bg-muted";
+
+    private string BatteryClass(long id) =>
+        selectedBattery == id.ToString()
+            ? "flex items-center space-x-2 p-2 rounded-md cursor-pointer bg-primary/20 border border-primary/50"
+            : "flex items-center space-x-2 p-2 rounded-md cursor-pointer hover:bg-muted";
+
+    // Returns true if dbcId is already selected by a different port (index-based to avoid false negatives when two ports share the same value)
+    private bool IsDbcUsedByOtherPort(string dbcId, int ownPortIndex)
+    {
+        if (string.IsNullOrEmpty(dbcId)) return false;
+        var all = new[] { port1DbcId, port2DbcId, port3DbcId };
+        for (int i = 0; i < 3; i++)
+            if (i != ownPortIndex && all[i] == dbcId) return true;
+        return false;
+    }
+
+    private string DbcPortLabel(string? dbcId)
+    {
+        if (string.IsNullOrEmpty(dbcId)) return "None";
+        var dbc = DbcFiles.FirstOrDefault(d => d.Id.ToString() == dbcId);
+        return dbc != null ? $"{dbc.Name} ({dbc.dbcDatabase.CBaudrate})" : "None";
+    }
+
+    // Whether "Transfer" button is enabled
+    private bool canTransfer =>
+        !string.IsNullOrWhiteSpace(selectedProgram) &&
+        !string.IsNullOrWhiteSpace(selectedBattery) &&
+        !isProcessing;
+
+
+    private async Task Close()
+    {
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    // Actions
+    private async Task HandleTransfer()
+    {
+
+        // 1️⃣ Validate selections
+        if (string.IsNullOrWhiteSpace(selectedProgram) ||
+            string.IsNullOrWhiteSpace(selectedBattery))
+        {
+            Toast.Warning("Please select a program and a battery.");
+            return;
+        }
+
+        if (!long.TryParse(selectedProgram, out var programId) ||
+            !long.TryParse(selectedBattery, out var batteryId))
+        {
+            Toast.Error("Invalid program or battery selection.");
+            return;
+        }
+
+        // Make sure data is loaded
+        await LoadAsync();
+
+        var program = programs?.FirstOrDefault(p => p.ProgramId == programId);
+        var battery = batteries?.FirstOrDefault(b => b.Id == batteryId);
+
+        if (program is null)
+        {
+            Toast.Warning("Selected program not found.");
+            return;
+        }
+
+        if (battery is null)
+        {
+            Toast.Warning("Selected battery not found.");
+            return;
+        }
+
+        if (selectedCircuits is null || !selectedCircuits.Any())
+        {
+            Toast.Warning("Please select at least one circuit.");
+            return;
+        }
+
+        // 2️⃣ Start processing
+        isProcessing = true;
+        transferTotal = selectedCircuits.Count;
+        transferCompleted = 0;
+        StateHasChanged();
+
+        // Resolve the 3 port DBCs once, up front
+        DbcFileRecordDto? p1Dbc = string.IsNullOrEmpty(port1DbcId) ? null
+            : DbcFiles?.FirstOrDefault(e => e.Id.ToString() == port1DbcId);
+        DbcFileRecordDto? p2Dbc = string.IsNullOrEmpty(port2DbcId) ? null
+            : DbcFiles?.FirstOrDefault(e => e.Id.ToString() == port2DbcId);
+        DbcFileRecordDto? p3Dbc = string.IsNullOrEmpty(port3DbcId) ? null
+            : DbcFiles?.FirstOrDefault(e => e.Id.ToString() == port3DbcId);
+
+        // ⚡ Parallel by DEVICE, sequential per device — matches the Start/Stop/Pause/Continue
+        // pattern so a slow or unresponsive circuit no longer blocks every other selected circuit.
+        var deviceLocks = new Dictionary<int, SemaphoreSlim>();
+        var lockGate = new object();
+
+        var tasks = selectedCircuits.Select(async dev =>
+        {
+            SemaphoreSlim deviceLock;
+            lock (lockGate)
+            {
+                if (!deviceLocks.TryGetValue(dev.Channel.DeviceID, out deviceLock))
+                {
+                    deviceLock = new SemaphoreSlim(1, 1);
+                    deviceLocks[dev.Channel.DeviceID] = deviceLock;
+                }
+            }
+
+            await deviceLock.WaitAsync();
+            try
+            {
+                // Check hardware readiness
+                var isReadyResponse = await dev.HWReadyToReadWriteAsync();
+
+                var isReadyStep = new StepResult
+                {
+                    StepName = "IsReady",
+                    Success = isReadyResponse.Success,
+                    Message = isReadyResponse.Message
+                };
+
+                StepResult batteryStep;
+                StepResult programStep;
+                StepResult? dbcStep = default;
+
+                if (!isReadyResponse.Success)
+                {
+                    // Skip transfers
+                    batteryStep = new StepResult
+                        {
+                            StepName = "Battery Transfer",
+                            Success = false,
+                            Message = "Skipped: Device not ready"
+                        };
+
+                    programStep = new StepResult
+                        {
+                            StepName = "Program Transfer",
+                            Success = false,
+                            Message = "Skipped: Device not ready"
+                        };
+                }
+                else
+                {
+                    // Battery transfer
+                    var batteryResponse = await dev.SetBatteryParamAsync(battery);
+                    batteryStep = new StepResult
+                    {
+                        StepName = "Battery Transfer",
+                        Success = batteryResponse.Success,
+                        Message = batteryResponse.Message
+                    };
+
+                    if (p1Dbc != null || p2Dbc != null || p3Dbc != null)
+                    {
+                        var dbcResponse = await dev.TransferDbcFile(p1Dbc, p2Dbc, p3Dbc);
+                        if (dbcResponse.Success && dbcResponse.Message != "Success")
+                            Toast.Warning(dbcResponse.Message);
+                        dbcStep = new StepResult
+                        {
+                            StepName = "DBC Transfer",
+                            Success = dbcResponse.Success,
+                            Message = dbcResponse.Success
+                                ? (dbcResponse.Message != "Success" ? dbcResponse.Message : "DBC file(s) transferred successfully")
+                                : $"DBC transfer failed: {dbcResponse.Message}"
+                        };
+                    }
+
+                    dev.dbcData.DbcValues = null;
+
+                    // Program transfer
+                    var programResponse = await dev.SetProgramAsync(program, battery);
+                    programStep = new StepResult
+                    {
+                        StepName = "Program Transfer",
+                        Success = programResponse.Success,
+                        Message = programResponse.Message
+                    };
+                }
+
+                var steps = new List<StepResult> { isReadyStep, batteryStep, programStep };
+                if (dbcStep != null)
+                    steps.Add(dbcStep);
+
+                return new TransferResult
+                {
+                    CircuitId = dev.Channel.ChannelNumber,
+                    DeviceId = dev.Channel.DeviceID,
+                    SecondaryBoardNumber = dev.Channel.SecondaryBoardNumber,
+                    OverallSuccess =
+                        isReadyResponse.Success &&
+                        batteryStep.Success &&
+                        programStep.Success,
+                    Steps = steps
+                };
+            }
+            finally
+            {
+                deviceLock.Release();
+                Interlocked.Increment(ref transferCompleted);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        var results = (await Task.WhenAll(tasks)).ToList();
+
+        // 3️⃣ Finish
+        isProcessing = false;
+        StateHasChanged();
+
+        await OnTransferCompleted.InvokeAsync(results);
+        await OpenChanged.InvokeAsync(false);
+    }
+
+
+}

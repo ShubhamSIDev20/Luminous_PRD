@@ -1,0 +1,86 @@
+@using BatteryTestingSystem.Components.UI.Accordion
+
+<div class="@GetAccordionClasses()" @attributes="AdditionalAttributes">
+    <CascadingValue Value="this">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public AccordionType Type { get; set; } = AccordionType.Single;
+
+    [Parameter]
+    public bool Collapsible { get; set; } = false;
+
+    [Parameter]
+    public string? DefaultValue { get; set; }
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private HashSet<string> openItems = new();
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(DefaultValue))
+        {
+            openItems.Add(DefaultValue);
+        }
+        if (!string.IsNullOrEmpty(Value))
+        {
+            openItems.Add(Value);
+        }
+    }
+
+    public async Task ToggleItem(string value)
+    {
+        if (Type == AccordionType.Single)
+        {
+            if (openItems.Contains(value))
+            {
+                if (Collapsible)
+                {
+                    openItems.Clear();
+                    await ValueChanged.InvokeAsync("");
+                }
+            }
+            else
+            {
+                openItems.Clear();
+                openItems.Add(value);
+                await ValueChanged.InvokeAsync(value);
+            }
+        }
+        else // Multiple
+        {
+            if (openItems.Contains(value))
+            {
+                openItems.Remove(value);
+            }
+            else
+            {
+                openItems.Add(value);
+            }
+        }
+    }
+
+    public bool IsOpen(string value) => openItems.Contains(value);
+
+    private string GetAccordionClasses()
+    {
+        return $"w-full {Class ?? ""}".Trim();
+    }
+}

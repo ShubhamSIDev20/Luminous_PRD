@@ -1,0 +1,26 @@
+services:
+  me-primary:
+    image: ghcr.io/quench-ev-charger/me-primary:latest
+    container_name: me-primary
+    network_mode: host   # required: registration frame carries this IP/MAC as payload - do not remove
+    # Must include CPU3 (or whatever --core is set to) or
+    # pthread_attr_setaffinity_np() fails EINVAL. Do not narrow this range
+    # for unrelated CPU-limiting reasons without re-checking the core
+    # isolation design (Docs/specs/2026-08-19-core-isolation-cicd-design.md).
+    cpuset: "0-3"
+    devices:
+      - "/dev/ttyRPMSG30:/dev/ttyRPMSG30"
+    restart: unless-stopped
+    volumes:
+      - ./me_primary_new:/me_primary
+    command:
+      - "--server"
+      - "${ME_SERVER_IP}"
+      - "--core"
+      - "3"
+      - "--device"
+      - "1"
+      - "--secondary"
+      - "1"
+      - "--channels"
+      - "1,2,3,4"

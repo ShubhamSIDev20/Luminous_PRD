@@ -1,0 +1,517 @@
+﻿@page "/settings/Discover"
+@using BatteryTestingSystem.Services
+@using BatteryTestingSystem.Components.UI.InfiniteScroll
+@using System.Net
+@using BatteryTestingSystem.Services.BROADCAST
+@implements IAsyncDisposable
+@inject BroadcastUdpService Udp
+
+@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* STEP 1 — Discover                                                           *@
+@* ═══════════════════════════════════════════════════════════════════════════ *@
+
+<PageHeader Title="Device Discovery" Description=@($"Search Across Network Devices {Udp?.IsListening}")>
+    <Actions>
+        <AuthorizeView Roles="Administrator,Supervisor">
+            <Button Variant="ButtonVariant.Default" Size="ButtonSize.Small" OnClick="DiscoverAsync" Disabled="@_busy">
+                <Blazicon Svg="Lucide.Search" class="h-4 w-4 mr-2" />
+                @if (_busy)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" />
+                }
+                Discover Devices
+            </Button>
+        </AuthorizeView>
+    </Actions>
+</PageHeader>
+
+@* ── Device list (InfiniteScrollList) ── *@
+<div class="h-[80%] flex flex-col">
+    <InfiniteScrollList TItem="DiscoveredDeviceVm"
+    LoadPageAsync="LoadDevicesAsync"
+    Title=""
+    ShowTopBar="false"
+    ShowSearch="false"
+    SearchPlaceholder="Search devices…"
+    ShowViewToggle="false"
+    DefaultView="InfiniteScrollList<DiscoveredDeviceVm>.ViewMode.List"
+    ShowResultCount="true"
+    ListContainerClass="flex flex-col divide-y divide-border"
+    SkeletonCount="4"
+    EmptyMessage="No devices found yet. Click Discover."
+    @ref="_scrollList">
+
+        <ListItemTemplate Context="d">
+            @{
+                bool selected = _selectedKey == d.UniqueKey;
+            }
+            <div class="flex items-center gap-4 px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer @(selected ? "bg-primary/10 border-l-2 border-primary" : "")"
+            @onclick="() => SelectDevice(d.UniqueKey)">
+
+                @* Selection indicator *@
+                <div class="w-4 shrink-0 text-primary font-bold text-sm">
+                    @(selected ? "▶" : "")
+                </div>
+
+                @* Device info grid *@
+                <div class="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-1 text-sm">
+                    <div>
+                        <p class="text-xs text-muted-foreground">Unique ID</p>
+                        <code class="text-foreground font-mono text-xs">@d.UniqueKey</code>
+                    </div>
+                    <div>
+                        <p class="text-xs text-muted-foreground">Device IP</p>
+                        <p class="text-foreground">@d.DeviceIp</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-muted-foreground">Subnet</p>
+                        <p class="text-foreground">@d.SubnetMask</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-muted-foreground">Gateway</p>
+                        <p class="text-foreground">@d.Gateway</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-muted-foreground">TCP Port</p>
+                        <p class="text-foreground">@d.TcpPort</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-muted-foreground">Udp LivePort</p>
+                        <p class="text-foreground">@d.UdpLivePort</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-muted-foreground">Udp RegPort</p>
+                        <p class="text-foreground">@d.UdpRegPort</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-muted-foreground">Last Seen</p>
+                        <p class="text-foreground">@d.LastSeen.ToString("HH:mm:ss")</p>
+                    </div>
+                </div>
+
+                @* Configure buttons — only visible on selected row *@
+                @if (selected)
+                {
+                    <div class="flex items-center gap-2 shrink-0" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small" OnClick="OpenIpDialog">
+                            <Blazicon Svg="Lucide.Network" class="h-3.5 w-3.5 mr-1" />
+                            IP Config
+                        </Button>
+                        <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small" OnClick="OpenServerDialog">
+                            <Blazicon Svg="Lucide.Server" class="h-3.5 w-3.5 mr-1" />
+                            Server Config
+                        </Button>
+                    </div>
+                }
+
+            </div>
+        </ListItemTemplate>
+
+    </InfiniteScrollList>
+</div>
+
+@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* DIALOG — IP Configuration (Q4)                                              *@
+@* ═══════════════════════════════════════════════════════════════════════════ *@
+
+<Dialog @bind-open="@_ipDialogOpen">
+    <DialogContent class="min-w-[480px] max-w-[560px]">
+        <DialogHeader>
+            <DialogTitle>IP Configuration (Q4)</DialogTitle>
+            <DialogDescription>Configure network settings for <code>@_selectedDevice?.UniqueKey</code></DialogDescription>
+        </DialogHeader>
+
+        <div class="flex flex-col gap-3 py-2">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">Device IP</label>
+                    <input class="form-control form-control-sm" @bind="_ip.DeviceIp" />
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">Subnet Mask</label>
+                    <input class="form-control form-control-sm" @bind="_ip.SubnetMask" />
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">Gateway</label>
+                    <input class="form-control form-control-sm" @bind="_ip.Gateway" />
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">DNS 1</label>
+                    <input class="form-control form-control-sm" @bind="_ip.Dns1" />
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">DNS 2</label>
+                    <input class="form-control form-control-sm" @bind="_ip.Dns2" />
+                </div>
+            </div>
+
+            @if (_ipResult.HasValue)
+            {
+                <p class="text-sm @(_ipResult.Value ? "text-success" : "text-danger") mt-1">
+                    @(_ipResult.Value ? "✅ IP config applied successfully." : "❌ Failed to apply IP config.")
+                </p>
+            }
+        </div>
+
+        <DialogFooter>
+            <Button Variant="ButtonVariant.Outline" OnClick="() => _ipDialogOpen = false">Cancel</Button>
+            <Button Variant="ButtonVariant.Default" OnClick="SendIpConfigAsync" Disabled="@_busy">
+                @if (_busy)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" />
+                }
+                Apply IP Config
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* DIALOG — Server Configuration (Q5)                                          *@
+@* ═══════════════════════════════════════════════════════════════════════════ *@
+
+<Dialog @bind-open="@_srvDialogOpen">
+    <DialogContent class="min-w-[480px] max-w-[560px]">
+        <DialogHeader>
+            <DialogTitle>Server Configuration (Q5)</DialogTitle>
+            <DialogDescription>Configure server settings for <code>@_selectedDevice?.UniqueKey</code></DialogDescription>
+        </DialogHeader>
+
+        <div class="flex flex-col gap-3 py-2">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">Remote IP</label>
+                    <input class="form-control form-control-sm" @bind="_srv.RemoteIp" />
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">TCP Port</label>
+                    <input class="form-control form-control-sm" type="number" @bind="_srv.TcpPort" />
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">UDP Live Data Port</label>
+                    <input class="form-control form-control-sm" type="number" @bind="_srv.UdpLivePort" />
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground mb-1 block">UDP Reg Data Port</label>
+                    <input class="form-control form-control-sm" type="number" @bind="_srv.UdpRegPort" />
+                </div>
+            </div>
+
+            @if (_srvResult.HasValue)
+            {
+                <p class="text-sm @(_srvResult.Value ? "text-success" : "text-danger") mt-1">
+                    @(_srvResult.Value ? "✅ Server config applied successfully." : "❌ Failed to apply server config.")
+                </p>
+            }
+        </div>
+
+        <DialogFooter>
+            <Button Variant="ButtonVariant.Outline" OnClick="() => _srvDialogOpen = false">Cancel</Button>
+            <Button Variant="ButtonVariant.Default" OnClick="SendServerConfigAsync" Disabled="@_busy">
+                @if (_busy)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" />
+                }
+                Apply Server Config
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+@code {
+
+    // ── Device list (keyed by UniqueKey for dedup) ────────────────────────────
+    private readonly Dictionary<string, DiscoveredDeviceVm> _devices = new();
+
+    // ── InfiniteScrollList data loader ────────────────────────────────────────
+    private Task<(IEnumerable<DiscoveredDeviceVm>, bool)> LoadDevicesAsync(int page, string search, CancellationToken ct)
+    {
+        var items = _devices.Values
+            .OrderBy(x => x.UniqueKey)
+            .Where(d => string.IsNullOrWhiteSpace(search)
+                        || d.UniqueKey.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        || d.DeviceIp.Contains(search, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return Task.FromResult<(IEnumerable<DiscoveredDeviceVm>, bool)>((items, false));
+    }
+
+    // ── Reference to the list ─────────────────────────────────────────────────
+    private InfiniteScrollList<DiscoveredDeviceVm>? _scrollList;
+
+    // ── Selection ─────────────────────────────────────────────────────────────
+    private string? _selectedKey;
+    private DiscoveredDeviceVm? _selectedDevice =>
+        _selectedKey is not null && _devices.TryGetValue(_selectedKey, out var d) ? d : null;
+
+    // ── Form models ───────────────────────────────────────────────────────────
+    private BroadcastIpConfig _ip = new();
+    private BroadcastServerConfig _srv = new();
+
+    // ── Dialog state ──────────────────────────────────────────────────────────
+    private bool _ipDialogOpen;
+    private bool _srvDialogOpen;
+
+    // ── UI state ──────────────────────────────────────────────────────────────
+    private bool _busy;
+    private string _statusMsg = string.Empty;
+    private string _statusCss = string.Empty;
+    private bool? _ipResult;
+    private bool? _srvResult;
+
+    private TaskCompletionSource<bool>? _pendingIp;
+    private TaskCompletionSource<bool>? _pendingSrv;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Udp.StartAsync();
+        Udp.RawPacketReceived += OnRawPacket;
+    }
+
+    // ── Step 1: Discover ──────────────────────────────────────────────────────
+
+    private async Task DiscoverAsync()
+    {
+        _busy = true;
+        SetStatus("Broadcasting...", "text-muted");
+
+        byte[] frame = DecoderService.DeviceDiscovery();
+        await Udp.SendBroadcastAsync(frame);
+
+        await Task.Delay(2000);
+
+        _busy = false;
+        SetStatus(_devices.Count > 0
+            ? $"Found {_devices.Count} device(s)."
+            : "No devices responded.", "text-muted");
+
+        if (_scrollList is not null)
+            await _scrollList.ReloadAsync();
+    }
+
+    // ── Step 2: Select ────────────────────────────────────────────────────────
+
+    private void SelectDevice(string key)
+    {
+        _selectedKey = key;
+        _ipResult = null;
+        _srvResult = null;
+
+        if (_selectedDevice is null) return;
+
+        _ip = new BroadcastIpConfig
+            {
+                UniqueId = _selectedDevice.UniqueId,
+                DeviceIp = _selectedDevice.DeviceIp,
+                SubnetMask = _selectedDevice.SubnetMask,
+                Gateway = _selectedDevice.Gateway,
+                Dns1 = _selectedDevice.Dns1,
+                Dns2 = _selectedDevice.Dns2,
+            };
+
+        _srv = new BroadcastServerConfig
+            {
+                UniqueId = _selectedDevice.UniqueId,
+                RemoteIp = _selectedDevice.RemoteIp,
+                TcpPort = _selectedDevice.TcpPort,
+                UdpLivePort = _selectedDevice.UdpLivePort,
+                UdpRegPort = _selectedDevice.UdpRegPort,
+            };
+    }
+
+    // ── Dialog openers ────────────────────────────────────────────────────────
+
+    private void OpenIpDialog()
+    {
+        _ipResult = null;
+        _ipDialogOpen = true;
+    }
+
+    private void OpenServerDialog()
+    {
+        _srvResult = null;
+        _srvDialogOpen = true;
+    }
+
+    // ── Step 3a: Send IP config (Q4) ─────────────────────────────────────────
+
+    private async Task SendIpConfigAsync()
+    {
+        if (_selectedDevice is null) return;
+
+        _busy = true;
+        _ipResult = null;
+        SetStatus("Sending Q4...", "text-muted");
+
+        _pendingIp = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        byte[] frame = DecoderService.ChangeNetConfig(_ip);
+        await Udp.SendBroadcastAsync(frame);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            _ipResult = await _pendingIp.Task.WaitAsync(timeout.Token);
+            SetStatus(_ipResult.Value ? "IP config applied." : "Device rejected IP config.",
+                      _ipResult.Value ? "text-success" : "text-danger");
+        }
+        catch (OperationCanceledException)
+        {
+            _ipResult = false;
+            SetStatus("Q4 timed out — no response from device.", "text-warning");
+        }
+
+        _pendingIp = null;
+        _busy = false;
+    }
+
+    // ── Step 3b: Send server config (Q5) ─────────────────────────────────────
+
+    private async Task SendServerConfigAsync()
+    {
+        if (_selectedDevice is null) return;
+
+        _busy = true;
+        _srvResult = null;
+        SetStatus("Sending Q5...", "text-muted");
+
+        _pendingSrv = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        byte[] frame = DecoderService.ChangeServerConfiguration(_srv);
+        await Udp.SendBroadcastAsync(frame);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            _srvResult = await _pendingSrv.Task.WaitAsync(timeout.Token);
+            SetStatus(_srvResult.Value ? "Server config applied." : "Device rejected server config.",
+                      _srvResult.Value ? "text-success" : "text-danger");
+        }
+        catch (OperationCanceledException)
+        {
+            _srvResult = false;
+            SetStatus("Q5 timed out — no response from device.", "text-warning");
+        }
+
+        _pendingSrv = null;
+        _busy = false;
+    }
+
+
+    // ── Step 7b: Send Factory config (Q7) ─────────────────────────────────────
+    private async Task SendFactoryParameters()
+    {
+
+    }
+
+    // ── Step 7b: Send Manufacturing config (Q7) ─────────────────────────────────────
+    private async Task SendManufacturingParameters()
+    {
+
+    }
+
+    // ── Incoming packet handler ───────────────────────────────────────────────
+
+    private void OnRawPacket(byte[] raw, IPEndPoint remote)
+    {
+        if (raw is not { Length: >= 4 } || raw[0] != 0xDD)
+            return;
+
+        byte queryId = 0x00;
+        if (raw[0] == 0xDD)
+            queryId = raw[1];
+        if (raw[0] == 0xAA)
+            queryId = raw[5];
+
+        switch (queryId)
+        {
+            case 0x03:
+                var q3 = DecoderService.DecodeDeviceDiscovery(raw);
+                if (q3.Success && q3.Data is not null)
+                {
+                    var vm = DiscoveredDeviceVm.FromInfo(q3.Data);
+                    _devices[vm.UniqueKey] = vm;
+                    InvokeAsync(async () =>
+                    {
+                        if (_scrollList is not null)
+                            await _scrollList.ReloadAsync();
+                        StateHasChanged();
+                    });
+                }
+                break;
+
+            case 0x04:
+                var q4 = DecoderService.DecodeChangeNetConfig(raw);
+                _pendingIp?.TrySetResult(q4.Success);
+                InvokeAsync(StateHasChanged);
+                break;
+
+            case 0x05:
+                var q5 = DecoderService.DecodeChangeServerConfiguration(raw);
+                _pendingSrv?.TrySetResult(q5.Success);
+                InvokeAsync(StateHasChanged);
+                break;
+
+            case 0x07:
+                var q7 = DecoderService.FactoryParameters(raw);
+                _pendingSrv?.TrySetResult(true);
+                break;
+
+            case 0x08:
+                var q8 = DecoderService.ManufacturingParameters(raw);
+                _pendingSrv?.TrySetResult(true);
+                break;
+
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private void SetStatus(string msg, string css)
+    {
+        _statusMsg = msg;
+        _statusCss = css;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Udp.RawPacketReceived -= OnRawPacket;
+        await ValueTask.CompletedTask;
+    }
+
+    // ── View model ────────────────────────────────────────────────────────────
+
+    private sealed class DiscoveredDeviceVm
+    {
+        public string UniqueKey { get; init; } = string.Empty;
+        public byte[] UniqueId { get; init; } = Array.Empty<byte>();
+        public string DeviceIp { get; set; } = string.Empty;
+        public string SubnetMask { get; set; } = string.Empty;
+        public string Gateway { get; set; } = string.Empty;
+        public string Dns1 { get; set; } = string.Empty;
+        public string Dns2 { get; set; } = string.Empty;
+        public string RemoteIp { get; set; } = string.Empty;
+        public int TcpPort { get; set; }
+        public int UdpLivePort { get; set; }
+        public int UdpRegPort { get; set; }
+        public DateTime LastSeen { get; set; } = DateTime.Now;
+
+        public static DiscoveredDeviceVm FromInfo(BroadcastDeviceInfo info) => new()
+            {
+                UniqueKey = info.UniqueKey,
+                UniqueId = info.UniqueId,
+                DeviceIp = info.DeviceIp,
+                SubnetMask = info.SubnetMask,
+                Gateway = info.Gateway,
+                Dns1 = info.Dns1,
+                Dns2 = info.Dns2,
+                RemoteIp = info.RemoteIp,
+                TcpPort = info.TcpPort,
+                UdpLivePort = info.UdpLivePort,
+                UdpRegPort = info.UdpRegPort,
+                LastSeen = DateTime.Now,
+            };
+    }
+}

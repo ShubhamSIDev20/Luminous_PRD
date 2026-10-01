@@ -1,0 +1,251 @@
+﻿@using BatteryTestingSystem.Components.Pages.Devices
+@using BatteryTestingSystem.Components.Pages.Home
+@using BatteryTestingSystem.Components.Pages.Programs
+@using BatteryTestingSystem.Components.Pages.Batteries
+@using BatteryTestingSystem.Components.Pages.Settings
+@using BatteryTestingSystem.Components.Pages.Reports
+@using BatteryTestingSystem.Models.Entities
+@using BatteryTestingSystem.Services.Implementations
+@using BatteryTestingSystem.Services.Interfaces
+@using BatteryTestingSystem.Services.Implementations.Workflow
+@using Microsoft.Extensions.Options
+
+
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+@inject NavigationManager nav
+@inject ChannelManager CM
+@inject IOptions<WorkflowFeatureOptions> Features
+@inject TabService tbService
+@inject IAlarmService AlarmSvc
+@inject ToastService Toasts
+@implements IDisposable
+
+<AppLayout BrandName="BMS Monitor"
+MenuItems="@_menuItems"
+Alarms="@_alarms"
+Errors="@_errors"
+EventLogs="@_eventLogs"
+ActiveCount="@(CM?._devices?.Where(e => e.Value?._tcpClient?.Connected == true).Count() ?? 0)"
+TotalCount="@(CM?._devices.Count ?? 0)"
+CurrentTheme="@_currentTheme"
+OnNavigate="@HandleNavigate"
+OnLogout="@HandleLogout"
+OnThemeChange="@HandleThemeChange"
+OnAlarmAcknowledge="@HandleAlarmAcknowledge"
+OnAlarmAcknowledgeAll="@HandleAlarmAcknowledgeAll"
+OnAlarmActivate="@HandleAlarmActivate">
+    <div class="mx-auto px-4 py-1 h-full w-full">
+        @Body
+    </div>
+</AppLayout>
+
+
+@code
+{
+
+    private ThemeMode _currentTheme = ThemeMode.Light;
+
+    #region Alarms
+    private List<AlarmLog> _alarms = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _menuItems = WorkflowMenu.Build(Features.Value, _alwaysOnMenuItems);
+
+        AlarmSvc.OnChanged += HandleAlarmChanged;
+        await ReloadAlarmsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var saved = await JS.InvokeAsync<string>("getSavedTheme", CurrentUser.UserName);
+
+            if (Enum.TryParse<ThemeMode>(saved, out var savedTheme) && savedTheme != _currentTheme)
+            {
+                _currentTheme = savedTheme;
+                StateHasChanged();
+            }
+
+            await JS.InvokeVoidAsync("setThemeOnBody", _currentTheme.ToString(), CurrentUser.UserName);
+        }
+    }
+
+    private async Task ReloadAlarmsAsync()
+    {
+        try
+        {
+            var active = await AlarmSvc.GetActiveAsync(50);
+            _alarms = active.ToList();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to load alarms");
+        }
+    }
+
+    // AlarmSvc.OnChanged fires on whichever hardware thread raised the alarm, so this must not
+    // be async void: an alarm storm would otherwise start one overlapping 50-row reload per
+    // event, and would touch _alarms, the toast service and JS interop off the circuit's
+    // synchronization context.
+    private readonly CoalescingRunner _alarmRunner = new();
+
+    private void HandleAlarmChanged(AlarmChanged change)
+    {
+        // Only the reload is coalesced. Escalation stays per-event because AlarmPolicy already
+        // rate-limits it server-side (cooldown + storm guard) - collapsing it here would
+        // suppress it twice.
+        _alarmRunner.Request(
+            () => InvokeAsync(async () =>
+            {
+                await ReloadAlarmsAsync();
+                StateHasChanged();
+            }),
+            ex => Log.Error(ex, "HandleAlarmChanged reload failed"));
+
+        if (!change.ShouldEscalate) return;
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                Toasts.Error(change.Alarm.Title, change.Alarm.Message);
+                await JS.InvokeVoidAsync("AlarmSound.beep", change.Alarm.Severity.ToString());
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Alarm escalation failed");
+            }
+        });
+    }
+
+    private async Task HandleAlarmAcknowledge(long id)
+    {
+        await AlarmSvc.AcknowledgeAsync(id, CurrentUser.UserName);
+        await ReloadAlarmsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleAlarmAcknowledgeAll()
+    {
+        await AlarmSvc.AcknowledgeAllAsync(CurrentUser.UserName);
+        await ReloadAlarmsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleAlarmActivate(AlarmLog alarm)
+    {
+        // Deep link: open the Circuits tab so the operator lands on the faulty device.
+        tbService.AddTab(new NavMenuItem
+        {
+            Title = "Circuits",
+            Url = "/device/list",
+            Icon = Lucide.Settings2,
+            ComponentType = typeof(DeviceList),
+            Unique = true
+        });
+    }
+    #endregion
+
+    private List<NavMenuItem> _menuItems = new();
+
+    private static readonly List<NavMenuItem> _alwaysOnMenuItems = new()
+    {
+        new NavMenuItem
+        {
+            Title = "Circuits",
+            Url = "/device/list",
+            Icon = Lucide.Settings2,
+            ComponentType = typeof(DeviceList),
+            Unique = true,
+        },
+        new NavMenuItem
+        {
+            Title = "Battery",
+            Url = "/battery/list",
+            Icon = Lucide.BatteryFull,
+            ComponentType = typeof(BatteriesList),
+            Unique = true,
+            // Dropdown = new List<NavMenuSubItem>
+            // {
+            //     new NavMenuSubItem { Title = "View Batteries", Url = "/battery" },
+            //     new NavMenuSubItem { Title = "Add Battery", Url = "/battery/add" },
+            //     new NavMenuSubItem { Title = "Configure", Url = "/battery/configure" }
+            // }
+        },
+        new NavMenuItem
+        {
+            Title = "Program",
+            Url = "/program/list",
+            Icon = Lucide.Code,
+            Dropdown = new List<NavMenuItem>
+            {
+                new NavMenuItem { Title = "Programs", Url = "/program/list" , 
+                    Icon = Lucide.Code, 
+                    ComponentType = typeof(ProgramList), Unique = true, keepAlive = true},
+                new NavMenuItem { Title = "TableFiles", Url = "/program/tables" ,
+                    Icon = Lucide.Files, 
+                    ComponentType = typeof(TableFileManager) , Unique = true},
+                new NavMenuItem { Title = "Registrations", Url = "/program/registration", 
+                    Icon = Lucide.Stamp, 
+                    ComponentType = typeof(Registrations), Unique = true },
+                new NavMenuItem { Title = "ErrorMessages", Url = "/program/ErrorMessages",
+                    Icon = Lucide.Signal, 
+                    ComponentType = typeof(ErrorMsgConfig)},
+                new NavMenuItem { Title = "Scheduler", Url = "/scheduler",
+                    Icon = Lucide.CalendarClock,
+                    ComponentType = typeof(SchedulerPage), Unique = true, keepAlive = false }
+
+            }
+        },
+        new NavMenuItem { 
+            Title = "Report", 
+            Url = "/reports/sessions", 
+            Icon = Lucide.List,
+            ComponentType = typeof(Reports),
+            Unique = true,
+            keepAlive = true
+        }
+    };
+
+
+    private List<ErrorItem> _errors = new();
+
+    private List<EventLogItem> _eventLogs = new();
+
+
+    private void HandleNavigate(NavMenuItem navigator)
+    {
+        Log.Information($"Navigate to: {navigator.Url}");
+        if (navigator.ComponentType != null)
+            tbService.AddTab(navigator);
+       // nav.NavigateTo(navigator.Url);
+
+    }
+
+    private void HandleLogout()
+    {
+        Log.Information("Logout triggered");
+        nav.NavigateTo($"/logout?id={CurrentUser.UserId}&user={CurrentUser.UserName}", true);
+        // TODO: Add logout logic (clear tokens, redirect, etc.)
+    }
+
+    private async Task HandleThemeChange(ThemeMode theme)
+    {
+        Log.Information($"Theme changed to: {theme}");
+
+        _currentTheme = theme;
+
+        await JS.InvokeVoidAsync("setThemeOnBody", theme.ToString(), CurrentUser.UserName);
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        AlarmSvc.OnChanged -= HandleAlarmChanged;
+    }
+
+}

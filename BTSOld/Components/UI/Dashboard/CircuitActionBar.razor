@@ -1,0 +1,250 @@
+@namespace BatteryTestingSystem.Components.UI.Dashboard
+@using BatteryTestingSystem.Models.Enums
+
+@if (SelectedCount > 0)
+{
+    <div class="flex items-center gap-2 my-2 p-2 bg-secondary/50 rounded-lg border border-border animate-fade-in">
+
+        <!-- Selection count + incompatible warning -->
+        <span class="text-xs font-medium text-foreground px-2">
+            @SelectedCount selected
+            @if (IncompatibleCount > 0)
+            {
+                <span class="ml-1 text-yellow-500">(@IncompatibleCount incompatible)</span>
+            }
+        </span>
+
+        <div class="flex items-center gap-1">
+
+            @if (EffectiveState == null)
+            {
+                <span class="text-xs text-muted-foreground px-2 italic">
+                    Mixed states — select circuits with the same status
+                </span>
+            }
+            else
+            {
+                @foreach (var action in Actions)
+                {
+                    bool disabled = !IsEnabled(action.Id);
+                    string disabledClass = disabled ? "opacity-40 cursor-not-allowed" : "";
+
+                    @if (action.Id == "details" || action.Id == "transfer")
+                    {
+                        <AuthorizeView Roles="Administrator,Supervisor">
+                            <button @onclick="() => HandleAction(action.Id, disabled)"
+                                    disabled="@disabled"
+                                    title="@GetTooltip(action.Id)"
+                                    class="h-7 px-2 gap-1 text-xs text-white rounded flex items-center @action.Color @disabledClass">
+                                @GetActionIcon(action.Icon)
+                                <span class="hidden sm:inline">@action.Label</span>
+                            </button>
+                        </AuthorizeView>
+                    }
+                    else if (action.Id == "calibration")
+                    {
+                        <AuthorizeView Roles="Administrator,Maintenance">
+                            <button @onclick="() => HandleAction(action.Id, disabled)"
+                                    disabled="@disabled"
+                                    title="@GetTooltip(action.Id)"
+                                    class="h-7 px-2 gap-1 text-xs text-white rounded flex items-center @action.Color @disabledClass">
+                                @GetActionIcon(action.Icon)
+                                <span class="hidden sm:inline">@action.Label</span>
+                            </button>
+                        </AuthorizeView>
+                    }
+                    else
+                    {
+                        <button @onclick="() => HandleAction(action.Id, disabled)"
+                                disabled="@disabled"
+                                title="@GetTooltip(action.Id)"
+                                class="h-7 px-2 gap-1 text-xs text-white rounded flex items-center @action.Color @disabledClass">
+                            @GetActionIcon(action.Icon)
+                            <span class="hidden sm:inline">@action.Label</span>
+                        </button>
+                    }
+                }
+
+                @* TCP disconnected warning when program is running *@
+                @if (EffectiveState.ProgramStatus == ProgramRunningStatus.Running && !EffectiveState.IsTcpConnected)
+                {
+                    <span class="text-xs text-yellow-500 px-2 flex items-center gap-1">
+                        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                        TCP disconnected
+                    </span>
+                }
+            }
+        </div>
+
+        <!-- Clear selection -->
+        <button @onclick="HandleClearSelection"
+                class="h-7 px-2 ml-auto hover:bg-accent rounded flex items-center">
+            @GetActionIcon("X")
+            <span class="hidden sm:inline ml-1">Clear</span>
+        </button>
+    </div>
+}
+
+@code {
+
+    [Parameter] public int SelectedCount { get; set; }
+    [Parameter] public EventCallback<string> OnAction { get; set; }
+    [Parameter] public EventCallback OnClearSelection { get; set; }
+
+    /// <summary>
+    /// Derived from selected circuits in DashboardView.
+    /// Null means mixed states across selected circuits.
+    /// </summary>
+    [Parameter] public ActionBarState? EffectiveState { get; set; }
+
+    /// <summary>Count of selected circuits whose state does not match the anchor.</summary>
+    [Parameter] public int IncompatibleCount { get; set; }
+
+    private List<ActionItem> Actions = new()
+    {
+        new ActionItem { Id = "start",       Label = "Start",            Icon = "Play",           Color = "bg-status-charge hover:bg-status-charge/80" },
+        new ActionItem { Id = "stop",        Label = "Stop",             Icon = "Square",          Color = "bg-status-error hover:bg-status-error/80" },
+        new ActionItem { Id = "pause",       Label = "Interrupt",        Icon = "Pause",           Color = "bg-status-pause hover:bg-status-pause/80" },
+        new ActionItem { Id = "continue",    Label = "Continue",         Icon = "SkipForward",     Color = "bg-status-continue hover:bg-status-continue/80" },
+        new ActionItem { Id = "transfer",    Label = "Transfer",         Icon = "ArrowRightLeft",  Color = "bg-status-discharging hover:bg-status-discharging/80" },
+        new ActionItem { Id = "details",     Label = "Download Details", Icon = "Info",            Color = "bg-status-msg hover:bg-status-msg/80" },
+        new ActionItem { Id = "calibration", Label = "Calibration",      Icon = "Info",            Color = "bg-status-msg hover:bg-status-msg/80" },
+    };
+
+    /// <summary>
+    /// Returns true when this action is allowed given the current effective state.
+    /// All buttons are always shown — disabled ones get opacity + cursor-not-allowed.
+    /// </summary>
+    private bool IsEnabled(string actionId)
+    {
+        if (EffectiveState == null) return false;
+
+        var cs  = EffectiveState.CircuitStatus;
+        var ps = (ProgramRunningStatus)EffectiveState.ProgramStatus;
+        var tcp = EffectiveState.IsTcpConnected;
+
+        // Offline → nothing enabled
+        if (cs == CircuitStatus.Offline) return false;
+
+
+        return actionId switch
+        {
+            // Start: idle + stopped + TCP connected
+            "start" => cs == CircuitStatus.Idle
+                       && ps == ProgramRunningStatus.Stop
+                       && tcp,
+
+            // Stop: any running program, regardless of TCP
+            "stop"  => ps == ProgramRunningStatus.Running,
+
+            // Pause/Interrupt: running + actively charging or discharging + TCP connected
+            "pause" => ps == ProgramRunningStatus.Running
+                       && tcp,
+
+            // Continue: running + paused/interrupted state
+            // TCP not required — device may reconnect and resume
+            "continue" => ps == ProgramRunningStatus.Running
+                          && (cs == CircuitStatus.Pause
+                              || cs == CircuitStatus.Interrupt
+                              || cs == CircuitStatus.Countinue),
+
+            // Transfer / Details / Calibration: only when idle + stopped + TCP connected
+            "transfer"    => cs == CircuitStatus.Idle && ps == ProgramRunningStatus.Stop && tcp,
+            "details"     => cs == CircuitStatus.Idle && ps == ProgramRunningStatus.Stop && tcp,
+            "calibration" => cs == CircuitStatus.Idle && ps == ProgramRunningStatus.Stop && tcp,
+
+            _ => false
+        };
+    }
+
+    /// <summary>Tooltip explaining why a button is disabled.</summary>
+    private string GetTooltip(string actionId)
+    {
+        if (EffectiveState == null) return "No circuit selected";
+        if (IsEnabled(actionId)) return string.Empty;
+
+        var cs  = EffectiveState.CircuitStatus;
+        var ps = (ProgramRunningStatus)EffectiveState.ProgramStatus;
+        var tcp = EffectiveState.IsTcpConnected;
+
+        if (cs == CircuitStatus.Offline) return "Circuit is offline";
+
+        return actionId switch
+        {
+            "start" when !tcp                              => "TCP not connected",
+            "start" when cs != CircuitStatus.Idle          => $"Circuit is {cs}, must be Idle",
+            "start" when ps != ProgramRunningStatus.Stop   => "Program is already running",
+
+            "stop"  when ps != ProgramRunningStatus.Running => "No program running",
+
+            "pause" when !tcp                               => "TCP not connected",
+            "pause" when ps != ProgramRunningStatus.Running => "No program running",
+            "pause"                                         => $"Circuit is {cs}, must be Charge or Discharging",
+
+            "continue" when ps != ProgramRunningStatus.Running => "No program running",
+            "continue"                                         => $"Circuit is {cs}, must be Paused or Interrupted",
+
+            "transfer" or "details" or "calibration" when !tcp                        => "TCP not connected",
+            "transfer" or "details" or "calibration" when cs != CircuitStatus.Idle    => $"Circuit is {cs}, must be Idle",
+            "transfer" or "details" or "calibration" when ps != ProgramRunningStatus.Stop => "Program is running",
+
+            _ => "Not available"
+        };
+    }
+
+    private async void HandleAction(string actionId, bool disabled)
+    {
+        if (disabled) return;
+        await OnAction.InvokeAsync(actionId);
+    }
+
+    private void HandleClearSelection() => OnClearSelection.InvokeAsync();
+
+    private RenderFragment GetActionIcon(string icon) => builder =>
+    {
+        builder.OpenElement(0, "svg");
+        builder.AddAttribute(1, "class", "h-3 w-3");
+        builder.AddAttribute(2, "fill", "none");
+        builder.AddAttribute(3, "stroke", "currentColor");
+        builder.AddAttribute(4, "viewBox", "0 0 24 24");
+
+        string pathData = icon switch
+        {
+            "Play"           => "M5 3l14 9-14 9V3z",
+            "Square"         => "M18 6v12H6V6h12z",
+            "Pause"          => "M10 4H6v16h4V4zm8 0h-4v16h4V4z",
+            "SkipForward"    => "M5 4l10 8-10 8V4zm11 0v16",
+            "ArrowRightLeft" => "M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4",
+            "Info"           => "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z",
+            "X"              => "M18 6L6 18M6 6l12 12",
+            "Import"         => "M12 3v12m0 0l-4-4m4 4l4-4M4 17v2h16v-2",
+            _                => ""
+        };
+
+        builder.OpenElement(5, "path");
+        builder.AddAttribute(6, "stroke-linecap", "round");
+        builder.AddAttribute(7, "stroke-linejoin", "round");
+        builder.AddAttribute(8, "stroke-width", "2");
+        builder.AddAttribute(9, "d", pathData);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    public class ActionItem
+    {
+        public string Id    { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string Icon  { get; set; } = "";
+        public string Color { get; set; } = "";
+    }
+
+    public class ActionBarState
+    {
+        public CircuitStatus CircuitStatus { get; set; }
+        public ProgramRunningStatus ProgramStatus { get; set; }
+        public bool IsTcpConnected { get; set; }
+    }
+}

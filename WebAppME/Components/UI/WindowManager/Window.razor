@@ -1,0 +1,369 @@
+﻿@namespace BatteryTestingSystem.Components.UI.WindowManager
+@implements IDisposable
+
+<CascadingValue Value="this">
+    @if (windowManager != null && model != null && model.State != WindowState.Minimized)
+    {
+        <div class="@GetWindowClass()"
+             style="@GetWindowStyle()"
+             @onmousedown="HandleFocus"
+             @onmousedown:stopPropagation="false">
+
+            @* Title Bar *@
+            <div class="@GetTitleBarClass()"
+                 @onmousedown="StartDrag"
+                 @onmousedown:stopPropagation="true"
+                 @ondblclick="HandleMaximize">
+
+                <div class="flex items-center gap-2 flex-1 min-w-0">
+                    @if (Icon != null)
+                    {
+                        <Blazicon Svg="@Icon" class="w-4 h-4 flex-shrink-0" />
+                    }
+                    <span class="text-sm font-medium truncate">@Title</span>
+                </div>
+
+                @if (TitleBarActions != null)
+                {
+                    <div class="flex items-center gap-1 mr-2">
+                        @TitleBarActions
+                    </div>
+                }
+
+                <div class="flex items-center gap-1">
+                    @if (ShowMinimize)
+                    {
+                        <button @onclick="HandleMinimize" @onclick:stopPropagation="true"
+                                class="p-1.5 hover:bg-muted rounded transition-colors">
+                            <Blazicon Svg="Lucide.Minus" class="w-4 h-4" />
+                        </button>
+                    }
+
+                    @if (ShowMaximize)
+                    {
+                        <button @onclick="HandleMaximize" @onclick:stopPropagation="true"
+                                class="p-1.5 hover:bg-muted rounded transition-colors">
+                            @if (model.State == WindowState.Maximized)
+                            {
+                                <Blazicon Svg="Lucide.Copy" class="w-4 h-4" />
+                            }
+                            else
+                            {
+                                <Blazicon Svg="Lucide.Square" class="w-4 h-4" />
+                            }
+                        </button>
+                    }
+
+                    @if (ShowClose)
+                    {
+                        <button @onclick="HandleClose" @onclick:stopPropagation="true"
+                                class="p-1.5 hover:bg-destructive hover:text-destructive-foreground rounded transition-colors">
+                            <Blazicon Svg="Lucide.X" class="w-4 h-4" />
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @* Content Area *@
+            <div class="flex-1 overflow-auto bg-background"
+                 @onmousedown:stopPropagation="true">
+                @ChildContent
+            </div>
+
+            @* Resize Handles *@
+            @if (model.State == WindowState.Normal && !model.IsDocked && Resizable)
+            {
+                <div class="absolute top-0 left-0 w-2 h-full cursor-w-resize hover:bg-primary/20 z-10"
+                     @onmousedown="(e) => StartResize(e, ResizeDirection.Left)"
+                     @onmousedown:stopPropagation="true"></div>
+                <div class="absolute top-0 right-0 w-2 h-full cursor-e-resize hover:bg-primary/20 z-10"
+                     @onmousedown="(e) => StartResize(e, ResizeDirection.Right)"
+                     @onmousedown:stopPropagation="true"></div>
+                <div class="absolute top-0 left-0 right-0 h-2 cursor-n-resize hover:bg-primary/20 z-10"
+                     @onmousedown="(e) => StartResize(e, ResizeDirection.Top)"
+                     @onmousedown:stopPropagation="true"></div>
+                <div class="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize hover:bg-primary/20 z-10"
+                     @onmousedown="(e) => StartResize(e, ResizeDirection.Bottom)"
+                     @onmousedown:stopPropagation="true"></div>
+                <div class="absolute top-0 left-0 w-4 h-4 cursor-nw-resize hover:bg-primary/30 z-10"
+                     @onmousedown="(e) => StartResize(e, ResizeDirection.TopLeft)"
+                     @onmousedown:stopPropagation="true"></div>
+                <div class="absolute top-0 right-0 w-4 h-4 cursor-ne-resize hover:bg-primary/30 z-10"
+                     @onmousedown="(e) => StartResize(e, ResizeDirection.TopRight)"
+                     @onmousedown:stopPropagation="true"></div>
+                <div class="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize hover:bg-primary/30 z-10"
+                     @onmousedown="(e) => StartResize(e, ResizeDirection.BottomLeft)"
+                     @onmousedown:stopPropagation="true"></div>
+                <div class="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize hover:bg-primary/30 z-10"
+                     @onmousedown="(e) => StartResize(e, ResizeDirection.BottomRight)"
+                     @onmousedown:stopPropagation="true"></div>
+            }
+
+            @* Global mouse event catcher when dragging/resizing *@
+            @if (isDragging || isResizing)
+            {
+                <div class="fixed inset-0 z-[9999] cursor-move"
+                     style="@(isResizing ? GetResizeCursorStyle() : "")"
+                     @onmousemove="HandleGlobalMouseMove"
+                     @onmouseup="HandleGlobalMouseUp"
+                     @onmouseleave="HandleGlobalMouseUp"></div>
+            }
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    [CascadingParameter] private WindowManager windowManager { get; set; }
+
+    [Parameter] public string Id { get; set; } = Guid.NewGuid().ToString();
+    [Parameter] public string Title { get; set; } = "Window";
+    [Parameter] public SvgIcon Icon { get; set; }
+    [Parameter] public RenderFragment ChildContent { get; set; }
+    [Parameter] public RenderFragment TitleBarActions { get; set; }
+
+    [Parameter] public double X { get; set; } = 100;
+    [Parameter] public double Y { get; set; } = 100;
+    [Parameter] public double Width { get; set; } = 800;
+    [Parameter] public double Height { get; set; } = 600;
+    [Parameter] public double MinWidth { get; set; } = 300;
+    [Parameter] public double MinHeight { get; set; } = 200;
+
+    [Parameter] public bool ShowMinimize { get; set; } = true;
+    [Parameter] public bool ShowMaximize { get; set; } = true;
+    [Parameter] public bool ShowClose { get; set; } = true;
+    [Parameter] public bool Draggable { get; set; } = true;
+    [Parameter] public bool Resizable { get; set; } = true;
+
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnMinimize { get; set; }
+    [Parameter] public EventCallback OnMaximize { get; set; }
+    [Parameter] public EventCallback OnFocus { get; set; }
+
+    private WindowModel model;
+    private bool isDragging;
+    private bool isResizing;
+    private ResizeDirection resizeDirection;
+    private double startX, startY, startWidth, startHeight, startPosX, startPosY;
+
+    private enum ResizeDirection { None, Left, Right, Top, Bottom, TopLeft, TopRight, BottomLeft, BottomRight }
+
+    protected override void OnInitialized()
+    {
+        model = new WindowModel
+            {
+                Title = Title,
+                Icon = Icon,
+                Position = new WindowPosition { X = X, Y = Y },
+                Size = new WindowSize { Width = Width, Height = Height, MinWidth = MinWidth, MinHeight = MinHeight }
+            };
+
+        windowManager?.RegisterWindow(Id, model, ChildContent);
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+
+            // If you need JS interop, it is SAFE here
+            // await LoadStateFromLocalStorage();
+
+            StateHasChanged();
+        }
+    }
+    public void Dispose()
+    {
+        windowManager?.UnregisterWindow(Id);
+    }
+
+    private void HandleFocus()
+    {
+        windowManager?.FocusWindow(Id);
+        _ = OnFocus.InvokeAsync();
+    }
+
+    private void HandleClose()
+    {
+        _ = OnClose.InvokeAsync();
+        windowManager?.CloseWindow(Id);
+    }
+
+    private void HandleMinimize()
+    {
+        _ = OnMinimize.InvokeAsync();
+        windowManager?.MinimizeWindow(Id);
+    }
+
+    private void HandleMaximize()
+    {
+        _ = OnMaximize.InvokeAsync();
+        windowManager?.MaximizeWindow(Id);
+    }
+
+    private void StartDrag(MouseEventArgs e)
+    {
+        if (Draggable && model.State != WindowState.Maximized && !model.IsDocked)
+        {
+            isDragging = true;
+            startX = e.ClientX;
+            startY = e.ClientY;
+            startPosX = model.Position.X;
+            startPosY = model.Position.Y;
+        }
+    }
+
+    private void StartResize(MouseEventArgs e, ResizeDirection direction)
+    {
+        if (model.State == WindowState.Normal && !model.IsDocked && Resizable)
+        {
+            isResizing = true;
+            resizeDirection = direction;
+            startX = e.ClientX;
+            startY = e.ClientY;
+            startWidth = model.Size.Width;
+            startHeight = model.Size.Height;
+            startPosX = model.Position.X;
+            startPosY = model.Position.Y;
+        }
+    }
+
+    private void HandleGlobalMouseMove(MouseEventArgs e)
+    {
+        if (isDragging)
+        {
+            var deltaX = e.ClientX - startX;
+            var deltaY = e.ClientY - startY;
+            model.Position.X = startPosX + deltaX;
+            model.Position.Y = Math.Max(0, startPosY + deltaY);
+            StateHasChanged();
+        }
+        else if (isResizing)
+        {
+            var deltaX = e.ClientX - startX;
+            var deltaY = e.ClientY - startY;
+
+            switch (resizeDirection)
+            {
+                case ResizeDirection.Right:
+                    model.Size.Width = Math.Max(model.Size.MinWidth ?? 200, startWidth + deltaX);
+                    break;
+                case ResizeDirection.Left:
+                    var newWidth = startWidth - deltaX;
+                    if (newWidth >= (model.Size.MinWidth ?? 200))
+                    {
+                        model.Size.Width = newWidth;
+                        model.Position.X = startPosX + deltaX;
+                    }
+                    break;
+                case ResizeDirection.Bottom:
+                    model.Size.Height = Math.Max(model.Size.MinHeight ?? 200, startHeight + deltaY);
+                    break;
+                case ResizeDirection.Top:
+                    var newHeight = startHeight - deltaY;
+                    if (newHeight >= (model.Size.MinHeight ?? 200))
+                    {
+                        model.Size.Height = newHeight;
+                        model.Position.Y = startPosY + deltaY;
+                    }
+                    break;
+                case ResizeDirection.BottomRight:
+                    model.Size.Width = Math.Max(model.Size.MinWidth ?? 200, startWidth + deltaX);
+                    model.Size.Height = Math.Max(model.Size.MinHeight ?? 200, startHeight + deltaY);
+                    break;
+                case ResizeDirection.TopLeft:
+                    var nw = startWidth - deltaX;
+                    var nh = startHeight - deltaY;
+                    if (nw >= (model.Size.MinWidth ?? 200))
+                    {
+                        model.Size.Width = nw;
+                        model.Position.X = startPosX + deltaX;
+                    }
+                    if (nh >= (model.Size.MinHeight ?? 200))
+                    {
+                        model.Size.Height = nh;
+                        model.Position.Y = startPosY + deltaY;
+                    }
+                    break;
+                case ResizeDirection.TopRight:
+                    model.Size.Width = Math.Max(model.Size.MinWidth ?? 200, startWidth + deltaX);
+                    var newH = startHeight - deltaY;
+                    if (newH >= (model.Size.MinHeight ?? 200))
+                    {
+                        model.Size.Height = newH;
+                        model.Position.Y = startPosY + deltaY;
+                    }
+                    break;
+                case ResizeDirection.BottomLeft:
+                    var newW = startWidth - deltaX;
+                    if (newW >= (model.Size.MinWidth ?? 200))
+                    {
+                        model.Size.Width = newW;
+                        model.Position.X = startPosX + deltaX;
+                    }
+                    model.Size.Height = Math.Max(model.Size.MinHeight ?? 200, startHeight + deltaY);
+                    break;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void HandleGlobalMouseUp(MouseEventArgs e)
+    {
+        isDragging = false;
+        isResizing = false;
+        StateHasChanged();
+    }
+
+    private string GetWindowClass()
+    {
+        var baseClass = "absolute flex flex-col bg-card border border-border rounded-lg shadow-2xl overflow-hidden transition-all duration-200";
+
+        if (model.State == WindowState.Maximized)
+            return $"{baseClass} inset-0 rounded-none";
+
+        if (model.IsDocked)
+            return $"{baseClass} rounded-none";
+
+        return baseClass;
+    }
+
+    private string GetWindowStyle()
+    {
+        var style = $"z-index: {model.ZIndex};";
+
+        if (model.State == WindowState.Maximized)
+        {
+            return $"{style} left: 0; top: 0; right: 0; bottom: 0; width: 100%; height: 100%;";
+        }
+
+        if (model.IsDocked)
+        {
+            return model.DockPosition switch
+            {
+                DockPosition.Left => $"{style} left: 0; top: 0; bottom: 0; width: 50%;",
+                DockPosition.Right => $"{style} right: 0; top: 0; bottom: 0; width: 50%;",
+                DockPosition.Top => $"{style} left: 0; right: 0; top: 0; height: 50%;",
+                DockPosition.Bottom => $"{style} left: 0; right: 0; bottom: 0; height: 50%;",
+                _ => style
+            };
+        }
+
+        return $"{style} left: {model.Position.X}px; top: {model.Position.Y}px; width: {model.Size.Width}px; height: {model.Size.Height}px;";
+    }
+
+    private string GetTitleBarClass()
+    {
+        return "flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border cursor-move select-none";
+    }
+
+    private string GetResizeCursorStyle()
+    {
+        return resizeDirection switch
+        {
+            ResizeDirection.Left or ResizeDirection.Right => "cursor: ew-resize !important;",
+            ResizeDirection.Top or ResizeDirection.Bottom => "cursor: ns-resize !important;",
+            ResizeDirection.TopLeft or ResizeDirection.BottomRight => "cursor: nwse-resize !important;",
+            ResizeDirection.TopRight or ResizeDirection.BottomLeft => "cursor: nesw-resize !important;",
+            _ => "cursor: move !important;"
+        };
+    }
+}

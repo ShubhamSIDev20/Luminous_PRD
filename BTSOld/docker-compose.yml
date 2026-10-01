@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  bts-server:
+    image: ghcr.io/sysin1/battery-testing-system:latest
+    container_name: battery-testing-system
+    restart: unless-stopped
+
+    ports:
+      - "5000:5000/tcp"       # Blazor Web UI (HTTP)
+      - "9999:9999/tcp"       # BTS Hardware Command Control (TCP)
+      - "10000:10000/udp"     # Real-Time Data Stream (UDP View)
+      - "10001:10001/udp"     # Session Data Store (UDP Store)
+      - "10002:10002/udp"     # Reserved UDP
+      - "10003:10003/udp"     # Reserved UDP
+
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__DefaultConnection=Data Source=/app/config/BtsAppdb.db
+      - AppSettings__Data=/app/config
+      - AppSettings__DbEncryption=your-encryption-key-here
+
+    volumes:
+      - ./bts-data:/app/config        # App DB + Session SQLite files + logs
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

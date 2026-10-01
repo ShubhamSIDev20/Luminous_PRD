@@ -1,0 +1,211 @@
+@namespace BatteryTestingSystem.Components.UI.Dashboard
+@inject ServerSessionStorageService sessionStorage
+@using BatteryTestingSystem.Models.Enums
+
+<Popover>
+    <PopoverTrigger AsChild>
+        <Button Variant="ButtonVariant.Outline" size="ButtonSize.Icon" Class="relative">
+            <Blazicon Svg="Lucide.ListFilter" class="h-4 w-4" />
+            @if (_hiddenCount > 0)
+            {
+                <span class="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-mono rounded-full w-4 h-4 flex items-center justify-center">
+                    @(_hiddenCount > 9 ? "9+" : _hiddenCount.ToString())
+                </span>
+            }
+        </Button>
+    </PopoverTrigger>
+
+    <PopoverContent Class="w-72 bg-popover border border-border z-50" Align="PopoverAlign.End">
+        <div class="space-y-3">
+
+            @* Header *@
+            <div class="flex items-center justify-between pb-2 border-b border-border">
+                <div>
+                    <h4 class="font-medium text-sm text-foreground">My Circuits</h4>
+                    <span class="text-[10px] text-muted-foreground">
+                        @(AccessCircuits.Count - _hiddenCount) / @AccessCircuits.Count visible
+                    </span>
+                </div>
+                <div class="flex gap-1">
+                    @if (_hiddenCount > 0)
+                    {
+                        <Button Variant="ButtonVariant.Ghost" size="ButtonSize.Small"
+                                @onclick="ShowAll" class="h-6 px-2 text-xs">
+                            Show All
+                        </Button>
+                    }
+                    <Button Variant="ButtonVariant.Ghost" size="ButtonSize.Small"
+                            @onclick="HideAll" class="h-6 px-2 text-xs text-muted-foreground">
+                        Hide All
+                    </Button>
+                </div>
+            </div>
+
+            @* Search *@
+            <input type="search" placeholder="Search circuits…"
+                   class="w-full h-7 px-2 text-xs rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                   @bind="_search" @bind:event="oninput" />
+
+            @* Circuit list — materialise once to avoid double enumeration *@
+            @{
+                var filteredList = _filteredList;
+            }
+            <div class="max-h-56 overflow-y-auto space-y-0.5">
+                @foreach (var c in filteredList)
+                {
+                    var key = (c.DeviceID, c.CircuitID);
+                    var isVisible = !_hidden.Contains(key);
+                    <label class="flex items-center gap-2 px-1 py-1 hover:bg-muted/50 cursor-pointer rounded text-xs">
+                        <input type="checkbox" checked="@isVisible"
+                               @onchange="@(async e => await Toggle(key, (bool)(e.Value ?? true)))"
+                               class="w-3.5 h-3.5 accent-primary cursor-pointer" />
+                        <span class="text-foreground">@c.Name – C@(c.CircuitID)</span>
+                    </label>
+                }
+                @if (!filteredList.Any())
+                {
+                    <p class="text-xs text-muted-foreground py-2 text-center">No circuits match.</p>
+                }
+            </div>
+        </div>
+    </PopoverContent>
+</Popover>
+
+@code {
+    /// <summary>Circuits this user is permitted to see — set by DashboardView from DB access table.</summary>
+    [Parameter] public List<(int DeviceID, int CircuitID, string Name)> AccessCircuits { get; set; } = new();
+
+    /// <summary>Current visible subset — two-way bound to DashboardView._visibleCircuits.</summary>
+    [Parameter] public HashSet<(int DeviceID, int CircuitID)> VisibleCircuits { get; set; } = new();
+    [Parameter] public EventCallback<HashSet<(int DeviceID, int CircuitID)>> VisibleCircuitsChanged { get; set; }
+
+    // Circuits the user has chosen to hide — persisted; new access circuits auto-show.
+    private HashSet<(int DeviceID, int CircuitID)> _hidden = new();
+
+    private string _searchBacking = "";
+    private string _search
+    {
+        get => _searchBacking;
+        set
+        {
+            if (_searchBacking == value) return;
+            _searchBacking = value;
+            RefreshFilteredList();
+        }
+    }
+
+    private bool _ready = false;
+
+    // Cached fields — updated only when state changes (Issue 1 & 2).
+    private int _hiddenCount = 0;
+    private List<(int DeviceID, int CircuitID, string Name)> _filteredList = new();
+
+    private string StorageKey => $"{CurrentUser.UserId}_circuit_view_pref_v2";
+
+    private void RefreshFilteredList()
+    {
+        _filteredList = string.IsNullOrWhiteSpace(_searchBacking)
+            ? AccessCircuits
+            : AccessCircuits.Where(c =>
+                c.Name.Contains(_searchBacking, StringComparison.OrdinalIgnoreCase) ||
+                c.CircuitID.ToString().Contains(_searchBacking)).ToList();
+    }
+
+    private void RefreshCachedState()
+    {
+        // Update hidden count — circuits no longer in access set don't count.
+        var accessSet = AccessCircuits.Select(c => (c.DeviceID, c.CircuitID)).ToHashSet();
+        _hiddenCount = _hidden.Count(h => accessSet.Contains(h));
+        RefreshFilteredList();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _ready) return;
+
+        // Issue 4: load session state BEFORE setting _ready so OnParametersSetAsync
+        // doesn't prune hidden circuits before the stored list is loaded.
+        var stored = sessionStorage.GetComponentState<CircuitViewPref>(StorageKey);
+        if (stored?.HiddenCircuits?.Count > 0)
+            _hidden = stored.HiddenCircuits.Select(k => (k.DeviceID, k.CircuitID)).ToHashSet();
+
+        _ready = true;
+
+        RefreshCachedState();
+        await EmitAsync();
+        StateHasChanged();
+    }
+
+    // When the access set changes (hardware reconnect/disconnect), prune stale hidden entries.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_ready) return;
+        var accessKeys = AccessCircuits.Select(c => (c.DeviceID, c.CircuitID)).ToHashSet();
+        if (_hidden.RemoveWhere(h => !accessKeys.Contains(h)) > 0)
+        {
+            RefreshCachedState();
+            await EmitAsync();
+        }
+        else
+        {
+            RefreshFilteredList();
+        }
+    }
+
+    private async Task Toggle((int DeviceID, int CircuitID) key, bool isVisible)
+    {
+        if (isVisible) _hidden.Remove(key);
+        else _hidden.Add(key);
+        RefreshCachedState();
+        Persist();
+        await EmitAsync();
+    }
+
+    private async Task ShowAll()
+    {
+        _hidden.Clear();
+        RefreshCachedState();
+        Persist();
+        await EmitAsync();
+    }
+
+    private async Task HideAll()
+    {
+        _hidden = AccessCircuits.Select(c => (c.DeviceID, c.CircuitID)).ToHashSet();
+        RefreshCachedState();
+        Persist();
+        await EmitAsync();
+    }
+
+    // Emit the visible set — all access circuits minus hidden ones.
+    private async Task EmitAsync()
+    {
+        var visible = AccessCircuits
+            .Where(c => !_hidden.Contains((c.DeviceID, c.CircuitID)))
+            .Select(c => (c.DeviceID, c.CircuitID))
+            .ToHashSet();
+        await VisibleCircuitsChanged.InvokeAsync(visible);
+    }
+
+    // Permanent=true writes through to DB via IConfigStorageService — survives logouts.
+    private void Persist()
+    {
+        // Issue 3: use named DTO (CircuitKey) instead of value-tuple for reliable JSON round-trip.
+        var pref = new CircuitViewPref
+        {
+            HiddenCircuits = _hidden.Select(h => new CircuitKey { DeviceID = h.DeviceID, CircuitID = h.CircuitID }).ToList()
+        };
+        sessionStorage.SetComponentState(StorageKey, pref, Permanent: true);
+    }
+
+    private class CircuitViewPref
+    {
+        public List<CircuitKey> HiddenCircuits { get; set; } = new();
+    }
+
+    private class CircuitKey
+    {
+        public int DeviceID { get; set; }
+        public int CircuitID { get; set; }
+    }
+}

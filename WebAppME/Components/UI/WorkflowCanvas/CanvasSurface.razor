@@ -1,0 +1,68 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+
+@* Renders every node. The PAGE owns the .wf-world wrapper, deliberately: workflow-canvas.js
+   caches that element at init, so it must be a single stable DOM node that never gets swapped
+   out by a conditional render (a loading branch replacing it leaves JS holding a detached node).
+   This component re-renders only on STRUCTURAL change — a node added, removed or selected.
+   Telemetry never comes through here (spec 6).
+
+   Graph here may be a COLLAPSED VIEW (with a board's channels hidden). ChannelCount must still
+   reflect the true child count, so it is supplied by the page from the un-collapsed graph rather
+   than counted from Graph itself. *@
+
+<EdgeLayer Graph="Graph" StaleNodeIds="StaleNodeIds"
+           VisibleProperties="SelectedProperties" />
+
+    @foreach (var node in Graph.Nodes)
+    {
+        var stale = StaleNodeIds.Contains(node.Id);
+        var selected = SelectedNodeIds.Contains(node.Id);
+
+        switch (node.Kind)
+        {
+            case NodeKind.Device:
+                <DeviceNode @key="node.Id" Node="node" Title="@LabelFor(node)"
+                            IsSelected="selected" IsStale="stale"
+                            BoardCount="@ChildCountFor(node.Id)"
+                            Boards="@BatteryTestingSystem.Services.Implementations.Workflow.WorkflowGraphBuilder.BoardsForDevice(Graph, node.Id)"
+                            LabelFor="LabelFor" />
+                break;
+
+            case NodeKind.Board:
+                break;
+
+            case NodeKind.Channel:
+                <ChannelNode @key="node.Id" Node="node" Title="@LabelFor(node)"
+                             IsSelected="selected" IsStale="stale"
+                             ProgramName="@(node.Attach?.ProgramId is { } p ? ProgramLabel(p) : null)"
+                             DbcName="@(node.Attach?.DbcFileId is { } d ? DbcLabel(d) : null)"
+                             SelectedProperties="SelectedProperties"
+                             OnOpenDataViewer="OnOpenDataViewer" />
+                break;
+
+            case NodeKind.Battery:
+                <BatteryNode @key="node.Id" Node="node" Title="@LabelFor(node)"
+                             IsSelected="selected" IsStale="stale" />
+                break;
+        }
+    }
+
+@code {
+    [Parameter, EditorRequired] public WorkflowGraph Graph { get; set; } = WorkflowGraph.Empty;
+    [Parameter] public IReadOnlyCollection<string> StaleNodeIds { get; set; } = Array.Empty<string>();
+    [Parameter] public IReadOnlyCollection<string> SelectedNodeIds { get; set; } = Array.Empty<string>();
+    [Parameter] public EventCallback<string> OnOpenDataViewer { get; set; }
+
+    /// <summary>Human label for a node. Supplied by the page, which owns the lookup tables.</summary>
+    [Parameter] public Func<WorkflowNode, string> LabelFor { get; set; } = n => n.Id;
+    [Parameter] public Func<int, string> ProgramLabel { get; set; } = id => $"Program {id}";
+    [Parameter] public Func<int, string> DbcLabel { get; set; } = id => $"DBC {id}";
+
+    /// <summary>Defaults to counting within Graph itself; the page overrides this with a count
+    /// from the un-collapsed graph so a collapsed board's label does not drop to zero.</summary>
+    [Parameter] public Func<string, int> ChildCountFor { get; set; } = _ => 0;
+
+    [Parameter] public IReadOnlyList<string> SelectedProperties { get; set; } =
+        BatteryTestingSystem.Services.Implementations.Workflow.WorkflowNodeProperties.DefaultVisibleProperties;
+}

@@ -1,0 +1,20 @@
+@* InfoRow.razor
+   A simple label + value display card.
+   Usage: <InfoRow Label="Primary Serial" Value="@circuit.PrimarySerialNumber" />
+*@
+@namespace BatteryTestingSystem.Components.UI.Datatable
+
+
+<div class="bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+    <p class="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">
+        @Label
+    </p>
+    <p class="text-xs font-medium text-gray-900 break-all m-0">
+        @(string.IsNullOrWhiteSpace(Value) ? "—" : Value)
+    </p>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+}

@@ -1,0 +1,1663 @@
+@using BatteryTestingSystem.Models.Enums
+@using Microsoft.AspNetCore.Components.Rendering
+@inject ChannelManager CM
+@inject ServerSessionStorageService SessionStorage
+@implements IDisposable
+
+<!-- Main Content Area -->
+<div class="flex-1 overflow-hidden bg-background">
+
+    <div class="h-full flex flex-col p-3">
+        <!-- Compact Header with Calibration Type -->
+        <div class="flex items-center justify-between mb-2 pb-2 border-b border-border">
+            <h1 class="text-base font-bold text-foreground truncate">
+                Calibration - @(circuit?.Channel.DeviceName ?? "Select a circuit")
+            </h1>
+
+            @if (circuit != null)
+            {
+                <div class="flex gap-2">
+                    <button @onclick="() => SetCalibrationType(CalibrationTypeMode.Current)"
+                    disabled="@(circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)"
+                    class="@GetCalibrationTypeButtonClass(circuit.calibration.CalibrationMode == CalibrationTypeMode.Current)">
+                        <Blazicon Svg="Lucide.Zap" class="w-3.5 h-3.5" />
+                        <span class="text-xs">Current</span>
+                    </button>
+                    <button @onclick="() => SetCalibrationType(CalibrationTypeMode.Voltage)"
+                    disabled="@(circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)"
+                    class="@GetCalibrationTypeButtonClass(circuit.calibration.CalibrationMode == CalibrationTypeMode.Voltage)">
+                        <Blazicon Svg="Lucide.Activity" class="w-3.5 h-3.5" />
+                        <span class="text-xs">Voltage</span>
+                    </button>
+                    <button @onclick="() => SetCalibrationType(CalibrationTypeMode.Temperature)"
+                    disabled="@(circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)"
+                    class="@GetCalibrationTypeButtonClass(circuit.calibration.CalibrationMode == CalibrationTypeMode.Temperature)">
+                        <Blazicon Svg="Lucide.Thermometer" class="w-3.5 h-3.5" />
+                        <span class="text-xs">Temperature</span>
+                    </button>
+                </div>
+            }
+        </div>
+
+        @if (circuit != null)
+        {
+            <div class="flex-1 overflow-y-auto">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+
+                    <!-- Left Column: Main Content -->
+                    <div class="lg:col-span-9 space-y-2">
+
+                        <!-- Row 1: Existing Calibration Data — shows only the selected mode's card -->
+                        <div class="grid grid-cols-1 gap-2">
+                            @if (circuit.calibration.IsCurrent)
+                            {
+                                var curPoint  = circuit.calibration.IsCharge
+                                    ? circuit.calibration.CurrentChargeForSelectedRange
+                                    : circuit.calibration.CurrentDischargeForSelectedRange;
+                                var curLabel  = circuit.calibration.IsCharge ? "Current Charge" : "Current Discharge";
+                                var curColor  = circuit.calibration.IsCharge ? "text-yellow-500" : "text-orange-500";
+                                <div class="bg-card rounded border border-border p-2">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-1">
+                                            <Blazicon Svg="Lucide.Zap" class="@($"w-3 h-3 {curColor}")" />
+                                            <h3 class="text-xs font-semibold text-foreground">@curLabel</h3>
+                                        </div>
+                                        <div class="flex items-center gap-2 text-sm">
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">DateTime</div>
+                                                <div class="font-mono">@(curPoint?.DateTime.ToString("MM/dd HH:mm:ss") ?? "N/A")</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">Gain</div>
+                                                <div class="font-mono">@(curPoint?.Gain.ToString("F10") ?? "N/A")</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">Offset</div>
+                                                <div class="font-mono">@(curPoint?.Offset.ToString("F4") ?? "N/A")</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            else if (circuit.calibration.IsTemperature)
+                            {
+                                <!-- Temperature stored calibration data -->
+                                <div class="bg-card rounded border border-border p-2">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-1">
+                                            <Blazicon Svg="Lucide.Thermometer" class="w-3 h-3 text-red-400" />
+                                            <h3 class="text-xs font-semibold text-foreground">Temperature Calibration</h3>
+                                        </div>
+                                        <div class="flex items-center gap-2 text-sm">
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">DateTime</div>
+                                                <div class="font-mono">@(circuit.calibration?.TemperaturePoint?.DateTime.ToString("MM/dd HH:mm:ss") ?? "N/A")</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">Gain</div>
+                                                <div class="font-mono">@(circuit.calibration?.TemperaturePoint?.Gain.ToString("F10") ?? "N/A")</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">Offset</div>
+                                                <div class="font-mono">@(circuit.calibration?.TemperaturePoint?.Offset.ToString("F4") ?? "N/A")</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                var volPoint = circuit.calibration.IsCharge
+                                    ? circuit.calibration.VoltageCharge
+                                    : circuit.calibration.VoltageDischarge;
+                                var volLabel = circuit.calibration.IsCharge ? "Voltage Charge" : "Voltage Discharge";
+                                var volColor = circuit.calibration.IsCharge ? "text-blue-500" : "text-cyan-500";
+                                <div class="bg-card rounded border border-border p-2">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-1">
+                                            <Blazicon Svg="Lucide.Activity" class="@($"w-3 h-3 {volColor}")" />
+                                            <h3 class="text-xs font-semibold text-foreground">@volLabel</h3>
+                                        </div>
+                                        <div class="flex items-center gap-2 text-sm">
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">DateTime</div>
+                                                <div class="font-mono">@(volPoint?.DateTime.ToString("MM/dd HH:mm:ss") ?? "N/A")</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">Gain</div>
+                                                <div class="font-mono">@(volPoint?.Gain.ToString("F10") ?? "N/A")</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-muted-foreground">Offset</div>
+                                                <div class="font-mono">@(volPoint?.Offset.ToString("F4") ?? "N/A")</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Row 2: Live Parameters -->
+                        <div class="bg-card rounded border border-border p-2">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                <h3 class="text-xs font-semibold text-foreground">Live Parameters</h3>
+                                <div class="flex items-center gap-3 text-sm">
+
+                                    @if (circuit.calibration.IsCurrent)
+                                    {
+                                        <div class="flex flex-col items-center">
+                                            <div class="text-muted-foreground mb-0.5">Current (A)</div>
+                                            <div class="font-mono text-xs font-semibold text-primary">
+                                                @circuit?.RealTime?.RealTimeRecord?.Current.ToString("F6")
+                                                <span class="font-mono text-xs font-semibold text-primary">(@circuit?.RealTime.RealTimeRecord.CurrentInt)</span>
+                                            </div>
+                                        </div>
+                                    }
+                                    else if (circuit.calibration.IsTemperature)
+                                    {
+                                        <div class="flex flex-col items-center">
+                                            <div class="text-muted-foreground mb-0.5">Temperature (°C)</div>
+                                            <div class="font-mono text-xs font-semibold text-primary">
+                                                @(circuit?.RealTime?.RealTimeRecord?.Temperature.ToString("F2") ?? "N/A")
+                                                <span class="font-mono text-xs font-semibold text-primary">(@(circuit?.RealTime?.RealTimeRecord?.TemperatureInt ?? 0))</span>
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="flex flex-col items-center">
+                                            <div class="text-muted-foreground mb-0.5">Voltage (V)</div>
+                                            <div class="font-mono text-xs font-semibold text-primary">
+                                                @circuit?.RealTime?.RealTimeRecord?.Voltage.ToString("F6")
+                                                <span class="font-mono text-xs font-semibold text-primary">(@circuit?.RealTime.RealTimeRecord.VoltageInt)</span>
+                                            </div>
+                                        </div>
+                                    }
+
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Row 3: Calibration and Verification (Side by Side) -->
+                        <div class="grid grid-cols-2 gap-2">
+
+                            <!-- Calibration Process Panel -->
+                            <div class="bg-card rounded border border-border p-2 @(circuit.calibration.IsVerifying ? "opacity-60 pointer-events-none" : "")">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <h3 class="text-xs font-semibold text-foreground">
+                                            @(circuit.calibration.CalibrationMode.ToString()) Calibration
+                                            @if (!circuit.calibration.IsTemperature)
+                                            {
+                                                <sub>@(circuit.calibration.IsCharge ? "Charge" : "DisCharge")</sub>
+                                            }
+                                        </h3>
+                                        @if (circuit.calibration.IsVerifying)
+                                        {
+                                            <span class="px-1.5 py-0.5 text-[9px] font-medium rounded bg-yellow-100 text-yellow-800">
+                                                Verification Active
+                                            </span>
+                                        }
+                                    </div>
+                                    <button @onclick="@(() => ResetCalibration(true))"
+                                    class="px-2 py-0.5 text-sm font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 border border-red-200">
+                                        Reset
+                                    </button>
+                                </div>
+
+                                <!-- Mode (Charge/Discharge) — hidden for Temperature -->
+                                @if (!circuit.calibration.IsTemperature)
+                                {
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div>
+                                            <label class="block text-sm font-medium text-foreground mb-1">Mode</label>
+                                            <div class="flex gap-1">
+                                                <button @onclick="() => SetMode(true)"
+                                                disabled="@(circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)"
+                                                class="@GetCalibrationModeButtonClass(circuit.calibration.IsCharge, circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)">
+                                                    <Blazicon Svg="Lucide.BatteryCharging" class="w-3 h-3" />
+                                                    <span class="text-sm">Charge</span>
+                                                </button>
+                                                <button @onclick="() => SetMode(false)"
+                                                disabled="@(circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)"
+                                                class="@GetCalibrationModeButtonClass(!circuit.calibration.IsCharge, circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)">
+                                                    <Blazicon Svg="Lucide.Battery" class="w-3 h-3" />
+                                                    <span class="text-sm">Discharge</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-foreground mb-1">Status</label>
+                                            <div class="p-1.5 bg-secondary/30 rounded border border-border flex items-center justify-center">
+                                                <span class="@GetStepBadgeClass()">@GetStepDisplayText()</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Range Radio Buttons — Current only (Voltage has no range calibration) -->
+                                    <!-- UI order: Full Range → Range1 (smallest) → Range2 → Range3 → Range4 (largest) -->
+                                    <!-- Backend enum mapping: UI Range1=Backend Range4, UI Range2=Backend Range3,      -->
+                                    <!--                       UI Range3=Backend Range2, UI Range4=Backend Range1       -->
+                                    @if (circuit.calibration.IsCurrent)
+                                    {
+                                        <div class="mb-2">
+                                            <label class="block text-sm font-medium text-foreground mb-1">Range</label>
+                                            <div class="flex gap-3 flex-wrap">
+                                                @foreach (var (range, label) in GetRangeButtonsOrdered())
+                                                {
+                                                    <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                                                        <input type="radio"
+                                                        name="calRange_@Id"
+                                                        disabled="@(circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)"
+                                                        checked="@(circuit.calibration.SelectedRange == range)"
+                                                        @onchange="() => SetRange(range)"
+                                                        class="accent-primary" />
+                                                        <span class="text-xs text-foreground">@label</span>
+                                                    </label>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <!-- Status row for Temperature (no Mode/Range) -->
+                                    <div class="mb-2">
+                                        <label class="block text-sm font-medium text-foreground mb-1">Status</label>
+                                        <div class="p-1.5 bg-secondary/30 rounded border border-border flex items-center justify-center">
+                                            <span class="@GetStepBadgeClass()">@GetStepDisplayText()</span>
+                                        </div>
+                                    </div>
+                                }
+
+                                <!-- Calibration Form -->
+                                @if (circuit.calibration.IsCurrent)
+                                {
+                                    @RenderCurrentCalibrationFormAllVisible()
+                                }
+                                else if (circuit.calibration.IsTemperature)
+                                {
+                                    @RenderTemperatureCalibrationFormAllVisible()
+                                }
+                                else
+                                {
+                                    @RenderVoltageCalibrationFormAllVisible()
+                                }
+
+                                <!-- Action Button + Progress -->
+                                <div class="grid grid-cols-3 gap-2 mt-2">
+                                    <div class="col-span-2">
+                                        <button @onclick="HandleNextStep"
+                                        disabled="@IsActionButtonDisabled()"
+                                        class="px-3 py-1.5 text-xs font-medium rounded transition-all flex items-center justify-center gap-2
+                                                       @(IsActionButtonDisabled()
+                                                           ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                           : "bg-primary text-primary-foreground hover:bg-primary/90")">
+                                            @if (IsReady)
+                                            {
+                                                <svg class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                </svg>
+                                            }
+                                            <span>@GetActionButtonText()</span>
+                                        </button>
+                                    </div>
+                                    <div class="col-span-1">
+                                        <button class="w-full px-3 py-1.5 text-xs font-medium rounded transition-all flex items-center justify-center gap-2
+                                               @(CancelButtonDisabled()
+                                                   ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                   : "bg-secondary text-secondary-foreground hover:bg-secondary/80")"
+                                        @onclick="CancelCalibration"
+                                        disabled="@CancelButtonDisabled()">
+                                            Cancel Calibration
+                                        </button>
+                                    </div>
+                                    @if (circuit.calibration.IsCurrent && Step != CalibrationStep.Idle)
+                                    {
+                                        <div class="flex items-center">
+                                            <div class="w-full">
+                                                <div class="text-[9px] text-muted-foreground text-center mb-0.5">@GetProgressPercentage()%</div>
+                                                <div class="w-full bg-secondary rounded-full h-1.5">
+                                                    <div class="bg-primary h-1.5 rounded-full transition-all duration-300"
+                                                    style="width: @GetProgressPercentage()%"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- Verification Panel — Current only; not available for Voltage or Temperature -->
+                            @if (circuit.calibration.IsCurrent)
+                            {
+                                <div class="bg-card rounded border border-border p-2 @(circuit.calibration.IsCalibrationInPrcoess ? "opacity-60 pointer-events-none" : "")">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h3 class="text-xs font-semibold text-foreground">Verification</h3>
+                                        @if (circuit.calibration.IsCalibrationInPrcoess)
+                                        {
+                                            <span class="px-1.5 py-0.5 text-[9px] font-medium rounded bg-yellow-100 text-yellow-800">
+                                                Disabled
+                                            </span>
+                                        }
+                                    </div>
+                                    <!-- Test Value Input -->
+                                    <div class="mb-2">
+                                        <label class="block text-sm font-medium text-foreground mb-1">
+                                            Test Current (A)
+                                        </label>
+                                        <input type="number"
+                                        step="0.001"
+                                        @bind="@circuit.calibration.VerifyTestValue"
+                                        @bind:event="oninput"
+                                        disabled="@circuit.calibration.IsVerifying"
+                                        placeholder="Enter value"
+                                        class="w-full px-2 py-1 text-xs border border-border rounded
+                                                      bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary
+                                                      disabled:bg-muted disabled:text-muted-foreground" />
+                                    </div>
+                                    <!-- Verify Button -->
+                                    <button @onclick="HandleVerify"
+                                    disabled="@(!circuit.calibration.VerifyTestValue.HasValue)"
+                                    class="px-3 py-1.5 text-xs font-medium rounded transition-all
+                                                   @(circuit.calibration.IsVerifying
+                                                       ? "bg-red-600 text-white hover:bg-red-700"
+                                                       : !circuit.calibration.VerifyTestValue.HasValue
+                                                           ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                           : "bg-green-600 text-white hover:bg-green-700")">
+                                        @(circuit.calibration.IsVerifying ? "Stop Verification" : "Start Verification")
+                                    </button>
+                                    @if (circuit.calibration.IsVerifying)
+                                    {
+                                        <div class="mt-2 p-1.5 bg-blue-50 border border-blue-200 rounded">
+                                            <div class="flex items-center gap-1 text-blue-800">
+                                                <Blazicon Svg="Lucide.Info" class="w-3 h-3" />
+                                                <span class="text-[9px] font-medium">
+                                                    Verifying at @circuit.calibration.VerifyTestValue.Value.ToString("F4")
+                                                </span>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <!-- Voltage & Temperature: verification not available -->
+                                <div class="bg-card rounded border border-border p-2 opacity-50">
+                                    <h3 class="text-xs font-semibold text-foreground mb-1">Verification</h3>
+                                    <p class="text-xs text-muted-foreground">
+                                        Verification is only available for Current calibration.
+                                    </p>
+                                </div>
+                            }
+
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Messages -->
+                    <div class="lg:col-span-3 min-h-[200px] lg:max-h-[500px]">
+                        @if (messages.Any())
+                        {
+                            <div class="bg-card rounded border border-border p-2 h-full flex flex-col">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h3 class="text-xs font-semibold text-foreground">Messages</h3>
+                                    <button @onclick="ClearMessages" class="text-[9px] text-muted-foreground hover:text-foreground">Clear</button>
+                                </div>
+                                <div class="flex-1 overflow-y-auto space-y-1">
+                                    @foreach (var msg in messages.OrderByDescending(m => m.Timestamp))
+                                    {
+                                        <div class="flex items-start gap-1 p-1.5 bg-secondary/30 rounded text-[9px]">
+                                            <span class="text-muted-foreground font-mono shrink-0">@msg.Timestamp.ToString("HH:mm:ss")</span>
+                                            <span class="@GetMessageClass(msg.Type) flex-1 leading-tight">@msg.Text</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="bg-card rounded border border-border p-4 h-full flex items-center justify-center">
+                                <p class="text-xs text-muted-foreground">No messages yet</p>
+                            </div>
+                        }
+                    </div>
+
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="flex items-center justify-center h-64 bg-card rounded border border-border">
+                <div class="text-center">
+                    <Blazicon Svg="Lucide.CircleAlert" class="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p class="text-muted-foreground">No circuit selected</p>
+                </div>
+            </div>
+        }
+
+    </div>
+</div>
+
+@code {
+
+
+
+    #region Fields and Properties
+
+    [Parameter] public string Id { get; set; }
+
+    private IChannelCommandHandler? circuit;
+    private CalibrationStep Step = CalibrationStep.Idle;
+    private List<CalibrationMessage> messages = new();
+    private string calId => $"{Id}_cal_messages";
+    private bool IsError = false;
+    private bool IsReady = false;
+
+    // UI refresh throttle — only re-render Live Parameters at most once per interval
+    private DateTime _lastRenderTime = DateTime.MinValue;
+    private static readonly TimeSpan RenderInterval = TimeSpan.FromMilliseconds(200); // ~5 fps
+
+    #endregion
+
+    #region Lifecycle Methods
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CM._devices.TryGetValue(Id, out var device))
+        {
+            circuit = device;
+            circuit.RealTime.OnDataChanged += OnRealTimeChanged;
+        }
+
+        CM.HardwareManagerChanged += OnHardwareManagerChanged;
+
+        var getUnSaved = SessionStorage.GetComponentState<List<CalibrationMessage>>(calId);
+        if (getUnSaved != null)
+            messages = getUnSaved;
+    }
+
+    private void OnHardwareManagerChanged()
+    {
+        if (circuit != null)
+        {
+            circuit.RealTime.OnDataChanged -= OnRealTimeChanged;
+            circuit = null;
+        }
+
+        if (CM._devices.TryGetValue(Id, out var device))
+        {
+            circuit = device;
+            circuit.RealTime.OnDataChanged += OnRealTimeChanged;
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRealTimeChanged()
+    {
+        var errorId = circuit?.RealTime?.RealTimeRecord?.ErrorId ?? 0;
+
+        // Error state changes are always immediate — never throttle these
+        if (errorId != 0 && !IsError)
+        {
+            IsError = true;
+            byte errorByte = (byte)errorId;
+            if (CalibrationErrorExtensions.TryGetError(errorByte, out var error))
+                AddMessage($"Error: {error.ToString()}", MessageType.Error);
+            InvokeAsync(StateHasChanged);
+            return;
+        }
+        else if (errorId == 0 && IsError)
+        {
+            IsError = false;
+            InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // Throttle routine live-data UI refreshes
+        var now = DateTime.UtcNow;
+        if (now - _lastRenderTime < RenderInterval)
+            return;
+
+        _lastRenderTime = now;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (circuit != null)
+        {
+            circuit.RealTime.OnDataChanged -= OnRealTimeChanged;
+            ResetCalibration();
+            circuit = null;
+        }
+        CM.HardwareManagerChanged -= OnHardwareManagerChanged;
+    }
+
+    #endregion
+
+    #region Render Fragments — Current
+
+    private RenderFragment RenderCurrentCalibrationFormAllVisible() => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "grid grid-cols-2 gap-2 mb-2");
+
+        var (rangeMin, rangeMax) = GetCurrentRangeBounds();
+
+        // Step 1: Low Reference
+        RenderCalibrationInput(builder, seq: 2,
+            label: $"1. Low Ref (A) [{rangeMin:F2}–{rangeMax:F2}]",
+            isActive: Step == CalibrationStep.LowConfirm,
+            isComplete: Step > CalibrationStep.LowConfirm,
+            isDisabled: Step != CalibrationStep.LowConfirm,
+            value: circuit.calibration.UserLowInput,
+            placeholder: $"Min {rangeMin:F2} A",
+            min: rangeMin, max: rangeMax,
+            onInput: val => { circuit.calibration.UserLowInput = val < 0 ? 0 : val; StateHasChanged(); });
+
+        // Step 2: Actual Low
+        RenderActualInputWithAdc(builder, seq: 50,
+            label: "2. Actual Low (A)",
+            isActive: Step == CalibrationStep.LowActualConfirm,
+            isComplete: Step > CalibrationStep.LowActualConfirm,
+            isVisible: Step >= CalibrationStep.LowActualConfirm,
+            value: circuit.calibration.ActualLowInput,
+            adcValue: circuit.calibration.SystemLowInput,
+            onInput: val => { circuit.calibration.ActualLowInput = val; StateHasChanged(); });
+
+        // Step 3: High Reference
+        RenderCalibrationInput(builder, seq: 100,
+            label: $"3. High Ref (A) [{rangeMin:F2}–{rangeMax:F2}]",
+            isActive: Step == CalibrationStep.HighConfirm,
+            isComplete: Step > CalibrationStep.HighConfirm,
+            isDisabled: Step != CalibrationStep.HighConfirm,
+            value: circuit.calibration.UserHighInput,
+            placeholder: $"Max {rangeMax:F2} A",
+            min: rangeMin, max: rangeMax,
+            onInput: val => { circuit.calibration.UserHighInput = val < 0 ? 0 : val; StateHasChanged(); });
+
+        // Step 4: Actual High
+        RenderActualInputWithAdc(builder, seq: 150,
+            label: "4. Actual High (A)",
+            isActive: Step == CalibrationStep.HighActualConfirm,
+            isComplete: Step > CalibrationStep.HighActualConfirm,
+            isVisible: Step >= CalibrationStep.HighActualConfirm,
+            value: circuit.calibration.ActualHighInput,
+            adcValue: circuit.calibration.SystemHighInput,
+            onInput: val => { circuit.calibration.ActualHighInput = val; StateHasChanged(); });
+
+        builder.CloseElement(); // grid
+
+        RenderIdleHint(builder, seq: 200);
+    };
+
+    #endregion
+
+    #region Render Fragments — Voltage
+
+    private RenderFragment RenderVoltageCalibrationFormAllVisible() => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "grid grid-cols-2 gap-2 mb-2");
+
+        float maxV = circuit?.Channel?.ChannelMaxVoltage ?? 51f;
+
+        // Step 1: Low Ref — shows captured ADC below once confirmed
+        RenderCalibrationInputWithAdc(builder, seq: 2,
+            label: "1. Low Ref (V)",
+            isActive: Step == CalibrationStep.LowConfirm,
+            isComplete: Step > CalibrationStep.LowConfirm,
+            isAdcVisible: Step > CalibrationStep.LowConfirm,
+            isDisabled: Step != CalibrationStep.LowConfirm,
+            value: circuit.calibration.UserLowInput,
+            adcValue: circuit.calibration.SystemLowInput,
+            placeholder: "Enter low voltage",
+            min: 0, max: maxV,
+            onInput: val => { circuit.calibration.UserLowInput = val; StateHasChanged(); });
+
+        // Step 2: High Ref — shows captured ADC below once confirmed
+        RenderCalibrationInputWithAdc(builder, seq: 50,
+            label: "2. High Ref (V)",
+            isActive: Step == CalibrationStep.HighConfirm,
+            isComplete: Step > CalibrationStep.HighConfirm,
+            isAdcVisible: Step > CalibrationStep.HighConfirm,
+            isDisabled: Step != CalibrationStep.HighConfirm,
+            value: circuit.calibration.UserHighInput,
+            adcValue: circuit.calibration.SystemHighInput,
+            placeholder: "Enter high voltage",
+            min: 0, max: maxV,
+            onInput: val => { circuit.calibration.UserHighInput = val; StateHasChanged(); });
+
+        builder.CloseElement(); // grid
+        RenderIdleHint(builder, seq: 100);
+    };
+
+    #endregion
+
+    #region Render Fragments — Temperature
+
+    private RenderFragment RenderTemperatureCalibrationFormAllVisible() => builder =>
+    {
+        // Temperature: 2 reference inputs only (no Actual ADC steps, no Charge/Discharge)
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "grid grid-cols-2 gap-2 mb-2");
+
+        // Step 1: Low Ref — shows captured ADC below once confirmed
+        RenderCalibrationInputWithAdc(builder, seq: 2,
+            label: "1. Low Ref (Ohms)",
+            isActive: Step == CalibrationStep.LowConfirm,
+            isComplete: Step > CalibrationStep.LowConfirm,
+            isAdcVisible: Step > CalibrationStep.LowConfirm,
+            isDisabled: Step != CalibrationStep.LowConfirm,
+            value: circuit.calibration.UserLowInput,
+            adcValue: circuit.calibration.SystemLowInput,
+            placeholder: "Enter value",
+            min: -40, max: 200,
+            onInput: val => { circuit.calibration.UserLowInput = val; StateHasChanged(); });
+
+        // Step 2: High Ref — shows captured ADC below once confirmed
+        RenderCalibrationInputWithAdc(builder, seq: 60,
+            label: "2. High Ref (Ohms)",
+            isActive: Step == CalibrationStep.HighConfirm,
+            isComplete: Step > CalibrationStep.HighConfirm,
+            isAdcVisible: Step > CalibrationStep.HighConfirm,
+            isDisabled: Step != CalibrationStep.HighConfirm,
+            value: circuit.calibration.UserHighInput,
+            adcValue: circuit.calibration.SystemHighInput,
+            placeholder: "Enter value",
+            min: -40, max: 200,
+            onInput: val => { circuit.calibration.UserHighInput = val; StateHasChanged(); });
+
+        builder.CloseElement(); // grid
+
+        RenderIdleHint(builder, seq: 130);
+    };
+
+    #endregion
+
+    #region Shared Render Helpers
+
+    /// <summary>Simple reference input (no ADC display inline).</summary>
+    private void RenderCalibrationInput(RenderTreeBuilder builder, int seq,
+        string label, bool isActive, bool isComplete, bool isDisabled,
+        float? value, string placeholder, float min, float max,
+        Action<float> onInput)
+    {
+        var boxClass = isActive ? "border-primary bg-accent/20" : isComplete ? "border-border bg-secondary/30" : "border-border bg-muted/30";
+        builder.OpenElement(seq, "div");
+        builder.AddAttribute(seq + 1, "class", $"p-1.5 rounded border {boxClass}");
+
+        RenderStepHeader(builder, seq + 2, label, isActive, isComplete);
+
+        builder.OpenElement(seq + 10, "input");
+        builder.AddAttribute(seq + 11, "type", "number");
+        builder.AddAttribute(seq + 12, "step", "0.001");
+        builder.AddAttribute(seq + 13, "min", min);
+        builder.AddAttribute(seq + 14, "max", max);
+        builder.AddAttribute(seq + 15, "disabled", isDisabled);
+        builder.AddAttribute(seq + 16, "class", InputCss);
+        builder.AddAttribute(seq + 17, "placeholder", placeholder);
+        builder.AddAttribute(seq + 18, "value", value);
+        builder.AddAttribute(seq + 19, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+        {
+            if (float.TryParse(e.Value?.ToString(), out float val)) onInput(val);
+        }));
+        builder.CloseElement();
+        builder.CloseElement();
+    }
+
+    /// <summary>Reference input that also shows stored ADC value below it.</summary>
+    private void RenderCalibrationInputWithAdc(RenderTreeBuilder builder, int seq,
+        string label, bool isActive, bool isComplete, bool isAdcVisible, bool isDisabled,
+        float? value, float? adcValue, string placeholder, float min, float max,
+        Action<float> onInput)
+    {
+        var boxClass = isActive ? "border-primary bg-accent/20" : isComplete ? "border-border bg-secondary/30" : "border-border bg-muted/30";
+        builder.OpenElement(seq, "div");
+        builder.AddAttribute(seq + 1, "class", $"p-1.5 rounded border {boxClass}");
+
+        RenderStepHeader(builder, seq + 2, label, isActive, isComplete);
+
+        builder.OpenElement(seq + 10, "input");
+        builder.AddAttribute(seq + 11, "type", "number");
+        builder.AddAttribute(seq + 12, "step", "0.001");
+        builder.AddAttribute(seq + 13, "min", min);
+        builder.AddAttribute(seq + 14, "max", max);
+        builder.AddAttribute(seq + 15, "disabled", isDisabled);
+        builder.AddAttribute(seq + 16, "class", InputCss);
+        builder.AddAttribute(seq + 17, "placeholder", placeholder);
+        builder.AddAttribute(seq + 18, "value", value);
+        builder.AddAttribute(seq + 19, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+        {
+            if (float.TryParse(e.Value?.ToString(), out float val)) onInput(val);
+        }));
+        builder.CloseElement();
+
+        if (isAdcVisible && adcValue.HasValue)
+        {
+            builder.OpenElement(seq + 20, "div");
+            builder.AddAttribute(seq + 21, "class", "mt-1 px-1.5 py-0.5 bg-blue-50 border border-blue-200 rounded");
+            builder.OpenElement(seq + 22, "span");
+            builder.AddAttribute(seq + 23, "class", "text-xs text-foreground");
+            builder.AddContent(seq + 24, $"ADC: {(int)adcValue.Value}");
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    }
+
+    /// <summary>Multimeter (actual) input with ADC value shown above.</summary>
+    private void RenderActualInputWithAdc(RenderTreeBuilder builder, int seq,
+        string label, bool isActive, bool isComplete, bool isVisible,
+        float? value, float? adcValue, Action<float> onInput)
+    {
+        var boxClass = isActive ? "border-primary bg-accent/20" : isComplete ? "border-border bg-secondary/30" : "border-border bg-muted/30";
+        builder.OpenElement(seq, "div");
+        builder.AddAttribute(seq + 1, "class", $"p-1.5 rounded border {boxClass}");
+
+        RenderStepHeader(builder, seq + 2, label, isActive, isComplete);
+
+        builder.OpenElement(seq + 10, "input");
+        builder.AddAttribute(seq + 11, "type", "number");
+        builder.AddAttribute(seq + 12, "step", "0.001");
+        builder.AddAttribute(seq + 13, "disabled", !isActive);
+        builder.AddAttribute(seq + 14, "class", InputCss);
+        builder.AddAttribute(seq + 15, "placeholder", "Multimeter");
+        builder.AddAttribute(seq + 16, "value", value);
+        builder.AddAttribute(seq + 17, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+        {
+            if (float.TryParse(e.Value?.ToString(), out float val)) onInput(val);
+        }));
+        builder.CloseElement();
+
+        if (isVisible && adcValue.HasValue)
+        {
+            builder.OpenElement(seq + 20, "div");
+            builder.AddAttribute(seq + 21, "class", "mt-1 px-1.5 py-0.5 bg-blue-50 border border-blue-200 rounded");
+            builder.OpenElement(seq + 22, "span");
+            builder.AddAttribute(seq + 23, "class", "text-xs text-foreground");
+            builder.AddContent(seq + 24, $"ADC: {(int)adcValue.Value}");
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    }
+
+    private void RenderStepHeader(RenderTreeBuilder builder, int seq, string label, bool isActive, bool isComplete)
+    {
+        builder.OpenElement(seq, "div");
+        builder.AddAttribute(seq + 1, "class", "flex items-center justify-between mb-1");
+        builder.OpenElement(seq + 2, "label");
+        builder.AddAttribute(seq + 3, "class", "text-sm font-medium text-foreground");
+        builder.AddContent(seq + 4, label);
+        builder.CloseElement();
+        if (isComplete)
+        {
+            builder.OpenElement(seq + 5, "span");
+            builder.AddAttribute(seq + 6, "class", "text-[9px] px-1 py-0.5 rounded bg-green-100 text-green-800");
+            builder.AddContent(seq + 7, "✓");
+            builder.CloseElement();
+        }
+        else if (isActive)
+        {
+            builder.OpenElement(seq + 5, "span");
+            builder.AddAttribute(seq + 6, "class", "text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-800");
+            builder.AddContent(seq + 7, "Active");
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    }
+
+    private void RenderIdleHint(RenderTreeBuilder builder, int seq)
+    {
+        if (Step != CalibrationStep.Idle) return;
+        builder.OpenElement(seq, "div");
+        builder.AddAttribute(seq + 1, "class", "p-3 bg-secondary/30 rounded border border-border text-center");
+        builder.OpenElement(seq + 2, "p");
+        builder.AddAttribute(seq + 3, "class", "text-xs text-muted-foreground");
+        builder.AddContent(seq + 4, "Click 'Start Calibration'");
+        builder.CloseElement();
+        builder.CloseElement();
+    }
+
+    private const string InputCss = "w-full px-2 py-1 text-xs border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-muted disabled:text-muted-foreground";
+
+    #endregion
+
+    #region Calibration Logic
+
+    private async Task HandleNextStep()
+    {
+        if (circuit == null) return;
+
+        switch (circuit.calibration.CalibrationMode)
+        {
+            case CalibrationTypeMode.Current:
+                await HandleCurrentCalibrationStep();
+                break;
+            case CalibrationTypeMode.Temperature:
+                await HandleTemperatureCalibrationStep();
+                break;
+            default:
+                await HandleVoltageCalibrationStep();
+                break;
+        }
+    }
+
+    private async Task HandleCurrentCalibrationStep()
+    {
+        IsReady = true;
+        StateHasChanged();
+
+        try
+        {
+            switch (Step)
+            {
+                case CalibrationStep.Idle:
+                    var readyResponse = await circuit.HWReadyToCalibrationAsync();
+                    if (!readyResponse.Success)
+                    {
+                        AddMessage($"Hardware not ready: {readyResponse.Message}", MessageType.Error);
+                        return;
+                    }
+
+                    await Task.Delay(1000);
+
+                    var getPreviousData = await circuit.PreviousCalibration();
+                    if (getPreviousData.Success && getPreviousData.Data != null)
+                    {
+                        circuit.calibration.CurrentCharge    = getPreviousData.Data.CurrentCharge    ?? new();
+                        circuit.calibration.CurrentDischarge = getPreviousData.Data.CurrentDischarge ?? new();
+                        circuit.calibration.VoltageCharge    = getPreviousData.Data.VoltageCharge;
+                        circuit.calibration.VoltageDischarge = getPreviousData.Data.VoltageDischarge;
+                        circuit.calibration.TemperaturePoint = getPreviousData.Data.Temperature;
+                        AddMessage("Previous Data Received.", MessageType.Info);
+                        StateHasChanged();
+                    }
+                    circuit.calibration.IsCalibrationInPrcoess = true;
+                    Step = CalibrationStep.LowConfirm;
+                    AddMessage("Calibration started.", MessageType.Info);
+                    break;
+
+                case CalibrationStep.LowConfirm:
+                    if (!circuit.calibration.UserLowInput.HasValue)
+                    {
+                        AddMessage("Enter low reference current.", MessageType.Warning);
+                        return;
+                    }
+                    var lowQueryId = circuit.calibration.IsCharge
+                        ? CalibrationQueryId.CurrentChargeLowPoint
+                        : CalibrationQueryId.CurrentDisChargeLowPoint;
+                    var lowResponse = await circuit.CalibrationPointPreset(lowQueryId, circuit.calibration.UserLowInput.Value, circuit.calibration.SelectedRange);
+                    if (!lowResponse.Success)
+                    {
+                        AddMessage($"Failed: {lowResponse.Message}", MessageType.Error);
+                        circuit.calibration.IsCalibrationInPrcoess = false;
+                        return;
+                    }
+                    Step = CalibrationStep.LowActualConfirm;
+                    AddMessage("Low value sent. Enter actual current from multimeter.", MessageType.Success);
+                    break;
+
+                case CalibrationStep.LowActualConfirm:
+                    if (!circuit.calibration.ActualLowInput.HasValue)
+                    {
+                        AddMessage("Enter actual low current from multimeter.", MessageType.Warning);
+                        return;
+                    }
+                    var currentLowAdc = circuit.calibration.calibrationBuffer.Any()
+                        ? circuit.calibration.calibrationBuffer.Average(e => e.CurrentInt) : 0.0;
+                    circuit.calibration.SystemLowInput = (float)currentLowAdc;
+                    Step = CalibrationStep.HighConfirm;
+                    AddMessage($"Actual Low point confirmed. ADC {(float)currentLowAdc}", MessageType.Success);
+                    break;
+
+                case CalibrationStep.HighConfirm:
+                    if (!circuit.calibration.UserHighInput.HasValue)
+                    {
+                        AddMessage("Enter high reference current.", MessageType.Warning);
+                        return;
+                    }
+                    var highQueryId = circuit.calibration.IsCharge
+                        ? CalibrationQueryId.CurrentChargeHighPoint
+                        : CalibrationQueryId.CurrentDisChargeHighPoint;
+                    var highResponse = await circuit.CalibrationPointPreset(highQueryId, circuit.calibration.UserHighInput.Value, circuit.calibration.SelectedRange);
+                    if (!highResponse.Success)
+                    {
+                        AddMessage($"Failed: {highResponse.Message}", MessageType.Error);
+                        return;
+                    }
+                    Step = CalibrationStep.HighActualConfirm;
+                    AddMessage("High value sent. Enter actual current from multimeter.", MessageType.Success);
+                    break;
+
+                case CalibrationStep.HighActualConfirm:
+                    if (!circuit.calibration.ActualHighInput.HasValue)
+                    {
+                        AddMessage("Enter actual high current from multimeter.", MessageType.Warning);
+                        return;
+                    }
+                    var currentHighAdc = circuit.calibration.calibrationBuffer.Any()
+                        ? circuit.calibration.calibrationBuffer.Average(e => e.CurrentInt) : 0.0;
+                    circuit.calibration.SystemHighInput = (float)currentHighAdc;
+                    Step = CalibrationStep.Complete;
+                    AddMessage($"Actual high point confirmed.ADC {(float)currentHighAdc}", MessageType.Success);
+                    break;
+
+                case CalibrationStep.Complete:
+                    CalculateCalibrationValues();
+                    var gainOffsetQueryId = circuit.calibration.IsCharge
+                        ? CalibrationQueryId.CurrentChargeGainOffset
+                        : CalibrationQueryId.CurrentDisChargeGainOffset;
+                    var saveResponse = await circuit.SetGainOffset(gainOffsetQueryId,
+                        circuit.calibration.Gain ?? 0, circuit.calibration.Offset ?? 0, circuit.calibration.SelectedRange);
+                    if (!saveResponse.Success)
+                    {
+                        AddMessage($"Failed to save: {saveResponse.Message}", MessageType.Error);
+                        return;
+                    }
+                    AddMessage("Calibration completed!", MessageType.Success);
+                    ResetCalibration();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error during calibration: {ex.Message}", MessageType.Error);
+            circuit.calibration.IsCalibrationInPrcoess = false;
+            Step = CalibrationStep.Idle;
+        }
+        finally
+        {
+            IsReady = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleVoltageCalibrationStep()
+    {
+        IsReady = true;
+        StateHasChanged();
+
+        try
+        {
+            switch (Step)
+            {
+                case CalibrationStep.Idle:
+                    var readyResponse = await circuit.HWReadyToCalibrationAsync();
+                    if (!readyResponse.Success)
+                    {
+                        AddMessage($"Hardware not ready: {readyResponse.Message}", MessageType.Error);
+                        return;
+                    }
+
+                    await Task.Delay(1000);
+
+                    var getPreviousData = await circuit.PreviousCalibration();
+                    if (getPreviousData.Success && getPreviousData.Data != null)
+                    {
+                        circuit.calibration.CurrentCharge    = getPreviousData.Data.CurrentCharge    ?? new();
+                        circuit.calibration.CurrentDischarge = getPreviousData.Data.CurrentDischarge ?? new();
+                        circuit.calibration.VoltageCharge    = getPreviousData.Data.VoltageCharge;
+                        circuit.calibration.VoltageDischarge = getPreviousData.Data.VoltageDischarge;
+                        circuit.calibration.TemperaturePoint = getPreviousData.Data.Temperature;
+                        AddMessage("Previous Data Received.", MessageType.Info);
+                        StateHasChanged();
+                    }
+                    circuit.calibration.IsCalibrationInPrcoess = true;
+                    Step = CalibrationStep.LowConfirm;
+                    AddMessage("Voltage calibration started.", MessageType.Info);
+                    break;
+
+                case CalibrationStep.LowConfirm:
+                    if (!circuit.calibration.UserLowInput.HasValue)
+                    {
+                        AddMessage("Enter low reference voltage.", MessageType.Warning);
+                        return;
+                    }
+                    var lowQueryId = circuit.calibration.IsCharge
+                        ? CalibrationQueryId.VoltageChargeLowPoint
+                        : CalibrationQueryId.VoltageDisChargeLowPoint;
+                    var lowResponse = await circuit.CalibrationPointPreset(lowQueryId, circuit.calibration.UserLowInput.Value, null);
+                    if (!lowResponse.Success)
+                    {
+                        AddMessage($"Failed: {lowResponse.Message}", MessageType.Error);
+                        circuit.calibration.IsCalibrationInPrcoess = false;
+                        return;
+                    }
+
+                    await Task.Delay(3000);
+
+                    var voltageLowAdc = circuit.calibration.calibrationBuffer.Any()
+                        ? circuit.calibration.calibrationBuffer.Average(e => e.VoltageInt) : 0.0;
+                    circuit.calibration.SystemLowInput = (float)voltageLowAdc;
+                    Step = CalibrationStep.HighConfirm;
+                    AddMessage($"Low voltage set. ADC: {circuit.calibration.SystemLowInput:F2}", MessageType.Success);
+                    break;
+
+                case CalibrationStep.HighConfirm:
+                    if (!circuit.calibration.UserHighInput.HasValue)
+                    {
+                        AddMessage("Enter high reference voltage.", MessageType.Warning);
+                        return;
+                    }
+                    var highQueryId = circuit.calibration.IsCharge
+                        ? CalibrationQueryId.VoltageChargeHighPoint
+                        : CalibrationQueryId.VoltageDisChargeHighPoint;
+                    var highResponse = await circuit.CalibrationPointPreset(highQueryId, circuit.calibration.UserHighInput.Value, null);
+                    if (!highResponse.Success)
+                    {
+                        AddMessage($"Failed: {highResponse.Message}", MessageType.Error);
+                        return;
+                    }
+
+                    await Task.Delay(3000);
+
+                    var voltageHighAdc = circuit.calibration.calibrationBuffer.Any()
+                        ? circuit.calibration.calibrationBuffer.Average(e => e.VoltageInt) : 0.0;
+                    circuit.calibration.SystemHighInput = (float)voltageHighAdc;
+                    Step = CalibrationStep.Complete;
+                    AddMessage($"High voltage set. ADC: {circuit.calibration.SystemHighInput:F2}", MessageType.Success);
+                    break;
+
+                case CalibrationStep.Complete:
+                    CalculateVoltageCalibrationValues();
+                    var gainOffsetQueryId = circuit.calibration.IsCharge
+                        ? CalibrationQueryId.VoltageChargeGainOffset
+                        : CalibrationQueryId.VoltageDisChargeGainOffset;
+                    var saveResponse = await circuit.SetGainOffset(gainOffsetQueryId,
+                        circuit.calibration.Gain ?? 0, circuit.calibration.Offset ?? 0, null);
+                    if (!saveResponse.Success)
+                    {
+                        AddMessage($"Failed to save: {saveResponse.Message}", MessageType.Error);
+                        return;
+                    }
+                    AddMessage("Voltage calibration completed!", MessageType.Success);
+                    ResetCalibration();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error during calibration: {ex.Message}", MessageType.Error);
+            ResetCalibration();
+        }
+        finally
+        {
+            IsReady = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Temperature calibration handler — uses TemperatureLowPoint / TemperatureHighPoint / TemperatureGainOffset.</summary>
+    private async Task HandleTemperatureCalibrationStep()
+    {
+        IsReady = true;
+        StateHasChanged();
+
+        try
+        {
+            switch (Step)
+            {
+                case CalibrationStep.Idle:
+                    var readyResponse = await circuit.HWReadyToCalibrationAsync();
+                    if (!readyResponse.Success)
+                    {
+                        AddMessage($"Hardware not ready: {readyResponse.Message}", MessageType.Error);
+                        return;
+                    }
+
+                    await Task.Delay(1000);
+
+                    var getPreviousData = await circuit.PreviousCalibration();
+                    if (getPreviousData.Success && getPreviousData.Data != null)
+                    {
+                        circuit.calibration.CurrentCharge    = getPreviousData.Data.CurrentCharge    ?? new();
+                        circuit.calibration.CurrentDischarge = getPreviousData.Data.CurrentDischarge ?? new();
+                        circuit.calibration.VoltageCharge    = getPreviousData.Data.VoltageCharge;
+                        circuit.calibration.VoltageDischarge = getPreviousData.Data.VoltageDischarge;
+                        circuit.calibration.TemperaturePoint = getPreviousData.Data.Temperature;
+                        AddMessage("Previous Data Received.", MessageType.Info);
+                        StateHasChanged();
+                    }
+                    circuit.calibration.IsCalibrationInPrcoess = true;
+                    Step = CalibrationStep.LowConfirm;
+                    AddMessage("Temperature calibration started.", MessageType.Info);
+                    break;
+
+                case CalibrationStep.LowConfirm:
+                    if (!circuit.calibration.UserLowInput.HasValue)
+                    {
+                        AddMessage("Enter low reference temperature.", MessageType.Warning);
+                        return;
+                    }
+                    var lowTempResponse = await circuit.CalibrationPointPreset(
+                        CalibrationQueryId.TemperatureLowPoint,
+                        circuit.calibration.UserLowInput.Value);
+                    if (!lowTempResponse.Success)
+                    {
+                        AddMessage($"Failed to send low temperature point: {lowTempResponse.Message}", MessageType.Error);
+                        circuit.calibration.IsCalibrationInPrcoess = false;
+                        return;
+                    }
+
+                    await Task.Delay(3000);
+                    var tempLowAdc = circuit.calibration.calibrationBuffer.Any()
+                        ? circuit.calibration.calibrationBuffer.Average(e => e.TemperatureInt) : 0.0;
+                    circuit.calibration.SystemLowInput = (float)tempLowAdc;
+                    Step = CalibrationStep.HighConfirm;
+                    AddMessage($"Low temperature sent. ADC: {circuit.calibration.SystemLowInput:F2}", MessageType.Success);
+                    break;
+
+                case CalibrationStep.HighConfirm:
+                    if (!circuit.calibration.UserHighInput.HasValue)
+                    {
+                        AddMessage("Enter high reference temperature.", MessageType.Warning);
+                        return;
+                    }
+                    var highTempResponse = await circuit.CalibrationPointPreset(
+                        CalibrationQueryId.TemperatureHighPoint,
+                        circuit.calibration.UserHighInput.Value);
+                    if (!highTempResponse.Success)
+                    {
+                        AddMessage($"Failed to send high temperature point: {highTempResponse.Message}", MessageType.Error);
+                        return;
+                    }
+
+                    await Task.Delay(3000);
+
+                    var tempHighAdc = circuit.calibration.calibrationBuffer.Any()
+                        ? circuit.calibration.calibrationBuffer.Average(e => e.TemperatureInt) : 0.0;
+                    circuit.calibration.SystemHighInput = (float)tempHighAdc;
+                    Step = CalibrationStep.Complete;
+                    AddMessage($"High temperature sent. ADC: {circuit.calibration.SystemHighInput:F2}", MessageType.Success);
+                    break;
+
+                case CalibrationStep.Complete:
+                    CalculateTemperatureCalibrationValues();
+                    var tempSaveResponse = await circuit.SetGainOffset(
+                        CalibrationQueryId.TemperatureGainOffset,
+                        circuit.calibration.Gain ?? 0,
+                        circuit.calibration.Offset ?? 0);
+                    if (!tempSaveResponse.Success)
+                    {
+                        AddMessage($"Failed to save temperature calibration: {tempSaveResponse.Message}", MessageType.Error);
+                        return;
+                    }
+                    AddMessage("Temperature calibration completed!", MessageType.Success);
+                    ResetCalibration();
+                    break;
+            }
+
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error during temperature calibration: {ex.Message}", MessageType.Error);
+            ResetCalibration();
+        }
+        finally
+        {
+            IsReady = false;
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    #region Calibration Calculations
+
+    private void CalculateCalibrationValues()
+    {
+        if (!circuit.calibration.ActualLowInput.HasValue  || !circuit.calibration.ActualHighInput.HasValue ||
+            !circuit.calibration.SystemLowInput.HasValue  || !circuit.calibration.SystemHighInput.HasValue)
+        {
+            AddMessage("Missing calibration data.", MessageType.Error);
+            return;
+        }
+        float y1 = circuit.calibration.ActualLowInput.Value;
+        float y2 = circuit.calibration.ActualHighInput.Value;
+        float x1 = circuit.calibration.SystemLowInput.Value;
+        float x2 = circuit.calibration.SystemHighInput.Value;
+        circuit.calibration.Gain   = (y2 - y1) / (x2 - x1);
+        circuit.calibration.Offset = y1 - (circuit.calibration.Gain.Value * x1);
+        AddMessage($"Gain: {circuit.calibration.Gain:F6}, Offset: {circuit.calibration.Offset:F6}", MessageType.Success);
+    }
+
+    private void CalculateVoltageCalibrationValues()
+    {
+        if (!circuit.calibration.UserLowInput.HasValue   || !circuit.calibration.UserHighInput.HasValue ||
+            !circuit.calibration.SystemLowInput.HasValue || !circuit.calibration.SystemHighInput.HasValue)
+        {
+            AddMessage("Missing voltage data.", MessageType.Error);
+            return;
+        }
+        float y1 = circuit.calibration.UserLowInput.Value;
+        float y2 = circuit.calibration.UserHighInput.Value;
+        float x1 = circuit.calibration.SystemLowInput.Value;
+        float x2 = circuit.calibration.SystemHighInput.Value;
+        circuit.calibration.Gain   = (y2 - y1) / (x2 - x1);
+        circuit.calibration.Offset = y1 - (circuit.calibration.Gain.Value * x1);
+        AddMessage($"Voltage Gain: {circuit.calibration.Gain:F6}, Offset: {circuit.calibration.Offset:F6}", MessageType.Success);
+    }
+
+    private void CalculateTemperatureCalibrationValues()
+    {
+        if (!circuit.calibration.UserLowInput.HasValue   || !circuit.calibration.UserHighInput.HasValue ||
+            !circuit.calibration.SystemLowInput.HasValue || !circuit.calibration.SystemHighInput.HasValue)
+        {
+            AddMessage("Missing temperature calibration data.", MessageType.Error);
+            return;
+        }
+        float y1 = circuit.calibration.UserLowInput.Value;
+        float y2 = circuit.calibration.UserHighInput.Value;
+        float x1 = circuit.calibration.SystemLowInput.Value;
+        float x2 = circuit.calibration.SystemHighInput.Value;
+        circuit.calibration.Gain   = (y2 - y1) / (x2 - x1);
+        circuit.calibration.Offset = y1 - (circuit.calibration.Gain.Value * x1);
+        AddMessage($"Temp Gain: {circuit.calibration.Gain:F6}, Offset: {circuit.calibration.Offset:F6}", MessageType.Success);
+    }
+
+    #endregion
+
+    #region Reset and Cancel
+
+    private void ResetCalibration(bool force = false)
+    {
+        Task.Delay(1000).Wait();
+
+        circuit?.StopCalibration(force);
+        Step = CalibrationStep.Idle;
+        circuit.calibration.IsCalibrationInPrcoess = false;
+        circuit.calibration.UserLowInput    = null;
+        circuit.calibration.UserHighInput   = null;
+        circuit.calibration.ActualLowInput  = null;
+        circuit.calibration.ActualHighInput = null;
+        circuit.calibration.SystemLowInput  = null;
+        circuit.calibration.SystemHighInput = null;
+        circuit.calibration.Gain            = null;
+        circuit.calibration.Offset          = null;
+        // circuit.calibration.SelectedRange   = CalibrationRange.Full_Range;
+        circuit.calibration.calibrationBuffer.Clear();
+        IsError = false;
+        AddMessage("Calibration reset.", MessageType.Info);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void CancelCalibration()
+    {
+        switch (Step)
+        {
+            case CalibrationStep.LowActualConfirm:
+                circuit?.CancelCalibration();
+                Step = CalibrationStep.LowConfirm;
+                break;
+            case CalibrationStep.HighConfirm:
+                circuit?.CancelCalibration();
+                Step = CalibrationStep.LowActualConfirm;
+                break;
+            case CalibrationStep.HighActualConfirm:
+                circuit?.CancelCalibration();
+                Step = CalibrationStep.HighConfirm;
+                break;
+            case CalibrationStep.Complete:
+                circuit?.CancelCalibration();
+                Step = CalibrationStep.HighActualConfirm;
+                break;
+        }
+    }
+
+    private bool CancelButtonDisabled() =>
+        Step == CalibrationStep.Idle || Step == CalibrationStep.LowConfirm;
+
+    #endregion
+
+    #region UI Helper Methods
+
+    private void SetCalibrationType(CalibrationTypeMode mode)
+    {
+        if (circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)
+        {
+            AddMessage("Cannot change type during active process.", MessageType.Warning);
+            return;
+        }
+        ResetCalibration();
+        circuit.calibration.CalibrationMode = mode;
+        AddMessage($"Type: {mode}", MessageType.Info);
+    }
+
+    private void SetMode(bool isCharge)
+    {
+        if (circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)
+        {
+            AddMessage("Cannot change mode during process.", MessageType.Warning);
+            return;
+        }
+        circuit.calibration.IsCharge = isCharge;
+        AddMessage($"Mode: {(isCharge ? "Charge" : "Discharge")}", MessageType.Info);
+    }
+
+    private void SetRange(CalibrationRange range)
+    {
+        if (circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)
+        {
+            AddMessage("Cannot change range during active process.", MessageType.Warning);
+            return;
+        }
+        circuit.calibration.SelectedRange = range;
+        var label = GetRangeButtonsOrdered().FirstOrDefault(r => r.Range == range).Label ?? range.ToString();
+        AddMessage($"Range: {label}", MessageType.Info);
+    }
+
+    private void SetVerifyMode(bool isCharge)
+    {
+        if (circuit.calibration.IsVerifying || circuit.calibration.IsCalibrationInPrcoess)
+        {
+            AddMessage("Cannot change mode during process.", MessageType.Warning);
+            return;
+        }
+        circuit.calibration.IsCharge = isCharge;
+        ResetVerification();
+        AddMessage($"Verify mode: {(isCharge ? "Charge" : "Discharge")}", MessageType.Info);
+    }
+
+    private void ResetVerification()
+    {
+        circuit.calibration.VerifyTestValue = null;
+        circuit.calibration.IsVerifying     = false;
+    }
+
+    private string GetCalibrationTypeButtonClass(bool isSelected)
+    {
+        const string baseClass = "px-2 py-1.5 text-xs font-medium rounded flex items-center gap-1.5 transition-all";
+        if (circuit.calibration.IsCalibrationInPrcoess || circuit.calibration.IsVerifying)
+            return $"{baseClass} bg-muted text-muted-foreground cursor-not-allowed";
+        return isSelected
+            ? $"{baseClass} bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+            : $"{baseClass} bg-background text-foreground border border-border hover:bg-accent";
+    }
+
+    private string GetCalibrationModeButtonClass(bool isSelected, bool isDisabled)
+    {
+        const string baseClass = "flex-1 px-2 py-1 text-sm font-medium rounded flex items-center justify-center gap-1 transition-all";
+        if (isDisabled)
+            return $"{baseClass} bg-muted text-muted-foreground cursor-not-allowed";
+        var ringClass = isSelected && Step != CalibrationStep.Idle ? "ring-1 ring-primary/50" : "";
+        return isSelected
+            ? $"{baseClass} bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 {ringClass}"
+            : $"{baseClass} bg-background text-foreground border border-border hover:bg-accent";
+    }
+
+    private string GetToggleButtonClass(bool isSelected, bool isDisabled)
+    {
+        const string baseClass = "flex-1 px-2 py-1 text-sm font-medium rounded flex items-center justify-center gap-1 transition-all";
+        if (isDisabled)
+            return $"{baseClass} bg-muted text-muted-foreground cursor-not-allowed";
+        return isSelected
+            ? $"{baseClass} bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+            : $"{baseClass} bg-background text-foreground border border-border hover:bg-accent";
+    }
+
+    private string GetStepDisplayText()
+    {
+        if (circuit.calibration.IsCurrent)
+        {
+            return Step switch
+            {
+                CalibrationStep.Idle             => "Ready",
+                CalibrationStep.LowConfirm       => "1/4",
+                CalibrationStep.LowActualConfirm => "2/4",
+                CalibrationStep.HighConfirm      => "3/4",
+                CalibrationStep.HighActualConfirm => "4/4",
+                CalibrationStep.Complete         => "Done",
+                _ => "?"
+            };
+        }
+
+        // Voltage and Temperature follow same 2-step display
+        return Step switch
+        {
+            CalibrationStep.Idle        => "Ready",
+            CalibrationStep.LowConfirm  => "1/2",
+            CalibrationStep.HighConfirm => "2/2",
+            CalibrationStep.Complete    => "Done",
+            _ => "?"
+        };
+    }
+
+    private string GetActionButtonText()
+    {
+        if (circuit.calibration.IsCurrent)
+        {
+            return Step switch
+            {
+                CalibrationStep.Idle              => "Start Calibration",
+                CalibrationStep.LowConfirm        => "Confirm Low Ref",
+                CalibrationStep.LowActualConfirm  => "Confirm Low Actual",
+                CalibrationStep.HighConfirm       => "Confirm High Ref",
+                CalibrationStep.HighActualConfirm => "Confirm High Actual",
+                CalibrationStep.Complete          => "Transfer",
+                _ => "Next"
+            };
+        }
+
+        var typeLabel = circuit.calibration.IsTemperature ? "Temp" : "Voltage";
+        return Step switch
+        {
+            CalibrationStep.Idle        => $"Start {typeLabel} Calibration",
+            CalibrationStep.LowConfirm  => "Confirm Low",
+            CalibrationStep.HighConfirm => "Confirm High",
+            CalibrationStep.Complete    => "Transfer",
+            _ => "Next"
+        };
+    }
+
+    private bool IsActionButtonDisabled()
+    {
+        if (circuit == null || IsError) return true;
+
+        if (circuit.calibration.IsCurrent)
+        {
+            var (rangeMin, rangeMax) = GetCurrentRangeBounds();
+            return Step switch
+            {
+                CalibrationStep.Idle              => false,
+                CalibrationStep.LowConfirm        => !IsCurrentInputValid(circuit.calibration.UserLowInput,  rangeMin, rangeMax),
+                CalibrationStep.LowActualConfirm  => !circuit.calibration.ActualLowInput.HasValue,
+                CalibrationStep.HighConfirm       => !IsCurrentInputValid(circuit.calibration.UserHighInput, rangeMin, rangeMax),
+                CalibrationStep.HighActualConfirm => !circuit.calibration.ActualHighInput.HasValue,
+                CalibrationStep.Complete          => false,
+                _ => true
+            };
+        }
+
+        // Voltage and Temperature
+        return Step switch
+        {
+            CalibrationStep.Idle        => false,
+            CalibrationStep.LowConfirm  => !circuit.calibration.UserLowInput.HasValue,
+            CalibrationStep.HighConfirm => !circuit.calibration.UserHighInput.HasValue,
+            CalibrationStep.Complete    => false,
+            _ => true
+        };
+    }
+
+    private string GetStepBadgeClass() => Step switch
+    {
+        CalibrationStep.Complete => "px-1.5 py-0.5 text-sm font-semibold rounded bg-green-100 text-green-800",
+        CalibrationStep.Idle     => "px-1.5 py-0.5 text-sm font-semibold rounded bg-gray-100 text-gray-800",
+        _ => "px-1.5 py-0.5 text-sm font-semibold rounded bg-blue-100 text-blue-800"
+    };
+
+    private int GetProgressPercentage() => Step switch
+    {
+        CalibrationStep.Idle              => 0,
+        CalibrationStep.LowConfirm        => 20,
+        CalibrationStep.LowActualConfirm  => 40,
+        CalibrationStep.HighConfirm       => 60,
+        CalibrationStep.HighActualConfirm => 80,
+        CalibrationStep.Complete          => 100,
+        _ => 0
+    };
+
+    #endregion
+
+    #region Range Validation Helpers
+
+    /// <summary>
+    /// Returns the ordered list of range buttons for the UI.
+    /// UI label order (low-to-high current): Full Range → Range1 → Range2 → Range3 → Range4.
+    /// The user-facing Range1 is the smallest current window (backend Range4),
+    /// and user-facing Range4 is the largest window (backend Range1).
+    /// Wire bytes sent to hardware are the CalibrationRange enum values — unchanged.
+    /// </summary>
+    private static IEnumerable<(CalibrationRange Range, string Label)> GetRangeButtonsOrdered()
+    {
+        // UI label  → Backend enum value that owns that current window
+        // Full Range: maxA/2 … maxA  (kept as-is, covers widest span)
+        // Range1 (UI): 0.5 … maxA/8   → backend Range4 = 0x04
+        // Range2 (UI): maxA/8 … maxA/4 → backend Range3 = 0x03
+        // Range3 (UI): maxA/4 … maxA/2 → backend Range2 = 0x02
+        // Range4 (UI): maxA/2 … maxA   → backend Range1 = 0x01
+        yield return (CalibrationRange.Full_Range, "Full Range");
+        yield return (CalibrationRange.Range4,     "Range1");   // smallest window → shown first
+        yield return (CalibrationRange.Range3,     "Range2");
+        yield return (CalibrationRange.Range2,     "Range3");
+        yield return (CalibrationRange.Range1,     "Range4");   // largest window  → shown last
+    }
+
+    /// <summary>
+    /// Returns the (low, high) physical current bounds for the selected range.
+    /// Bounds use the backend CalibrationRange enum value — wire bytes are unchanged.
+    /// The mapping is:
+    ///   Full_Range        : 0.5 … maxA
+    ///   Backend Range1 (UI Range4, 100%) : maxA/2 … maxA
+    ///   Backend Range2 (UI Range3,  50%) : maxA/4 … maxA/2
+    ///   Backend Range3 (UI Range2,  25%) : maxA/8 … maxA/4
+    ///   Backend Range4 (UI Range1,12.5%) : 0.5   … maxA/8
+    /// </summary>
+    private (float minValue, float maxValue) GetCurrentRangeBounds()
+    {
+        float maxA = circuit?.Channel?.ChannelMaxChargingCurrent ?? 51f;
+
+        return circuit.calibration.SelectedRange switch
+        {
+            CalibrationRange.Full_Range => (0.5f,     maxA),
+            CalibrationRange.Range1     => (maxA / 2, maxA),       // UI Range4 — largest window
+            CalibrationRange.Range2     => (maxA / 4, maxA / 2),   // UI Range3
+            CalibrationRange.Range3     => (maxA / 8, maxA / 4),   // UI Range2
+            CalibrationRange.Range4     => (0.5f,     maxA / 8),   // UI Range1 — smallest window
+            _                           => (0.5f,     maxA)
+        };
+    }
+
+    private bool IsCurrentInputValid(float? value, float min, float max)
+        => value.HasValue && value.Value >= 0 && value.Value >= min && value.Value <= max;
+
+    #endregion
+
+    private void AddMessage(string text, MessageType type)
+    {
+        messages.Add(new CalibrationMessage { Text = text, Type = type, Timestamp = DateTime.Now });
+        if (messages.Count > 50)
+            messages.RemoveAt(0);
+        SessionStorage.SetComponentState(calId, messages);
+    }
+
+    private void ClearMessages() => messages.Clear();
+
+    private string GetMessageClass(MessageType type) => type switch
+    {
+        MessageType.Success => "text-green-600 font-medium",
+        MessageType.Error   => "text-red-600 font-medium",
+        MessageType.Warning => "text-yellow-600 font-medium",
+        MessageType.Info    => "text-blue-600 font-medium",
+        _ => "text-foreground"
+    };
+
+    #region Verification
+
+    private async Task HandleVerify()
+    {
+        if (circuit == null || !circuit.calibration.VerifyTestValue.HasValue)
+        {
+            AddMessage("Invalid verification parameters.", MessageType.Error);
+            return;
+        }
+
+        if (!circuit.calibration.IsVerifying)
+        {
+            var readyResponse = await circuit.HWReadyToCalibrationAsync();
+           
+            if (!readyResponse.Success)
+            {
+                AddMessage($"Hardware not ready: {readyResponse.Message}", MessageType.Error);
+                return;
+            }
+
+            await Task.Delay(1000);
+
+            var getPreviousData = await circuit.PreviousCalibration();
+            if (getPreviousData.Success && getPreviousData.Data != null)
+            {
+                circuit.calibration.CurrentCharge = getPreviousData.Data.CurrentCharge ?? new();
+                circuit.calibration.CurrentDischarge = getPreviousData.Data.CurrentDischarge ?? new();
+                circuit.calibration.VoltageCharge = getPreviousData.Data.VoltageCharge;
+                circuit.calibration.VoltageDischarge = getPreviousData.Data.VoltageDischarge;
+                circuit.calibration.TemperaturePoint = getPreviousData.Data.Temperature;
+                AddMessage("Previous Data Received.", MessageType.Info);
+                StateHasChanged();
+            }
+
+            CalibrationQueryId queryId;
+            if (circuit.calibration.IsCurrent)
+            {
+                queryId = circuit.calibration.IsCharge
+                    ? CalibrationQueryId.StartChargeVerifyCurrentcalibration
+                    : CalibrationQueryId.StartDisChargeVerifyCurrentcalibration;
+            }
+            else
+            {
+                AddMessage("Voltage verification not implemented.", MessageType.Warning);
+                return;
+            }
+
+            var response = await circuit.CalibrationPointPreset(queryId, circuit.calibration.VerifyTestValue.Value, null);
+            if (!response.Success)
+            {
+                AddMessage($"Failed to start: {response.Message}", MessageType.Error);
+                return;
+            }
+
+            circuit.calibration.IsVerifying = true;
+            AddMessage($"Verifying at {circuit.calibration.VerifyTestValue.Value:F4}", MessageType.Info);
+        }
+        else
+        {
+            var response = await circuit.StopverifyCalibration();
+            if (!response.Success)
+            {
+                AddMessage($"Failed to stop: {response.Message}", MessageType.Error);
+                return;
+            }
+
+            var stopProcess = await circuit.StopCalibration();
+            if (!stopProcess.Success)
+            {
+                AddMessage($"StopCalibrationProcess Failed: {stopProcess.Message}", MessageType.Warning);
+                return;
+            }
+
+            circuit.calibration.IsVerifying = false;
+            AddMessage("Verification stopped.", MessageType.Info);
+        }
+
+        StateHasChanged();
+    }
+
+    #endregion
+
+}

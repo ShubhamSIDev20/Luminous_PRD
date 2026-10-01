@@ -1,0 +1,382 @@
+@page "/program/tables"
+@attribute [Authorize]
+@attribute [StreamRendering]
+
+@using BatteryTestingSystem.Components.UI.PageHeader
+@using BatteryTestingSystem.Components.UI.Card
+@using BatteryTestingSystem.Components.UI.Datatable
+@using BatteryTestingSystem.Components.UI.Dialog
+
+@inject ToastService Toast
+
+<div class="flex flex-col h-full overflow-hidden">
+
+    <!-- ── Page Header ── -->
+    <div class="shrink-0 px-6 pt-6">
+        <PageHeader Title="Table File Manager"
+                    Description="Upload, view, edit and validate .txt table files"
+                    Icon="Lucide.FolderOpen"
+                    ShowMeta="true"
+                    ItemCount="@files.Count">
+            <MetaContent>
+                <span class="flex items-center gap-1">
+                    <span class="inline-block h-2 w-2 rounded-full bg-green-500"></span>
+                    Valid: @files.Count(f => f.IsValid)
+                </span>
+                <span class="flex items-center gap-1">
+                    <span class="inline-block h-2 w-2 rounded-full bg-red-500"></span>
+                    Invalid: @files.Count(f => !f.IsValid)
+                </span>
+            </MetaContent>
+            <Actions>
+                <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small" OnClick="LoadFiles">
+                    <Blazicon Svg="Lucide.RefreshCw" class="h-3.5 w-3.5 mr-1.5" />
+                    Refresh
+                </Button>
+            </Actions>
+        </PageHeader>
+    </div>
+
+    <!-- ── Upload Card ── -->
+    <div class="shrink-0 px-6 pb-4">
+        <Card class="p-4">
+            <div class="flex items-center gap-2 mb-3">
+                <div class="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <Blazicon Svg="Lucide.Upload" class="h-4 w-4" />
+                </div>
+                <span class="text-sm font-semibold text-foreground">Upload Text File</span>
+            </div>
+            <div class="flex gap-3 items-end flex-wrap">
+                <div class="flex-1 min-w-[260px]">
+                    <InputFile OnChange="HandleFileSelected"
+                               class="block w-full text-sm text-foreground
+                                      file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0
+                                      file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground
+                                      hover:file:bg-primary/90 file:cursor-pointer file:transition-colors"
+                               accept=".txt" />
+                    <p class="mt-1.5 text-xs text-muted-foreground">
+                        Only .txt files · max filename 8 characters · validated before upload
+                    </p>
+                </div>
+                <Button Variant="ButtonVariant.Default"
+                        OnClick="UploadFile"
+                        Disabled="@(selectedFile == null || isUploading)"
+                        class="whitespace-nowrap shrink-0">
+                    @if (isUploading)
+                    {
+                        <Blazicon Svg="Lucide.Loader" class="h-4 w-4 mr-2 animate-spin" />
+                        <span>Uploading…</span>
+                    }
+                    else
+                    {
+                        <Blazicon Svg="Lucide.Upload" class="h-4 w-4 mr-2" />
+                        <span>Upload File</span>
+                    }
+                </Button>
+            </div>
+        </Card>
+    </div>
+
+    <!-- ── DataTable ── -->
+    <div class="flex-1 min-h-0 px-6 pb-6">
+        <DataTable TItem="FileInfoModel"
+                   Title="Text Files"
+                   Data="@files"
+                   Search="true"
+                   ExcelExport="true"
+                   ExcelFileName="table-files"
+                   OnRowClick="@(f => ViewFile(f.FileName))">
+            <ActionButtons>
+                <!-- Stats badges in toolbar -->
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 dark:bg-green-900/30
+                             text-green-700 dark:text-green-400 rounded-full text-xs font-medium border border-green-200 dark:border-green-700">
+                    <Blazicon Svg="Lucide.FileCheck" class="h-3 w-3" />
+                    @files.Count(f => f.IsValid)
+                </span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/30
+                             text-red-700 dark:text-red-400 rounded-full text-xs font-medium border border-red-200 dark:border-red-700">
+                    <Blazicon Svg="Lucide.FileX" class="h-3 w-3" />
+                    @files.Count(f => !f.IsValid)
+                </span>
+            </ActionButtons>
+            <Columns>
+                <!-- File Name -->
+                <ColumnDef TItem="FileInfoModel" Key="filename" Header="File Name"
+                           SearchSelector="@(f => f.FileName)"
+                           ExcelValueSelector="@(f => f.FileName)">
+                    <CellTemplate Context="file">
+                        <div class="flex items-center gap-2">
+                            <Blazicon Svg="Lucide.FileText" class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span class="font-medium">@file.FileName</span>
+                        </div>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <!-- Valid -->
+                <ColumnDef TItem="FileInfoModel" Key="valid" Header="Status" Align="center"
+                           SearchSelector="@(f => f.IsValid ? "Valid" : "Invalid")"
+                           ExcelValueSelector="@(f => f.IsValid ? "Valid" : $"{f.ValidationErrors.Count} error(s)")">
+                    <CellTemplate Context="file">
+                        @if (file.IsValid)
+                        {
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 dark:bg-green-900/30
+                                         text-green-700 dark:text-green-400 rounded-full text-xs font-medium">
+                                <Blazicon Svg="Lucide.Check" class="h-3 w-3" />
+                                Valid
+                            </span>
+                        }
+                        else
+                        {
+                            <button @onclick:stopPropagation="true"
+                                    @onclick="() => ShowValidationErrors(file)"
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/30
+                                           text-red-700 dark:text-red-400 rounded-full text-xs font-medium
+                                           hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors">
+                                <Blazicon Svg="Lucide.CircleAlert" class="h-3 w-3" />
+                                @file.ValidationErrors.Count error@(file.ValidationErrors.Count != 1 ? "s" : "")
+                            </button>
+                        }
+                    </CellTemplate>
+                </ColumnDef>
+
+                <!-- Size -->
+                <ColumnDef TItem="FileInfoModel" Key="size" Header="Size" Align="right"
+                           SearchSelector="@(f => f.SizeInKB.ToString())"
+                           ExcelValueSelector="@(f => f.SizeInKB + " KB")">
+                    <CellTemplate Context="file">
+                        <span class="text-muted-foreground">@file.SizeInKB KB</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <!-- Created -->
+                <ColumnDef TItem="FileInfoModel" Key="created" Header="Created"
+                           SearchSelector="@(f => f.CreatedDate.ToString("dd/MM/yyyy HH:mm"))"
+                           ExcelValueSelector="@(f => f.CreatedDate.ToString("dd/MM/yyyy HH:mm"))">
+                    <CellTemplate Context="file">
+                        <span class="text-muted-foreground text-xs">@file.CreatedDate.ToString("dd/MM/yyyy HH:mm")</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <!-- Modified -->
+                <ColumnDef TItem="FileInfoModel" Key="modified" Header="Modified"
+                           SearchSelector="@(f => f.ModifiedDate.ToString("dd/MM/yyyy HH:mm"))"
+                           ExcelValueSelector="@(f => f.ModifiedDate.ToString("dd/MM/yyyy HH:mm"))">
+                    <CellTemplate Context="file">
+                        <span class="text-muted-foreground text-xs">@file.ModifiedDate.ToString("dd/MM/yyyy HH:mm")</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <!-- Actions -->
+                <ColumnDef TItem="FileInfoModel" Key="actions" Header="Actions" Align="center">
+                    <CellTemplate Context="file">
+                        <div class="flex items-center justify-center gap-0.5" @onclick:stopPropagation="true">
+                            <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                    OnClick="() => ViewFile(file.FileName)" title="View">
+                                <Blazicon Svg="Lucide.Eye" class="h-3.5 w-3.5" />
+                            </Button>
+                            <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                    OnClick="() => EditFile(file.FileName)" title="Edit">
+                                <Blazicon Svg="Lucide.Pencil" class="h-3.5 w-3.5" />
+                            </Button>
+                            <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                    OnClick="() => ConfirmDelete(file.FileName)" title="Delete">
+                                <Blazicon Svg="Lucide.Trash2" class="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                        </div>
+                    </CellTemplate>
+                </ColumnDef>
+            </Columns>
+        </DataTable>
+    </div>
+</div>
+
+<!-- ── View / Edit Modal ── -->
+@if (showModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         style="background-color:rgba(0,0,0,0.5);" @onclick="CloseModal">
+        <div class="bg-card rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-border"
+             @onclick:stopPropagation="true">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+                <div class="flex items-center gap-2.5">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-md
+                                @(isEditMode ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")">
+                        <Blazicon Svg="@(isEditMode ? Lucide.Pencil : Lucide.Eye)" class="h-4 w-4" />
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-foreground">
+                            @(isEditMode ? "Edit File" : "View File")
+                        </h3>
+                        <p class="text-xs text-muted-foreground font-mono">@currentFileName</p>
+                    </div>
+                </div>
+                <button @onclick="CloseModal"
+                        class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4">
+                @if (isEditMode)
+                {
+                    <p class="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
+                        <Blazicon Svg="Lucide.Info" class="h-3.5 w-3.5 shrink-0" />
+                        Format: Time;Y;Z;U (semicolon-separated, 1–4 values per line). Validated on save.
+                    </p>
+                    <textarea class="w-full h-96 p-3 border border-input rounded-lg font-mono text-sm
+                                     bg-background text-foreground
+                                     focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring
+                                     resize-none transition-colors"
+                              @bind="fileContent"></textarea>
+                }
+                else
+                {
+                    <pre class="p-4 bg-muted rounded-lg overflow-auto max-h-96 font-mono text-sm whitespace-pre-wrap text-foreground">@fileContent</pre>
+                }
+            </div>
+            <div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-border">
+                @if (isEditMode)
+                {
+                    <Button Variant="ButtonVariant.Default" OnClick="SaveFile">
+                        <Blazicon Svg="Lucide.Save" class="h-4 w-4 mr-2" />
+                        Save Changes
+                    </Button>
+                }
+                <Button Variant="ButtonVariant.Outline" OnClick="CloseModal">Close</Button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Validation Errors Modal ── -->
+@if (showValidationModal)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         style="background-color:rgba(0,0,0,0.5);" @onclick="CloseValidationModal">
+        <div class="bg-card rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col border border-border"
+             @onclick:stopPropagation="true">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+                <div class="flex items-center gap-2.5">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-md bg-red-100 dark:bg-red-900/30 text-red-600">
+                        <Blazicon Svg="Lucide.CircleAlert" class="h-4 w-4" />
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-foreground">Validation Errors</h3>
+                        <p class="text-xs text-muted-foreground font-mono">@validationFileName</p>
+                    </div>
+                </div>
+                <button @onclick="CloseValidationModal"
+                        class="flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted transition-colors text-muted-foreground">
+                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-1.5">
+                @foreach (var error in validationErrors)
+                {
+                    <div class="flex items-start gap-2.5 p-2.5 bg-red-50 dark:bg-red-900/20
+                                border border-red-200 dark:border-red-800 rounded-lg">
+                        <Blazicon Svg="Lucide.TriangleAlert" class="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+                        <span class="text-xs text-red-800 dark:text-red-300 font-mono leading-relaxed">@error</span>
+                    </div>
+                }
+            </div>
+            <div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-border">
+                <Button Variant="ButtonVariant.Default" OnClick="() => EditFile(validationFileName)">
+                    <Blazicon Svg="Lucide.Pencil" class="h-4 w-4 mr-2" />
+                    Edit File
+                </Button>
+                <Button Variant="ButtonVariant.Outline" OnClick="CloseValidationModal">Close</Button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ── Delete Confirmation (using existing ConfirmDialog component) ── -->
+<ConfirmDialog IsOpen="@showDeleteConfirm"
+               IsOpenChanged="@(v => showDeleteConfirm = v)"
+               Title="Delete File"
+               Message="@($"Are you sure you want to permanently delete '{fileToDelete}'? This action cannot be undone.")"
+               OnConfirm="@DeleteFile" />
+
+@code {
+    private List<FileInfoModel> files = new();
+    private IBrowserFile? selectedFile;
+    private bool isUploading = false;
+    private bool showModal = false;
+    private string currentFileName = "";
+    private string fileContent = "";
+    private bool isEditMode = false;
+    private bool showDeleteConfirm = false;
+    private string fileToDelete = "";
+    private bool showValidationModal = false;
+    private string validationFileName = "";
+    private List<string> validationErrors = new();
+
+    protected override void OnInitialized() { LoadFiles(); }
+
+    private void LoadFiles() { files = FileManagerService.GetAllFiles(); StateHasChanged(); }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e) { selectedFile = e.File; }
+
+    private async Task UploadFile()
+    {
+        if (selectedFile == null) return;
+        isUploading = true;
+        try
+        {
+            var result = await FileManagerService.SaveFileAsync(selectedFile.Name, selectedFile.OpenReadStream(maxAllowedSize: 10485760));
+            if (result.Success) { Toast.Success(result.Message); selectedFile = null; LoadFiles(); }
+            else Toast.Error(result.Message);
+        }
+        catch (Exception ex) { Toast.Error($"Upload failed: {ex.Message}"); }
+        finally { isUploading = false; }
+    }
+
+    private void ViewFile(string fileName)
+    {
+        currentFileName = fileName;
+        var file = FileManagerService.ReadFileContent(fileName);
+        fileContent = file.Data;
+        isEditMode = false;
+        showModal = true;
+    }
+
+    private void EditFile(string fileName)
+    {
+        currentFileName = fileName;
+        var file = FileManagerService.ReadFileContent(fileName);
+        fileContent = file.Data;
+        isEditMode = true;
+        showModal = true;
+        showValidationModal = false;
+    }
+
+    private async Task SaveFile()
+    {
+        var result = await FileManagerService.UpdateFileAsync(currentFileName, fileContent);
+        if (result.Success) { Toast.Success(result.Message); CloseModal(); LoadFiles(); }
+        else Toast.Error(result.Message);
+    }
+
+    private void ShowValidationErrors(FileInfoModel file)
+    {
+        validationFileName = file.FileName;
+        validationErrors = file.ValidationErrors;
+        showValidationModal = true;
+    }
+
+    private void CloseValidationModal() { showValidationModal = false; validationFileName = ""; validationErrors = new(); }
+
+    private void ConfirmDelete(string fileName) { fileToDelete = fileName; showDeleteConfirm = true; }
+
+    private async Task DeleteFile()
+    {
+        var result = await FileManagerService.DeleteFileAsync(fileToDelete);
+        if (result.Success) Toast.Success(result.Message);
+        else Toast.Error(result.Message);
+        showDeleteConfirm = false;
+        fileToDelete = "";
+        LoadFiles();
+    }
+
+    private void CloseModal() { showModal = false; currentFileName = ""; fileContent = ""; }
+}

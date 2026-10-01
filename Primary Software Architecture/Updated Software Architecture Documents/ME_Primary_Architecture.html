@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ME-SAD-PRI-02 · Primary Board Software Architecture · Block Diagrams</title>
+<style>
+:root{
+  --ink:#12161B; --ink2:#39424D; --ink3:#6B7684; --ink4:#98A2AE;
+  --rule:#C3CAD2; --rule2:#DFE4E9;
+  --panel:#E4E8EC; --card:#FFFFFF;
+  --energized:#C2410C; --energized-bg:#FDF0E8; --energized-rule:#F0C4A8;
+  --signal:#17568F;    --signal-bg:#EAF1F8;    --signal-rule:#B4CCE4;
+  --safe:#26703A;      --safe-bg:#ECF4EE;      --safe-rule:#B5D4BE;
+  --estop:#A8221F;     --estop-bg:#FBECEB;     --estop-rule:#EABAB7;
+  --open:#54389B;      --open-bg:#F0ECFA;      --open-rule:#CDC0EC;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--panel); color:var(--ink);
+  font-family:var(--sans); font-size:15px; line-height:1.6;
+}
+.sheet{max-width:1180px; margin:0 auto; padding:0 20px 96px}
+
+/* ---------- title block: engineering drawing convention ---------- */
+.titleblock{
+  background:var(--card); border:1.5px solid var(--ink);
+  margin:28px 0 0; position:relative; overflow:hidden;
+}
+.tb-main{padding:26px 28px 22px; border-bottom:1.5px solid var(--ink)}
+.tb-eyebrow{
+  font-family:var(--mono); font-size:11px; letter-spacing:.22em;
+  text-transform:uppercase; color:var(--ink3); margin:0 0 12px;
+}
+.tb-title{
+  font-family:var(--mono); font-weight:700; font-size:clamp(21px,3.4vw,33px);
+  letter-spacing:-.015em; line-height:1.15; margin:0; text-transform:uppercase;
+}
+.tb-sub{margin:12px 0 0; max-width:64ch; color:var(--ink2); font-size:15px}
+.tb-grid{display:grid; grid-template-columns:repeat(4,1fr)}
+.tb-cell{padding:11px 16px; border-right:1px solid var(--rule)}
+.tb-cell:last-child{border-right:0}
+.tb-k{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--ink3); display:block; margin-bottom:3px;
+}
+.tb-v{font-family:var(--mono); font-size:13px; font-weight:600; color:var(--ink)}
+.stamp{
+  position:absolute; top:20px; right:-34px; transform:rotate(9deg);
+  font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.2em;
+  color:var(--estop); border:2.5px solid var(--estop); padding:5px 42px;
+  opacity:.5; pointer-events:none; text-transform:uppercase;
+}
+
+/* ---------- legend ---------- */
+.legend{
+  background:var(--card); border:1.5px solid var(--ink); border-top:0;
+  padding:14px 18px; display:flex; flex-wrap:wrap; gap:8px 26px; align-items:center;
+}
+.legend-lbl{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--ink3); margin-right:4px;
+}
+.key{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink2)}
+.swatch{width:15px; height:15px; border:1.5px solid; flex:none}
+.sw-e{background:var(--energized-bg); border-color:var(--energized)}
+.sw-s{background:var(--signal-bg); border-color:var(--signal)}
+.sw-n{background:#F1F4F6; border-color:var(--ink3)}
+.sw-o{background:var(--open-bg); border-color:var(--open)}
+.sw-x{background:var(--estop-bg); border-color:var(--estop)}
+
+/* ---------- sticky index ---------- */
+.index{
+  position:sticky; top:0; z-index:40; background:var(--ink);
+  border:1.5px solid var(--ink); margin-top:22px;
+  display:flex; gap:0; overflow-x:auto; scrollbar-width:thin;
+}
+.index a{
+  font-family:var(--mono); font-size:11px; letter-spacing:.09em; text-decoration:none;
+  color:#AFBAC6; padding:9px 13px; white-space:nowrap;
+  border-right:1px solid #2C343D;
+}
+.index a:hover,.index a:focus-visible{background:#232B34; color:#fff}
+
+/* ---------- block cards ---------- */
+.blk{background:var(--card); border:1.5px solid var(--ink); margin-top:22px}
+.blk-head{
+  display:flex; align-items:stretch; border-bottom:1.5px solid var(--ink);
+}
+.blk-tag{
+  font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.1em;
+  background:var(--ink); color:#fff; padding:13px 15px; display:flex;
+  align-items:center; flex:none;
+}
+.blk-tt{padding:11px 18px; display:flex; flex-direction:column; justify-content:center}
+.blk-tt h2{
+  font-family:var(--mono); font-size:15px; font-weight:700; margin:0;
+  letter-spacing:-.005em; text-transform:uppercase;
+}
+.blk-tt p{margin:2px 0 0; font-size:12.5px; color:var(--ink3)}
+.blk-body{padding:22px 24px}
+.blk-note{
+  border-top:1px solid var(--rule2); margin:20px -24px -22px;
+  padding:15px 24px 17px; background:#F7F9FA; font-size:14px; color:var(--ink2);
+}
+.blk-note strong{color:var(--ink)}
+.blk-note .nlbl{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ink3); display:block; margin-bottom:5px;
+}
+figure{margin:0}
+svg{display:block; width:100%; height:auto}
+
+/* svg shared text classes */
+.s-lbl{font-family:var(--mono); font-size:11px; font-weight:600; fill:var(--ink)}
+.s-sm{font-family:var(--mono); font-size:9px; fill:var(--ink3); letter-spacing:.06em}
+.s-bus{font-family:var(--mono); font-size:9px; fill:var(--ink2); letter-spacing:.05em}
+.s-hd{font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.14em}
+
+/* ---------- generic tables ---------- */
+table{border-collapse:collapse; width:100%; font-size:13.5px; margin:0}
+th,td{text-align:left; padding:8px 11px; border-bottom:1px solid var(--rule2); vertical-align:top}
+th{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink3); border-bottom:1.5px solid var(--ink);
+}
+tbody tr:last-child td{border-bottom:0}
+code{font-family:var(--mono); font-size:.88em; background:#EEF1F3; padding:1px 4px; border-radius:2px}
+
+/* ---------- layer stack (BLK-03) ---------- */
+.lyr{border:1.5px solid var(--ink); border-bottom:0}
+.lyr:last-child{border-bottom:1.5px solid var(--ink)}
+.lyr-row{display:flex; align-items:stretch}
+.lyr-id{
+  font-family:var(--mono); font-size:12px; font-weight:700; padding:12px 12px;
+  border-right:1.5px solid var(--ink); flex:none; width:52px; display:flex; align-items:center;
+}
+.lyr-txt{padding:10px 15px; flex:1}
+.lyr-nm{font-family:var(--mono); font-size:12.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase}
+.lyr-ct{font-size:12.5px; color:var(--ink2); margin-top:3px}
+.lyr-crit{background:var(--energized-bg)} .lyr-crit .lyr-id{background:var(--energized); color:#fff; border-right-color:var(--energized)}
+.lyr-best{background:var(--signal-bg)} .lyr-best .lyr-id{background:var(--signal); color:#fff; border-right-color:var(--signal)}
+.lyr-plat{background:#F1F4F6} .lyr-plat .lyr-id{background:var(--ink2); color:#fff; border-right-color:var(--ink2)}
+.boundary{
+  background:var(--ink); color:#fff; font-family:var(--mono); font-size:10px;
+  letter-spacing:.2em; text-transform:uppercase; text-align:center; padding:6px;
+}
+
+/* ---------- component map (BLK-04) ---------- */
+.dom{border:1.5px solid; margin-bottom:16px}
+.dom:last-child{margin-bottom:0}
+.dom-hd{
+  font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.16em;
+  text-transform:uppercase; padding:8px 13px; color:#fff; display:flex;
+  justify-content:space-between; gap:12px; flex-wrap:wrap;
+}
+.dom-hd span{font-weight:500; letter-spacing:.08em; opacity:.85}
+.dom-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:10px; padding:13px}
+.cmp{border:1px solid var(--rule); background:var(--card); padding:10px 12px}
+.cmp-n{font-family:var(--mono); font-size:12px; font-weight:700; line-height:1.35}
+.cmp-d{font-size:12px; color:var(--ink2); margin-top:5px; line-height:1.45}
+.cmp-r{font-family:var(--mono); font-size:9.5px; color:var(--ink4); margin-top:6px; letter-spacing:.04em}
+.dom-c{border-color:var(--energized); background:var(--energized-bg)}
+.dom-c .dom-hd{background:var(--energized)}
+.dom-c .cmp{border-left:3px solid var(--energized)}
+.dom-b{border-color:var(--signal); background:var(--signal-bg)}
+.dom-b .dom-hd{background:var(--signal)}
+.dom-b .cmp{border-left:3px solid var(--signal)}
+
+/* ---------- startup timeline (BLK-08) ---------- */
+.tl{list-style:none; margin:0; padding:0 0 0 30px; border-left:2px solid var(--rule); counter-reset:tl}
+.tl li{position:relative; padding:0 0 20px 4px; counter-increment:tl}
+.tl li:last-child{padding-bottom:0}
+.tl li::before{
+  content:counter(tl,decimal-leading-zero); position:absolute; left:-41px; top:0;
+  font-family:var(--mono); font-size:10px; font-weight:700; background:var(--ink); color:#fff;
+  width:22px; height:22px; display:grid; place-items:center;
+}
+.tl-t{font-family:var(--mono); font-size:12.5px; font-weight:700}
+.tl-d{font-size:13px; color:var(--ink2); margin-top:2px}
+.tl-x{border-left:3px solid var(--estop); background:var(--estop-bg); padding:8px 11px; margin-top:7px; font-size:12.5px}
+
+/* ---------- timing bars (BLK-11) ---------- */
+.tm{display:grid; grid-template-columns:1fr; gap:9px}
+.tm-row{display:grid; grid-template-columns:minmax(150px,1.3fr) 3fr minmax(64px,auto); gap:12px; align-items:center}
+.tm-n{font-family:var(--mono); font-size:11px; line-height:1.35}
+.tm-track{background:#EDF0F2; height:20px; position:relative; border:1px solid var(--rule2)}
+.tm-fill{position:absolute; inset:0 auto 0 0; background:var(--energized); opacity:.82}
+.tm-exp{position:absolute; top:-3px; bottom:-3px; width:2.5px; background:var(--safe)}
+.tm-v{font-family:var(--mono); font-size:11px; font-weight:700; text-align:right}
+.tm-key{display:flex; gap:22px; flex-wrap:wrap; margin-top:14px; font-size:12px; color:var(--ink2)}
+.tm-key i{display:inline-block; width:13px; height:9px; margin-right:6px; vertical-align:baseline}
+
+/* ---------- decision / open (BLK-10, BLK-12) ---------- */
+.two{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+.opt{border:1.5px solid var(--rule); padding:0}
+.opt-h{
+  padding:9px 13px; border-bottom:1.5px solid var(--rule);
+  font-family:var(--mono); font-size:11.5px; font-weight:700; letter-spacing:.06em;
+}
+.opt-b{padding:12px 14px}
+.opt ul{margin:0; padding-left:17px; font-size:13px}
+.opt li{margin-bottom:5px}
+.opt li::marker{font-family:var(--mono); font-size:.85em}
+.opt-pick{border-color:var(--safe); border-width:2px}
+.opt-pick .opt-h{background:var(--safe-bg); border-bottom-color:var(--safe); color:var(--safe)}
+.opt-alt .opt-h{background:#F1F4F6; color:var(--ink2)}
+.verdict{
+  border:2px solid var(--open); background:var(--open-bg); padding:13px 16px; margin-top:14px;
+  font-size:13.5px;
+}
+.verdict .nlbl{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--open); display:block; margin-bottom:5px; font-weight:700;
+}
+.pri{
+  display:inline-block; font-family:var(--mono); font-size:9.5px; font-weight:700;
+  letter-spacing:.1em; padding:2px 7px; border:1.5px solid;
+}
+.pri-now{color:var(--estop); border-color:var(--estop); background:var(--estop-bg)}
+.pri-soon{color:var(--energized); border-color:var(--energized); background:var(--energized-bg)}
+.pri-later{color:var(--ink3); border-color:var(--rule); background:#F1F4F6}
+
+/* ---------- barriers (BLK-09) ---------- */
+.bar-row{display:grid; grid-template-columns:repeat(3,1fr); gap:0; border:1.5px solid var(--ink)}
+.bar{padding:14px 15px; border-right:1.5px solid var(--ink)}
+.bar:last-child{border-right:0}
+.bar-n{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ink3); margin-bottom:6px;
+}
+.bar-t{font-family:var(--mono); font-size:12.5px; font-weight:700; line-height:1.35}
+.bar-w{font-size:12.5px; color:var(--ink2); margin-top:7px}
+.bar-l{font-family:var(--mono); font-size:9.5px; color:var(--ink4); margin-top:8px}
+.bar1{background:var(--signal-bg)} .bar2{background:var(--energized-bg)} .bar3{background:var(--safe-bg)}
+
+/* ---------- callout ---------- */
+.callout{border-left:4px solid var(--estop); background:var(--estop-bg); padding:13px 16px; margin-top:16px; font-size:13.5px}
+.callout .nlbl{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--estop); display:block; margin-bottom:5px; font-weight:700;
+}
+footer{
+  margin-top:26px; border:1.5px solid var(--ink); background:var(--card);
+  padding:16px 20px; font-family:var(--mono); font-size:11px; color:var(--ink3);
+  display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; letter-spacing:.06em;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width:860px){
+  .tb-grid{grid-template-columns:repeat(2,1fr)}
+  .tb-cell:nth-child(2){border-right:0}
+  .tb-cell:nth-child(1),.tb-cell:nth-child(2){border-bottom:1px solid var(--rule)}
+  .two{grid-template-columns:1fr}
+  .bar-row{grid-template-columns:1fr}
+  .bar{border-right:0; border-bottom:1.5px solid var(--ink)}
+  .bar:last-child{border-bottom:0}
+  .tm-row{grid-template-columns:1fr; gap:4px}
+  .tm-v{text-align:left}
+  .stamp{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+@media print{
+  body{background:#fff}
+  .index{display:none}
+  .blk,.titleblock,.legend,footer{break-inside:avoid; box-shadow:none}
+  .sheet{max-width:none; padding:0}
+}
+:focus-visible{outline:2.5px solid var(--open); outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- ============ TITLE BLOCK ============ -->
+<div class="titleblock">
+  <div class="stamp">Draft</div>
+  <div class="tb-main">
+    <p class="tb-eyebrow">Ador Powertron · ME Battery Testing System · Sheet 1 of 1</p>
+    <h1 class="tb-title">Primary Control Board<br>Software Architecture — Block Diagrams</h1>
+    <p class="tb-sub">Graphical companion to <code>ME-SAD-PRI-02</code>. Twelve blocks, read in order,
+    take you from the outside of the box to the inside of the control loop. Every diagram uses the
+    same colour language — see the key below.</p>
+  </div>
+  <div class="tb-grid">
+    <div class="tb-cell"><span class="tb-k">Document</span><span class="tb-v">ME-SAD-PRI-02-G</span></div>
+    <div class="tb-cell"><span class="tb-k">Revision</span><span class="tb-v">0.1</span></div>
+    <div class="tb-cell"><span class="tb-k">Date</span><span class="tb-v">2026-08-06</span></div>
+    <div class="tb-cell"><span class="tb-k">Status</span><span class="tb-v">Not baselined</span></div>
+  </div>
+</div>
+
+<div class="legend">
+  <span class="legend-lbl">Colour key</span>
+  <span class="key"><i class="swatch sw-e"></i>Critical Domain — real-time, bounded</span>
+  <span class="key"><i class="swatch sw-s"></i>Best-Effort Domain — everything else</span>
+  <span class="key"><i class="swatch sw-n"></i>Platform / external peer</span>
+  <span class="key"><i class="swatch sw-x"></i>Safety path</span>
+  <span class="key"><i class="swatch sw-o"></i>Open decision</span>
+</div>
+
+<nav class="index" aria-label="Block index">
+  <a href="#b01">01 · Context</a>
+  <a href="#b02">02 · Two Domains</a>
+  <a href="#b03">03 · Layers</a>
+  <a href="#b04">04 · Components</a>
+  <a href="#b05">05 · Control Cycle</a>
+  <a href="#b06">06 · Per-Circuit</a>
+  <a href="#b07">07 · Data Path</a>
+  <a href="#b08">08 · Fault Path</a>
+  <a href="#b09">09 · Startup</a>
+  <a href="#b10">10 · Safety Barriers</a>
+  <a href="#b11">11 · A53 vs M7</a>
+  <a href="#b12">12 · Timing</a>
+  <a href="#b13">13 · Open Items</a>
+</nav>
+
+<!-- ============ BLK-01 ============ -->
+<section class="blk" id="b01">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-01</div>
+    <div class="blk-tt"><h2>System Context</h2><p>What the Primary is connected to, and which way the data flows</p></div>
+  </div>
+  <div class="blk-body">
+  <figure>
+  <svg viewBox="0 0 1060 500" role="img" aria-label="System context diagram of the Primary Control Board">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#39424D"/>
+      </marker>
+    </defs>
+
+    <!-- web app -->
+    <rect x="410" y="18" width="240" height="52" fill="#F1F4F6" stroke="#39424D" stroke-width="1.5"/>
+    <text class="s-lbl" x="530" y="41" text-anchor="middle">WEB APPLICATION</text>
+    <text class="s-sm" x="530" y="56" text-anchor="middle">PC · GUI · DATABASE · ARCHIVE</text>
+
+    <!-- IF-1 link -->
+    <line x1="530" y1="70" x2="530" y2="112" stroke="#39424D" stroke-width="1.5"/>
+    <rect x="546" y="76" width="128" height="28" fill="#fff" stroke="#C3CAD2" stroke-width="1"/>
+    <text class="s-bus" x="554" y="88">IF-1 · ETHERNET 1</text>
+    <text class="s-bus" x="554" y="99">TCP/IP · SERVER</text>
+
+    <!-- primary board -->
+    <rect x="150" y="112" width="760" height="118" fill="#fff" stroke="#12161B" stroke-width="2.5"/>
+    <text class="s-hd" x="168" y="132" fill="#12161B">PRIMARY CONTROL BOARD — ME MID COMPUTER</text>
+    <rect x="168" y="144" width="322" height="70" fill="var(--energized-bg)" stroke="var(--energized)" stroke-width="1.5"/>
+    <text class="s-lbl" x="329" y="168" text-anchor="middle" fill="var(--energized)">4 × CORTEX-A53 · LINUX</text>
+    <text class="s-sm" x="329" y="184" text-anchor="middle">CONTROL PATH + APPLICATION</text>
+    <text class="s-sm" x="329" y="199" text-anchor="middle">4 GB RAM · 32 GB STORAGE</text>
+    <rect x="502" y="144" width="176" height="70" fill="var(--open-bg)" stroke="var(--open)" stroke-width="1.5" stroke-dasharray="5 3"/>
+    <text class="s-lbl" x="590" y="168" text-anchor="middle" fill="var(--open)">1 × CORTEX-M7</text>
+    <text class="s-sm" x="590" y="184" text-anchor="middle">ROLE UNDECIDED</text>
+    <text class="s-sm" x="590" y="199" text-anchor="middle">SEE BLK-11</text>
+    <rect x="690" y="144" width="202" height="70" fill="#F1F4F6" stroke="#6B7684" stroke-width="1.5"/>
+    <text class="s-lbl" x="791" y="168" text-anchor="middle">I/O COMPLEMENT</text>
+    <text class="s-sm" x="791" y="184" text-anchor="middle">CAN-FD ×4 · RS-485 ×2</text>
+    <text class="s-sm" x="791" y="199" text-anchor="middle">ETHERNET ×2 · GPIO ×5</text>
+
+    <!-- elbow connectors: exit x -> bus y=268 -> peer centre -->
+    <g stroke="#39424D" stroke-width="1.5" fill="none" marker-end="url(#ar)">
+      <path d="M215,230 L215,262 L99,262 L99,312"/>
+      <path d="M330,230 L330,270 L271,270 L271,312"/>
+      <path d="M450,230 L450,278 L443,278 L443,312"/>
+      <path d="M600,230 L600,278 L615,278 L615,312"/>
+      <path d="M730,230 L730,270 L787,270 L787,312"/>
+      <path d="M850,230 L850,262 L959,262 L959,312"/>
+    </g>
+    <text class="s-bus" x="207" y="250" text-anchor="end">IF-2 · CAN-FD 1 · MASTER</text>
+    <text class="s-bus" x="338" y="250">IF-3 · CAN-FD 2</text>
+    <text class="s-bus" x="458" y="250">IF-4 · CAN-FD 3</text>
+    <text class="s-bus" x="592" y="250" text-anchor="end">IF-5 · CAN-FD 4</text>
+    <text class="s-bus" x="738" y="250">IF-6 · RS-485 #1</text>
+    <text class="s-bus" x="858" y="250">GPIO ×5</text>
+
+    <!-- peers -->
+    <rect x="20" y="312" width="158" height="66" fill="var(--energized-bg)" stroke="var(--energized)" stroke-width="1.5"/>
+    <text class="s-lbl" x="99" y="333" text-anchor="middle">DC-DC BOARDS</text>
+    <text class="s-sm" x="99" y="349" text-anchor="middle">8 BOARDS × 8 CH</text>
+    <text class="s-sm" x="99" y="364" text-anchor="middle">REGULATE + PROTECT</text>
+
+    <rect x="192" y="312" width="158" height="66" fill="var(--signal-bg)" stroke="var(--signal)" stroke-width="1.5"/>
+    <text class="s-lbl" x="271" y="333" text-anchor="middle">BMS INTERFACE</text>
+    <text class="s-sm" x="271" y="349" text-anchor="middle">n BOARDS · INBOUND</text>
+    <text class="s-sm" x="271" y="364" text-anchor="middle">LOG-ONLY DATA</text>
+
+    <rect x="364" y="312" width="158" height="66" fill="var(--signal-bg)" stroke="var(--signal)" stroke-width="1.5"/>
+    <text class="s-lbl" x="443" y="333" text-anchor="middle">CAN DATA LOGGER</text>
+    <text class="s-sm" x="443" y="349" text-anchor="middle">INBOUND ONLY</text>
+    <text class="s-sm" x="443" y="364" text-anchor="middle">TEMP · AUXILIARY</text>
+
+    <rect x="536" y="312" width="158" height="66" fill="#F7F9FA" stroke="#98A2AE" stroke-width="1.5" stroke-dasharray="5 3"/>
+    <text class="s-lbl" x="615" y="341" text-anchor="middle" fill="#6B7684">RESERVED</text>
+    <text class="s-sm" x="615" y="357" text-anchor="middle">FUTURE EXPANSION</text>
+
+    <rect x="708" y="312" width="158" height="66" fill="var(--signal-bg)" stroke="var(--signal)" stroke-width="1.5"/>
+    <text class="s-lbl" x="787" y="333" text-anchor="middle">MODBUS DEVICES</text>
+    <text class="s-sm" x="787" y="349" text-anchor="middle">RTU · UP TO 16</text>
+    <text class="s-sm" x="787" y="364" text-anchor="middle">FIELD SENSORS</text>
+
+    <rect x="880" y="312" width="158" height="66" fill="var(--estop-bg)" stroke="var(--estop)" stroke-width="2"/>
+    <text class="s-lbl" x="959" y="333" text-anchor="middle" fill="var(--estop)">SAFETY I/O</text>
+    <text class="s-sm" x="959" y="349" text-anchor="middle">E-STOP · INTERLOCK</text>
+    <text class="s-sm" x="959" y="364" text-anchor="middle">FAULT · HEARTBEAT</text>
+
+    <!-- packs -->
+    <line x1="99" y1="378" x2="99" y2="414" stroke="#39424D" stroke-width="1.5" marker-end="url(#ar)"/>
+    <text class="s-bus" x="108" y="399">DC POWER</text>
+    <rect x="20" y="414" width="158" height="52" fill="#F1F4F6" stroke="#39424D" stroke-width="1.5"/>
+    <text class="s-lbl" x="99" y="437" text-anchor="middle">BATTERY PACKS</text>
+    <text class="s-sm" x="99" y="452" text-anchor="middle">64 CIRCUITS TOTAL</text>
+  </svg>
+  </figure>
+  <div class="blk-note">
+    <span class="nlbl">Read this as</span>
+    The Primary is the <strong>only</strong> block that drives anything. IF-2 is its single control
+    interface — setpoints down, measurements up. IF-3 and IF-4 are strictly inbound and
+    <strong>never</strong> influence a cutoff decision; BMS data is log-only. Everything above the
+    Primary is a user interface and an archive, everything below is a sensor or an actuator.
+  </div>
+  </div>
+</section>
+
+<!-- ============ BLK-02 ============ -->
+<section class="blk" id="b02">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-02</div>
+    <div class="blk-tt"><h2>The Two-Domain Model</h2><p>The one idea the whole architecture rests on</p></div>
+  </div>
+  <div class="blk-body">
+  <figure>
+  <svg viewBox="0 0 1060 490" role="img" aria-label="Two-domain model: Critical Domain above, Best-Effort Domain below, separated by a non-blocking boundary">
+    <defs>
+      <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+      </marker>
+      <marker id="arO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#C2410C"/>
+      </marker>
+      <marker id="arB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#17568F"/>
+      </marker>
+    </defs>
+
+    <!-- CRITICAL -->
+    <rect x="30" y="16" width="1000" height="172" fill="var(--energized-bg)" stroke="var(--energized)" stroke-width="2.5"/>
+    <text class="s-hd" x="50" y="40" fill="var(--energized)">CRITICAL DOMAIN</text>
+    <text class="s-sm" x="196" y="40">SMALL · BOUNDED · REAL-TIME · RESERVED CPU</text>
+    <g fill="#fff" stroke="var(--energized)" stroke-width="1.5">
+      <rect x="50" y="54" width="229" height="66"/><rect x="293" y="54" width="229" height="66"/>
+      <rect x="536" y="54" width="229" height="66"/><rect x="779" y="54" width="229" height="66"/>
+    </g>
+    <text class="s-lbl" x="164" y="78" text-anchor="middle">MEASUREMENT INGEST</text>
+    <text class="s-sm" x="164" y="94" text-anchor="middle">PARSE · SCALE · TIMESTAMP</text>
+    <text class="s-sm" x="164" y="109" text-anchor="middle">STALENESS DETECTION</text>
+    <text class="s-lbl" x="407" y="78" text-anchor="middle">EXECUTION ENGINE</text>
+    <text class="s-sm" x="407" y="94" text-anchor="middle">64 STATE MACHINES</text>
+    <text class="s-sm" x="407" y="109" text-anchor="middle">CUTOFFS · ACTIONS · Ah/Wh</text>
+    <text class="s-lbl" x="650" y="78" text-anchor="middle">SETPOINT DISPATCH</text>
+    <text class="s-sm" x="650" y="94" text-anchor="middle">RESOLVE · CLAMP · SEND</text>
+    <text class="s-sm" x="650" y="109" text-anchor="middle">ACK + KEEP-ALIVE</text>
+    <text class="s-lbl" x="893" y="78" text-anchor="middle" fill="var(--estop)">SAFETY SUPERVISOR</text>
+    <text class="s-sm" x="893" y="94" text-anchor="middle">E-STOP · INTERLOCK</text>
+    <text class="s-sm" x="893" y="109" text-anchor="middle">SAFE IDLE · WATCHDOG</text>
+    <rect x="50" y="134" width="958" height="36" fill="#fff" stroke="var(--energized)" stroke-width="1" stroke-dasharray="4 3"/>
+    <text class="s-lbl" x="66" y="149" fill="var(--energized)">HOUSE RULES</text>
+    <text class="s-sm" x="66" y="163">NO FILE I/O · NO UNBOUNDED LOOPS · NEVER BLOCKS ON BEST-EFFORT · MEMORY LOCKED RESIDENT</text>
+
+    <!-- BOUNDARY BAND -->
+    <rect x="30" y="204" width="1000" height="78" fill="#12161B"/>
+    <text class="s-hd" x="50" y="234" fill="#fff">NON-BLOCKING</text>
+    <text class="s-hd" x="50" y="252" fill="#fff">BOUNDARY</text>
+    <line x1="50" y1="262" x2="150" y2="262" stroke="#6B7684" stroke-width="1"/>
+
+    <!-- down arrow: critical -> best effort -->
+    <line x1="330" y1="188" x2="330" y2="300" stroke="#fff" stroke-width="8"/>
+    <line x1="330" y1="188" x2="330" y2="300" stroke="var(--energized)" stroke-width="3" marker-end="url(#arO)"/>
+    <rect x="346" y="214" width="286" height="58" fill="#fff" stroke="var(--energized)" stroke-width="1.5"/>
+    <text class="s-lbl" x="360" y="234" fill="var(--energized)">LOCK-FREE RING BUFFER</text>
+    <text class="s-sm" x="360" y="249">RECORDS · FAULTS · TELEMETRY</text>
+    <text class="s-sm" x="360" y="263">FULL? COUNT A DROP AND CARRY ON</text>
+
+    <!-- up arrow: best effort -> critical -->
+    <line x1="672" y1="300" x2="672" y2="188" stroke="#fff" stroke-width="8"/>
+    <line x1="672" y1="300" x2="672" y2="188" stroke="var(--signal)" stroke-width="3" marker-end="url(#arB)"/>
+    <rect x="688" y="214" width="320" height="58" fill="#fff" stroke="var(--signal)" stroke-width="1.5"/>
+    <text class="s-lbl" x="702" y="234" fill="var(--signal)">ATOMIC SNAPSHOT SWAP</text>
+    <text class="s-sm" x="702" y="249">NEW PROGRAM · SAFETY LIMITS</text>
+    <text class="s-sm" x="702" y="263">START / STOP / INTERRUPT COMMANDS</text>
+
+    <!-- BEST EFFORT -->
+    <rect x="30" y="300" width="1000" height="172" fill="var(--signal-bg)" stroke="var(--signal)" stroke-width="2.5"/>
+    <text class="s-hd" x="50" y="324" fill="var(--signal)">BEST-EFFORT DOMAIN</text>
+    <text class="s-sm" x="222" y="324">LARGE · FLEXIBLE · NORMAL SCHEDULING · SHARED CPU</text>
+    <g fill="#fff" stroke="var(--signal)" stroke-width="1.5">
+      <rect x="50" y="338" width="229" height="66"/><rect x="293" y="338" width="229" height="66"/>
+      <rect x="536" y="338" width="229" height="66"/><rect x="779" y="338" width="229" height="66"/>
+    </g>
+    <text class="s-lbl" x="164" y="362" text-anchor="middle">IF-1 SERVER</text>
+    <text class="s-sm" x="164" y="378" text-anchor="middle">SESSIONS · COMMANDS</text>
+    <text class="s-sm" x="164" y="393" text-anchor="middle">PROGRAM + DBC TRANSFER</text>
+    <text class="s-lbl" x="407" y="362" text-anchor="middle">DATA SERVICES</text>
+    <text class="s-sm" x="407" y="378" text-anchor="middle">REGISTRATION WRITER</text>
+    <text class="s-sm" x="407" y="393" text-anchor="middle">STORE-AND-FORWARD BUFFER</text>
+    <text class="s-lbl" x="650" y="362" text-anchor="middle">SLOW INGEST</text>
+    <text class="s-sm" x="650" y="378" text-anchor="middle">BMS · AUXILIARY · MODBUS</text>
+    <text class="s-sm" x="650" y="393" text-anchor="middle">DBC DECODE · LOG-ONLY</text>
+    <text class="s-lbl" x="893" y="362" text-anchor="middle">HOUSEKEEPING</text>
+    <text class="s-sm" x="893" y="378" text-anchor="middle">FAULT LOG · DIAGNOSTICS</text>
+    <text class="s-sm" x="893" y="393" text-anchor="middle">FIRMWARE UPDATE</text>
+    <rect x="50" y="418" width="958" height="36" fill="#fff" stroke="var(--signal)" stroke-width="1" stroke-dasharray="4 3"/>
+    <text class="s-lbl" x="66" y="433" fill="var(--signal)">MAY BE SLOW</text>
+    <text class="s-sm" x="66" y="447">A 30-DAY EXPORT MAY SATURATE THESE CORES — AND THE CRITICAL DOMAIN ABOVE WILL NOT NOTICE</text>
+  </svg>
+  </figure>
+  <div class="blk-note">
+    <span class="nlbl">Why it is built this way</span>
+    A single-priority design works on the bench and fails in the field. The failure mode is
+    specific: an operator exports a 30-day test, the database saturates three cores and the page
+    cache, and a cutoff is evaluated 400&nbsp;ms late on 64 circuits at once. This split makes that
+    <strong>structurally impossible rather than merely unlikely</strong>. Losing a display sample is
+    acceptable; missing a cutoff is not — so the boundary always favours the domain above it.
+  </div>
+  </div>
+</section>
+
+<!-- ============ BLK-03 ============ -->
+<section class="blk" id="b03">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-03</div>
+    <div class="blk-tt"><h2>Layer Stack</h2><p>Six layers. A layer may call downwards, never upwards.</p></div>
+  </div>
+  <div class="blk-body">
+    <div class="lyr lyr-best"><div class="lyr-row"><div class="lyr-id">L5</div><div class="lyr-txt">
+      <div class="lyr-nm">Application Services</div>
+      <div class="lyr-ct">IF-1 Server · Program Store · Config Manager · Fault &amp; Event Log · Diagnostics · Firmware Update · Recovery Manager</div>
+    </div></div></div>
+    <div class="lyr lyr-best"><div class="lyr-row"><div class="lyr-id">L4</div><div class="lyr-txt">
+      <div class="lyr-nm">Data Services</div>
+      <div class="lyr-ct">Registration Writer · Store-and-Forward Buffer · Telemetry Publisher · BMS &amp; Aux Mapper · DBC Decoder</div>
+    </div></div></div>
+    <div class="boundary">▲ Non-blocking boundary — the only place the queue / snapshot discipline applies ▼</div>
+    <div class="lyr lyr-crit"><div class="lyr-row"><div class="lyr-id">L3</div><div class="lyr-txt">
+      <div class="lyr-nm">Execution Core &nbsp;·&nbsp; Critical</div>
+      <div class="lyr-ct">Circuit Execution Engine ×64 · Cutoff Evaluator · Action Dispatcher · Accumulators · Safety Supervisor</div>
+    </div></div></div>
+    <div class="lyr lyr-plat"><div class="lyr-row"><div class="lyr-id">L2</div><div class="lyr-txt">
+      <div class="lyr-nm">Device Protocol &nbsp;·&nbsp; both domains</div>
+      <div class="lyr-ct">IF-2 setpoint &amp; measurement · IF-3 BMS · IF-4 auxiliary · IF-6 Modbus master · GPIO handler</div>
+    </div></div></div>
+    <div class="lyr lyr-plat"><div class="lyr-row"><div class="lyr-id">L1</div><div class="lyr-txt">
+      <div class="lyr-nm">Platform Abstraction</div>
+      <div class="lyr-ct">SocketCAN · Ethernet · Serial · GPIO · Timer · Storage</div>
+    </div></div></div>
+    <div class="lyr lyr-plat"><div class="lyr-row"><div class="lyr-id">L0</div><div class="lyr-txt">
+      <div class="lyr-nm">Platform</div>
+      <div class="lyr-ct">Linux with PREEMPT_RT + NXP BSP &nbsp;·&nbsp; optional M7 safety firmware (see BLK-11)</div>
+    </div></div></div>
+    <div class="blk-note">
+      <span class="nlbl">Why L2 spans both domains</span>
+      IF-2 carries the control path and must be Critical. IF-3, IF-4 and IF-6 carry log-only data
+      and sit in Best-Effort. Same layer, different domains — which is exactly why the domain
+      boundary is drawn between L3 and L4 rather than along a layer line.
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLK-04 ============ -->
+<section class="blk" id="b04">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-04</div>
+    <div class="blk-tt"><h2>Component Map</h2><p>Every block of software, grouped by domain</p></div>
+  </div>
+  <div class="blk-body">
+    <div class="dom dom-c">
+      <div class="dom-hd">Critical Domain — 8 components <span>Bounded latency · pre-allocated · reserved CPU</span></div>
+      <div class="dom-grid">
+        <div class="cmp"><div class="cmp-n">Circuit Execution Engine</div>
+          <div class="cmp-d">One state machine per circuit: steps, cycles, procedures, variables, timers.</div>
+          <div class="cmp-r">FR-PRI-100…121</div></div>
+        <div class="cmp"><div class="cmp-n">Cutoff Evaluator</div>
+          <div class="cmp-d">Evaluates every limit for a circuit each cycle, in fixed declared order.</div>
+          <div class="cmp-r">FR-PRI-160s</div></div>
+        <div class="cmp"><div class="cmp-n">Action Dispatcher</div>
+          <div class="cmp-d">Runs the action a satisfied limit selects: advance, branch, stop, interrupt, annunciate.</div>
+          <div class="cmp-r">FR-PRI-170s</div></div>
+        <div class="cmp"><div class="cmp-n">Accumulator Set</div>
+          <div class="cmp-d">Integrates current and power into Ah and Wh, per step and per circuit.</div>
+          <div class="cmp-r">FR-PRI-140, -141</div></div>
+        <div class="cmp"><div class="cmp-n">Safety Supervisor</div>
+          <div class="cmp-d">Clamps every setpoint, enforces channel limits independently of the program, drives safe idle.</div>
+          <div class="cmp-r">FR-PRI-116, -370, -371</div></div>
+        <div class="cmp"><div class="cmp-n">Setpoint Dispatcher</div>
+          <div class="cmp-d">Formats and sends setpoints on IF-2, verifies acknowledgement, re-affirms keep-alive.</div>
+          <div class="cmp-r">FR-PRI-110…117</div></div>
+        <div class="cmp"><div class="cmp-n">Measurement Ingest</div>
+          <div class="cmp-d">Parses IF-2 frames, scales to engineering units, timestamps, flags stale or implausible data.</div>
+          <div class="cmp-r">FR-PRI-130…138</div></div>
+        <div class="cmp"><div class="cmp-n">GPIO Handler</div>
+          <div class="cmp-d">Fail-safe E-Stop and interlock inputs; fault and heartbeat outputs.</div>
+          <div class="cmp-r">FR-PRI-400…408</div></div>
+      </div>
+    </div>
+    <div class="dom dom-b">
+      <div class="dom-hd">Best-Effort Domain — 9 components <span>Normal scheduling · may be slow · never blocks the above</span></div>
+      <div class="dom-grid">
+        <div class="cmp"><div class="cmp-n">IF-1 Server</div>
+          <div class="cmp-d">Sessions, authentication, command handling, program and DBC transfer.</div>
+          <div class="cmp-r">FR-PRI-040s</div></div>
+        <div class="cmp"><div class="cmp-n">Program Store</div>
+          <div class="cmp-d">Receives, validates and persists programs and procedures. Safety barrier 1.</div>
+          <div class="cmp-r">FR-PRI-070s</div></div>
+        <div class="cmp"><div class="cmp-n">Config Manager</div>
+          <div class="cmp-d">Channel map, safety limits, board discovery, time reference.</div>
+          <div class="cmp-r">FR-PRI-050s</div></div>
+        <div class="cmp"><div class="cmp-n">Registration Writer</div>
+          <div class="cmp-d">Builds records per the active format and trigger, hands them to the buffer.</div>
+          <div class="cmp-r">FR-PRI-320s</div></div>
+        <div class="cmp"><div class="cmp-n">Store-and-Forward Buffer</div>
+          <div class="cmp-d">Durable ordered queue on reserved storage. Never deletes an unconfirmed record.</div>
+          <div class="cmp-r">FR-PRI-340…347</div></div>
+        <div class="cmp"><div class="cmp-n">Telemetry Publisher</div>
+          <div class="cmp-d">1 Hz live values for display. Droppable by design.</div>
+          <div class="cmp-r">FR-PRI-330s</div></div>
+        <div class="cmp"><div class="cmp-n">BMS / Aux Ingest</div>
+          <div class="cmp-d">Receives IF-3 and IF-4, decodes via DBC, maps signals to a circuit. Log-only.</div>
+          <div class="cmp-r">FR-PRI-250s, -290s</div></div>
+        <div class="cmp"><div class="cmp-n">Modbus Master</div>
+          <div class="cmp-d">Polls RS-485 field devices, up to 16 slaves.</div>
+          <div class="cmp-r">FR-PRI-310s</div></div>
+        <div class="cmp"><div class="cmp-n">Fault Log &amp; Recovery Manager</div>
+          <div class="cmp-d">Persistent log ≥1000 entries; persists execution context; sets recovery-pending on restart.</div>
+          <div class="cmp-r">FR-PRI-372…377, -420s</div></div>
+      </div>
+    </div>
+    <div class="blk-note">
+      <span class="nlbl">Count them</span>
+      Eight critical components against nine best-effort ones — but the critical eight are
+      deliberately the <strong>small, simple, heavily reviewed</strong> ones. Complexity is pushed
+      below the boundary wherever the requirements allow it. That is the whole design strategy in
+      one sentence.
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLK-05 ============ -->
+<section class="blk" id="b05">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-05</div>
+    <div class="blk-tt"><h2>The Control Cycle</h2><p>The heartbeat. Runs at a fixed period, forever.</p></div>
+  </div>
+  <div class="blk-body">
+  <figure>
+  <svg viewBox="0 0 1060 375" role="img" aria-label="Control cycle: seven steps repeating at a fixed period">
+    <defs>
+      <marker id="arC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#C2410C"/>
+      </marker>
+    </defs>
+    <g stroke="var(--energized)" stroke-width="2" fill="none" marker-end="url(#arC)">
+      <path d="M270,108 L290,108"/><path d="M520,108 L540,108"/>
+      <path d="M780,160 L780,185 L155,185 L155,210"/>
+      <path d="M270,262 L290,262"/><path d="M520,262 L540,262"/><path d="M770,262 L790,262"/>
+      <path d="M905,314 L905,352 L22,352 L22,40 L155,40 L155,56"/>
+    </g>
+    <text class="s-bus" x="40" y="346" fill="var(--energized)">REPEAT EVERY PERIOD — FOREVER</text>
+
+    <!-- row 1 -->
+    <g fill="#fff" stroke="var(--energized)" stroke-width="1.5">
+      <rect x="40" y="56" width="230" height="104"/><rect x="290" y="56" width="230" height="104"/>
+    </g>
+    <rect x="540" y="56" width="480" height="104" fill="var(--energized-bg)" stroke="var(--energized)" stroke-width="2.5"/>
+    <circle cx="60" cy="76" r="12" fill="var(--energized)"/><text class="s-sm" x="60" y="80" text-anchor="middle" fill="#fff">1</text>
+    <circle cx="310" cy="76" r="12" fill="var(--energized)"/><text class="s-sm" x="310" y="80" text-anchor="middle" fill="#fff">2</text>
+    <circle cx="560" cy="76" r="12" fill="var(--energized)"/><text class="s-sm" x="560" y="80" text-anchor="middle" fill="#fff">3</text>
+    <text class="s-lbl" x="80" y="81">DRAIN CAN-FD 1 QUEUE</text>
+    <text class="s-sm" x="58" y="106">PARSE · SCALE · TIMESTAMP</text>
+    <text class="s-sm" x="58" y="122">ROUTE TO OWNING CIRCUIT</text>
+    <text class="s-sm" x="58" y="143">DETECT STALE STREAMS</text>
+    <text class="s-lbl" x="330" y="81">APPLY PENDING COMMANDS</text>
+    <text class="s-sm" x="308" y="106">ATOMIC SNAPSHOT SWAP</text>
+    <text class="s-sm" x="308" y="122">START · STOP · INTERRUPT</text>
+    <text class="s-sm" x="308" y="143">NEW PROGRAM OR LIMITS</text>
+    <text class="s-lbl" x="580" y="81" fill="var(--energized)">PROCESS ALL 64 CIRCUITS — IN FIXED ORDER</text>
+    <text class="s-sm" x="558" y="106">SEVEN SUB-STEPS PER CIRCUIT · SEE BLK-06</text>
+    <text class="s-sm" x="558" y="122">FIXED ORDER IS WHAT MAKES EXECUTION REPRODUCIBLE — FR-PRI-104</text>
+    <text class="s-sm" x="558" y="143">EACH CIRCUIT TOUCHES ONLY ITS OWN CONTEXT — NO SHARED MUTABLE STATE</text>
+
+    <!-- row 2 -->
+    <g fill="#fff" stroke="var(--energized)" stroke-width="1.5">
+      <rect x="40" y="210" width="230" height="104"/><rect x="290" y="210" width="230" height="104"/>
+      <rect x="540" y="210" width="230" height="104"/><rect x="790" y="210" width="230" height="104"/>
+    </g>
+    <circle cx="60" cy="230" r="12" fill="var(--energized)"/><text class="s-sm" x="60" y="234" text-anchor="middle" fill="#fff">4</text>
+    <circle cx="310" cy="230" r="12" fill="var(--energized)"/><text class="s-sm" x="310" y="234" text-anchor="middle" fill="#fff">5</text>
+    <circle cx="560" cy="230" r="12" fill="var(--energized)"/><text class="s-sm" x="560" y="234" text-anchor="middle" fill="#fff">6</text>
+    <circle cx="810" cy="230" r="12" fill="var(--energized)"/><text class="s-sm" x="810" y="234" text-anchor="middle" fill="#fff">7</text>
+    <text class="s-lbl" x="80" y="235">TRANSMIT SETPOINTS</text>
+    <text class="s-sm" x="58" y="260">QUEUED SETPOINTS ON IF-2</text>
+    <text class="s-sm" x="58" y="276">PLUS 1 Hz KEEP-ALIVES</text>
+    <text class="s-sm" x="58" y="297">AWAIT ACKNOWLEDGEMENT</text>
+    <text class="s-lbl" x="330" y="235">PUSH ACROSS BOUNDARY</text>
+    <text class="s-sm" x="308" y="260">RECORDS · FAULTS · TELEMETRY</text>
+    <text class="s-sm" x="308" y="276">LOCK-FREE · NON-BLOCKING</text>
+    <text class="s-sm" x="308" y="297">FULL? DROP AND COUNT IT</text>
+    <text class="s-lbl" x="580" y="235">SELF-CHECK</text>
+    <text class="s-sm" x="558" y="260">SERVICE THE WATCHDOG</text>
+    <text class="s-sm" x="558" y="276">RECORD CYCLE LATENCY</text>
+    <text class="s-sm" x="558" y="297">WARN BEFORE A MISS</text>
+    <text class="s-lbl" x="830" y="235">SLEEP</text>
+    <text class="s-sm" x="808" y="260">UNTIL THE NEXT PERIOD</text>
+    <text class="s-sm" x="808" y="276">PERIOD DEPENDS ON F_MEAS</text>
+    <text class="s-sm" x="808" y="297" fill="var(--open)">STILL UNDECIDED · Q-62</text>
+  </svg>
+  </figure>
+  <div class="blk-note">
+    <span class="nlbl">The rule that makes it testable</span>
+    All 64 circuits are processed <strong>every cycle, in the same order, in one thread</strong> —
+    not 64 threads. Sixty-four threads would add scheduling jitter and non-determinism for no
+    throughput gain at this scale. Fixed order means that given the same program and the same
+    measured inputs, you get the same result every run. Without that, no failure can be reproduced
+    and no test result can be defended.
+  </div>
+  </div>
+</section>
+
+<!-- ============ BLK-06 ============ -->
+<section class="blk" id="b06">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-06</div>
+    <div class="blk-tt"><h2>Inside One Circuit</h2><p>Step 3 of the control cycle, expanded. Runs 64 times per cycle.</p></div>
+  </div>
+  <div class="blk-body">
+  <figure>
+  <svg viewBox="0 0 1060 545" role="img" aria-label="Per-circuit processing: seven sub-steps with two safety exits">
+    <defs>
+      <marker id="arD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#C2410C"/>
+      </marker>
+      <marker id="arX" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#A8221F"/>
+      </marker>
+    </defs>
+
+    <!-- gutter bracket -->
+    <path d="M120,20 L104,20 L104,516 L120,516" fill="none" stroke="#98A2AE" stroke-width="1.5"/>
+    <text class="s-hd" transform="rotate(-90 84 268)" x="84" y="268" text-anchor="middle" fill="#6B7684">REPEATED FOR CIRCUIT 1 … 64</text>
+
+    <!-- flow arrows -->
+    <g stroke="var(--energized)" stroke-width="2" fill="none" marker-end="url(#arD)">
+      <path d="M400,72 L400,94"/><path d="M400,146 L400,168"/><path d="M400,220 L400,242"/>
+      <path d="M400,294 L400,316"/><path d="M400,368 L400,390"/><path d="M400,442 L400,464"/>
+    </g>
+    <!-- safety exits -->
+    <g stroke="var(--estop)" stroke-width="2" fill="none" marker-end="url(#arX)" stroke-dasharray="6 3">
+      <path d="M620,46 L664,46 L664,124 L700,124"/>
+      <path d="M620,194 L664,194 L664,166 L700,166"/>
+    </g>
+    <text class="s-bus" x="628" y="38" fill="var(--estop)">STALE</text>
+    <text class="s-bus" x="628" y="212" fill="var(--estop)">VIOLATED</text>
+
+    <!-- boxes -->
+    <g fill="#fff" stroke="var(--energized)" stroke-width="1.5">
+      <rect x="180" y="20" width="440" height="52"/><rect x="180" y="94" width="440" height="52"/>
+      <rect x="180" y="168" width="440" height="52"/><rect x="180" y="242" width="440" height="52"/>
+      <rect x="180" y="316" width="440" height="52"/><rect x="180" y="390" width="440" height="52"/>
+      <rect x="180" y="464" width="440" height="52"/>
+    </g>
+    <g fill="var(--energized)">
+      <circle cx="204" cy="46" r="13"/><circle cx="204" cy="120" r="13"/><circle cx="204" cy="194" r="13"/>
+      <circle cx="204" cy="268" r="13"/><circle cx="204" cy="342" r="13"/><circle cx="204" cy="416" r="13"/>
+      <circle cx="204" cy="490" r="13"/>
+    </g>
+    <g class="s-sm" fill="#fff" text-anchor="middle">
+      <text x="204" y="50">a</text><text x="204" y="124">b</text><text x="204" y="198">c</text>
+      <text x="204" y="272">d</text><text x="204" y="346">e</text><text x="204" y="420">f</text>
+      <text x="204" y="494">g</text>
+    </g>
+    <text class="s-lbl" x="230" y="42">CHECK DATA FRESHNESS</text>
+    <text class="s-sm" x="230" y="60">NO VALID SAMPLE WITHIN 500 ms? THIS CIRCUIT IS NOT SAFE TO EVALUATE</text>
+    <text class="s-lbl" x="230" y="116">UPDATE ACCUMULATORS</text>
+    <text class="s-sm" x="230" y="134">INTEGRATE CURRENT AND POWER → Ah, Wh · ADVANCE STEP AND PROGRAM TIMERS</text>
+    <text class="s-lbl" x="230" y="190">EVALUATE SAFETY LIMITS</text>
+    <text class="s-sm" x="230" y="208">CHANNEL SAFETY ENVELOPE — CHECKED INDEPENDENTLY OF THE TEST PROGRAM</text>
+    <text class="s-lbl" x="230" y="264">EVALUATE CUTOFFS</text>
+    <text class="s-sm" x="230" y="282">EVERY LIMIT ON THIS STEP, IN FIXED DECLARED ORDER · UP TO 8 PER STEP</text>
+    <text class="s-lbl" x="230" y="338">EXECUTE ACTION IF A CUTOFF FIRED</text>
+    <text class="s-sm" x="230" y="356">ADVANCE · BRANCH · LOOP · CALL PROCEDURE · INTERRUPT · STOP · ANNUNCIATE</text>
+    <text class="s-lbl" x="230" y="412">RESOLVE AND CLAMP THE SETPOINT</text>
+    <text class="s-sm" x="230" y="430">ONLY IF THE STEP CHANGED · CLAMP IS SAFETY BARRIER 2 — SEE BLK-10</text>
+    <text class="s-lbl" x="230" y="486">QUEUE A REGISTRATION RECORD</text>
+    <text class="s-sm" x="230" y="504">IF A DELTA, THRESHOLD, RANGE OR COUNT TRIGGER IS MET</text>
+
+    <!-- safe idle -->
+    <rect x="700" y="100" width="300" height="90" fill="var(--estop-bg)" stroke="var(--estop)" stroke-width="2.5"/>
+    <text class="s-lbl" x="850" y="128" text-anchor="middle" fill="var(--estop)">COMMAND SAFE IDLE</text>
+    <text class="s-sm" x="850" y="147" text-anchor="middle">NO POWER FLOW · OUTPUT DISABLED</text>
+    <text class="s-sm" x="850" y="162" text-anchor="middle">LATCH FAULT · ANNUNCIATE</text>
+    <text class="s-sm" x="850" y="177" text-anchor="middle">THIS CIRCUIT ONLY — OTHERS RUN ON</text>
+
+    <rect x="700" y="230" width="300" height="132" fill="#F7F9FA" stroke="#98A2AE" stroke-width="1.5"/>
+    <text class="s-hd" x="720" y="254" fill="#6B7684">ISOLATION GUARANTEE</text>
+    <text class="s-sm" x="720" y="278">STEPS a–g TOUCH ONLY THIS</text>
+    <text class="s-sm" x="720" y="294">CIRCUIT'S OWN CONTEXT.</text>
+    <text class="s-sm" x="720" y="316">NO SHARED MUTABLE STATE</text>
+    <text class="s-sm" x="720" y="332">BETWEEN CIRCUITS — WHICH IS</text>
+    <text class="s-sm" x="720" y="348">HOW FR-PRI-101 IS MET.</text>
+  </svg>
+  </figure>
+  <div class="blk-note">
+    <span class="nlbl">Note the order of (c) and (d)</span>
+    Safety limits are checked <strong>before</strong> program cutoffs, and separately from them. The
+    test program cannot disable, delay or override this check. A program author can write anything
+    they like; the safety envelope is not theirs to move.
+  </div>
+  </div>
+</section>
+
+<!-- ============ BLK-07 ============ -->
+<section class="blk" id="b07">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-07</div>
+    <div class="blk-tt"><h2>Data Path &amp; Store-and-Forward</h2><p>How a measurement becomes a permanent record — with or without the Web App</p></div>
+  </div>
+  <div class="blk-body">
+  <figure>
+  <svg viewBox="0 0 1060 400" role="img" aria-label="Data path from control cycle through the buffer to the Web Application">
+    <defs>
+      <marker id="arG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#39424D"/>
+      </marker>
+    </defs>
+
+    <!-- domain band labels -->
+    <rect x="14" y="14" width="360" height="372" fill="var(--energized-bg)" opacity=".45"/>
+    <text class="s-hd" x="28" y="34" fill="var(--energized)">CRITICAL</text>
+    <rect x="374" y="14" width="666" height="372" fill="var(--signal-bg)" opacity=".5"/>
+    <text class="s-hd" x="390" y="34" fill="var(--signal)">BEST-EFFORT</text>
+
+    <g stroke="#39424D" stroke-width="2" fill="none" marker-end="url(#arG)">
+      <path d="M196,190 L212,190"/>
+      <path d="M366,190 L390,190"/>
+      <path d="M574,190 L598,190"/>
+      <path d="M800,190 L816,190 L816,110 L836,110"/>
+      <path d="M800,190 L816,190 L816,282 L836,282"/>
+    </g>
+
+    <rect x="26" y="150" width="170" height="80" fill="#fff" stroke="var(--energized)" stroke-width="2"/>
+    <text class="s-lbl" x="111" y="182" text-anchor="middle">CONTROL CYCLE</text>
+    <text class="s-sm" x="111" y="200" text-anchor="middle">STEP (g)</text>
+    <text class="s-sm" x="111" y="215" text-anchor="middle">64 CIRCUITS</text>
+
+    <rect x="212" y="150" width="154" height="80" fill="#fff" stroke="var(--energized)" stroke-width="1.5" stroke-dasharray="5 3"/>
+    <text class="s-lbl" x="289" y="176" text-anchor="middle">LOCK-FREE RING</text>
+    <text class="s-sm" x="289" y="194" text-anchor="middle">SINGLE PRODUCER</text>
+    <text class="s-sm" x="289" y="209" text-anchor="middle">NEVER BLOCKS</text>
+
+    <rect x="390" y="150" width="184" height="80" fill="#fff" stroke="var(--signal)" stroke-width="1.5"/>
+    <text class="s-lbl" x="482" y="176" text-anchor="middle">REGISTRATION WRITER</text>
+    <text class="s-sm" x="482" y="194" text-anchor="middle">APPLIES THE ACTIVE</text>
+    <text class="s-sm" x="482" y="209" text-anchor="middle">FORMAT AND TRIGGER</text>
+
+    <rect x="598" y="140" width="202" height="100" fill="#fff" stroke="var(--signal)" stroke-width="2.5"/>
+    <text class="s-lbl" x="699" y="166" text-anchor="middle">DURABLE BUFFER</text>
+    <text class="s-sm" x="699" y="185" text-anchor="middle">RESERVED STORAGE BUDGET</text>
+    <text class="s-sm" x="699" y="200" text-anchor="middle">≥ 24 h AT 64 CIRCUITS</text>
+    <text class="s-sm" x="699" y="215" text-anchor="middle">SURVIVES A POWER CYCLE</text>
+    <text class="s-sm" x="699" y="230" text-anchor="middle" fill="var(--signal)">NO OTHER FUNCTION MAY USE IT</text>
+
+    <rect x="836" y="66" width="204" height="88" fill="var(--safe-bg)" stroke="var(--safe)" stroke-width="2"/>
+    <text class="s-lbl" x="938" y="90" text-anchor="middle" fill="var(--safe)">WEB APP CONNECTED</text>
+    <text class="s-sm" x="938" y="109" text-anchor="middle">FORWARD IN ORDER</text>
+    <text class="s-sm" x="938" y="124" text-anchor="middle">AWAIT CONFIRMATION</text>
+    <text class="s-sm" x="938" y="139" text-anchor="middle">THEN — AND ONLY THEN — DELETE</text>
+
+    <rect x="836" y="222" width="204" height="120" fill="var(--estop-bg)" stroke="var(--estop)" stroke-width="2"/>
+    <text class="s-lbl" x="938" y="246" text-anchor="middle" fill="var(--estop)">WEB APP ABSENT</text>
+    <text class="s-sm" x="938" y="265" text-anchor="middle">ACCUMULATE · REPORT % FULL</text>
+    <text class="s-sm" x="938" y="280" text-anchor="middle">AND TIME REMAINING</text>
+    <text class="s-sm" x="938" y="300" text-anchor="middle">ON EXHAUSTION:</text>
+    <text class="s-sm" x="938" y="315" text-anchor="middle">ANNUNCIATE · MARK THE GAP</text>
+    <text class="s-lbl" x="938" y="333" text-anchor="middle" fill="var(--estop)">AND KEEP RUNNING</text>
+  </svg>
+  </figure>
+  <div class="blk-note">
+    <span class="nlbl">The policy that matters</span>
+    <strong>A data-loss condition never stops a test.</strong> That is a deliberate choice, not an
+    oversight — a 30-day battery test is far more expensive than a gap in the log. The buffer also
+    never deletes a record the Web App has not confirmed receiving. Still open: whether exhaustion
+    discards oldest or newest. The recommendation is <strong>discard-newest</strong>, preserving a
+    continuous record from the start of the outage, because a log with a hole in the middle is
+    harder to defend than one that is complete up to a known point.
+  </div>
+  </div>
+</section>
+
+<!-- ============ BLK-08 ============ -->
+<section class="blk" id="b08">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-08</div>
+    <div class="blk-tt"><h2>Fault Path</h2><p>Nine different triggers, one convergent response</p></div>
+  </div>
+  <div class="blk-body">
+  <figure>
+  <svg viewBox="0 0 1060 460" role="img" aria-label="Fault path: nine triggers converge on the Safety Supervisor and a four-stage response">
+    <defs>
+      <marker id="arF" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#A8221F"/>
+      </marker>
+    </defs>
+
+    <!-- trigger boxes -->
+    <g fill="#fff" stroke="var(--estop)" stroke-width="1.5">
+      <rect x="20" y="20" width="250" height="34"/><rect x="20" y="60" width="250" height="34"/>
+      <rect x="20" y="100" width="250" height="34"/><rect x="20" y="140" width="250" height="34"/>
+      <rect x="20" y="180" width="250" height="34"/><rect x="20" y="220" width="250" height="34"/>
+      <rect x="20" y="260" width="250" height="34"/><rect x="20" y="300" width="250" height="34"/>
+      <rect x="20" y="340" width="250" height="34"/>
+    </g>
+    <g class="s-lbl">
+      <text x="34" y="42">SAFETY-LIMIT VIOLATION</text>
+      <text x="34" y="82">DC-DC BOARD FAULT REPORT</text>
+      <text x="34" y="122">LOSS OF COMMS WITH A BOARD</text>
+      <text x="34" y="162">STALE MEASURED DATA</text>
+      <text x="34" y="202">ERR ACTION IN THE PROGRAM</text>
+      <text x="34" y="242">OPERATOR STOP OR INTERRUPT</text>
+      <text x="34" y="282">E-STOP ASSERTED</text>
+      <text x="34" y="322">SAFETY INTERLOCK OPENED</text>
+      <text x="34" y="362">INTERNAL SOFTWARE FAULT</text>
+    </g>
+
+    <!-- convergence bus -->
+    <g stroke="var(--estop)" stroke-width="1.5" fill="none">
+      <path d="M270,37 L330,37"/><path d="M270,77 L330,77"/><path d="M270,117 L330,117"/>
+      <path d="M270,157 L330,157"/><path d="M270,197 L330,197"/><path d="M270,237 L330,237"/>
+      <path d="M270,277 L330,277"/><path d="M270,317 L330,317"/><path d="M270,357 L330,357"/>
+      <path d="M330,37 L330,357" stroke-width="2.5"/>
+    </g>
+    <g fill="var(--estop)">
+      <circle cx="330" cy="37" r="3.5"/><circle cx="330" cy="77" r="3.5"/><circle cx="330" cy="117" r="3.5"/>
+      <circle cx="330" cy="157" r="3.5"/><circle cx="330" cy="237" r="3.5"/><circle cx="330" cy="277" r="3.5"/>
+      <circle cx="330" cy="317" r="3.5"/><circle cx="330" cy="357" r="3.5"/>
+    </g>
+    <path d="M330,197 L372,197" stroke="var(--estop)" stroke-width="2.5" fill="none" marker-end="url(#arF)"/>
+
+    <rect x="372" y="161" width="230" height="72" fill="var(--estop)" stroke="var(--estop)" stroke-width="2"/>
+    <text class="s-lbl" x="487" y="190" text-anchor="middle" fill="#fff">SAFETY SUPERVISOR</text>
+    <text class="s-sm" x="487" y="208" text-anchor="middle" fill="#F5D3D2">ALWAYS REACHABLE</text>
+    <text class="s-sm" x="487" y="223" text-anchor="middle" fill="#F5D3D2">FROM ANY STATE, AT ANY TIME</text>
+
+    <path d="M602,197 L622,197 L622,64 L640,64" stroke="var(--estop)" stroke-width="2.5" fill="none" marker-end="url(#arF)"/>
+    <g stroke="var(--estop)" stroke-width="2" fill="none" marker-end="url(#arF)">
+      <path d="M840,108 L840,128"/><path d="M840,216 L840,236"/><path d="M840,324 L840,344"/>
+    </g>
+
+    <rect x="640" y="20" width="400" height="88" fill="var(--estop-bg)" stroke="var(--estop)" stroke-width="2"/>
+    <text class="s-hd" x="658" y="42" fill="var(--estop)">1 · COMMAND SAFE IDLE</text>
+    <text class="s-sm" x="658" y="64">NO COMMANDED POWER FLOW · OUTPUT DISABLED AT THE DC-DC BOARD</text>
+    <text class="s-sm" x="658" y="80">WITHIN 50 ms — OR 100 ms FOR AN E-STOP</text>
+    <text class="s-sm" x="658" y="96">SCOPED TO THE AFFECTED CIRCUIT UNLESS THE CAUSE IS SYSTEM-WIDE</text>
+
+    <rect x="640" y="128" width="400" height="88" fill="#fff" stroke="var(--estop)" stroke-width="1.5"/>
+    <text class="s-hd" x="658" y="150" fill="var(--estop)">2 · LATCH THE FAULT</text>
+    <text class="s-sm" x="658" y="172">THE CIRCUIT STAYS IN FAULT UNTIL A HUMAN EXPLICITLY ACKNOWLEDGES IT</text>
+    <text class="s-sm" x="658" y="188">IT WILL NOT CLEAR ITSELF, AND IT WILL NOT RESUME ON ITS OWN</text>
+    <text class="s-sm" x="658" y="204">OTHER CIRCUITS CARRY ON UNAFFECTED</text>
+
+    <rect x="640" y="236" width="400" height="88" fill="#fff" stroke="var(--estop)" stroke-width="1.5"/>
+    <text class="s-hd" x="658" y="258" fill="var(--estop)">3 · RECORD THE EVIDENCE</text>
+    <text class="s-sm" x="658" y="280">TIMESTAMP · CIRCUIT ID · FAULT CODE · SEVERITY</text>
+    <text class="s-sm" x="658" y="296">THE MEASURED VALUES AT THE MOMENT OF THE FAULT</text>
+    <text class="s-sm" x="658" y="312">THE CIRCUIT STATE AT THE MOMENT OF THE FAULT</text>
+
+    <rect x="640" y="344" width="400" height="88" fill="#fff" stroke="var(--estop)" stroke-width="1.5"/>
+    <text class="s-hd" x="658" y="366" fill="var(--estop)">4 · ANNUNCIATE AND PERSIST</text>
+    <text class="s-sm" x="658" y="388">REPORT TO THE WEB APP · DRIVE THE FAULT GPIO OUTPUT</text>
+    <text class="s-sm" x="658" y="404">WRITE TO A LOCAL LOG THAT SURVIVES BOTH AN OUTAGE AND A RESTART</text>
+    <text class="s-sm" x="658" y="420">A FAULT-SEVERITY EVENT IS NEVER MASKED, SUPPRESSED OR RATE-LIMITED</text>
+  </svg>
+  </figure>
+  <div class="blk-note">
+    <span class="nlbl">Ordering is the whole point</span>
+    When internal corruption is detected the instinct is to reset immediately. That is wrong here.
+    A reset that leaves the power stage running at 40&nbsp;A while the controller is absent is worse
+    than the fault that triggered it. <strong>Command safe idle first, then restart.</strong> The
+    DC-DC board's own 1&nbsp;s setpoint keep-alive timeout is the backstop if even that fails.
+  </div>
+  </div>
+</section>
+
+<!-- ============ BLK-09 ============ -->
+<section class="blk" id="b09">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-09</div>
+    <div class="blk-tt"><h2>Startup Sequence</h2><p>Power-on to ready. Note what does <em>not</em> happen.</p></div>
+  </div>
+  <div class="blk-body">
+    <ol class="tl">
+      <li><div class="tl-t">Platform boot</div>
+        <div class="tl-d">Linux and the NXP BSP come up. No login, no shell, no desktop, no display required.</div></li>
+      <li><div class="tl-t">Control application starts automatically</div>
+        <div class="tl-d">Unattended, with no operator input. If it ever terminates unexpectedly, the platform restarts it.</div></li>
+      <li><div class="tl-t">All 64 circuits commanded to safe idle</div>
+        <div class="tl-d">Within 2 seconds of power-on, before any other function is enabled.</div>
+        <div class="tl-x"><strong>Safe idle comes first, always.</strong> Power never flows as a side effect of initialisation.</div></li>
+      <li><div class="tl-t">Power-on self-test</div>
+        <div class="tl-d">Persistent storage · each of the four CAN-FD controllers · each RS-485 transceiver · Ethernet · the real-time clock. Every result is reported; any failure is annunciated as a Fault.</div></li>
+      <li><div class="tl-t">Verify stored configuration and programs by checksum</div>
+        <div class="tl-d">Corruption is annunciated — never silently discarded, never silently repaired.</div></li>
+      <li><div class="tl-t">Load persisted execution contexts</div>
+        <div class="tl-d">Whatever each circuit was doing when the power went away is read back from durable storage.</div></li>
+      <li><div class="tl-t">Circuits that were running → recovery-pending</div>
+        <div class="tl-d">Never directly back to RUNNING.</div>
+        <div class="tl-x"><strong>A human decides whether to resume.</strong> This is also the design's sharpest edge — see the note below.</div></li>
+      <li><div class="tl-t">Report the restart cause</div>
+        <div class="tl-d">Power-on, commanded reset, watchdog timeout, or fault. A watchdog restart that happened while a circuit was running is annunciated as a Fault, not quietly resumed.</div></li>
+      <li><div class="tl-t">Enable IF-1 and wait</div>
+        <div class="tl-d">The Primary is now ready. It does nothing further until an operator commands it.</div></li>
+    </ol>
+    <div class="callout">
+      <span class="nlbl">Open question — this one has teeth</span>
+      Step 7 means a <strong>20-second power blip at 2 a.m. on day 19 of a 30-day unattended test
+      destroys that test.</strong> The FRD asks (<code>Q-11</code>) whether a bounded conditional
+      auto-resume is needed instead — resume only if the outage was under N minutes, the pack
+      voltage on restart is within a band of its pre-outage value, and no fault was latched. That is
+      a real feature needing real safety analysis, not a configuration flag. Someone has to decide.
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLK-10 ============ -->
+<section class="blk" id="b10">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-10</div>
+    <div class="blk-tt"><h2>Three Safety Barriers</h2><p>What a bad setpoint has to get through to reach a battery</p></div>
+  </div>
+  <div class="blk-body">
+    <div class="bar-row">
+      <div class="bar bar1">
+        <div class="bar-n">Barrier 1 · Best-Effort · at transfer time</div>
+        <div class="bar-t">Program Validation</div>
+        <div class="bar-w">Catches an operator authoring an unsafe or malformed program. Runs once, when the program is received.</div>
+        <div class="bar-l">PROGRAM STORE · FR-PRI-070s</div>
+      </div>
+      <div class="bar bar2">
+        <div class="bar-n">Barrier 2 · Critical · at every dispatch</div>
+        <div class="bar-t">Setpoint Clamping</div>
+        <div class="bar-w">Catches a corrupted program, a defect in the execution engine, and a memory error. Runs on every single setpoint, and annunciates any clamp.</div>
+        <div class="bar-l">SAFETY SUPERVISOR · FR-PRI-116</div>
+      </div>
+      <div class="bar bar3">
+        <div class="bar-n">Barrier 3 · DC-DC board · always</div>
+        <div class="bar-t">Hardware Protection</div>
+        <div class="bar-w">Catches everything above, plus total loss of the CAN link. Does not depend on the Primary being alive or correct.</div>
+        <div class="bar-l">SECONDARY HARDWARE · NOT SOFTWARE</div>
+      </div>
+    </div>
+    <div class="blk-note">
+      <span class="nlbl">Barrier 2 is the one people leave out</span>
+      Validation at transfer time only catches programs that were <em>wrong when written</em>. It
+      cannot catch a program that was corrupted afterwards, an engine defect, or a bit-flip in RAM.
+      Clamping every setpoint immediately before transmission costs almost nothing and closes all
+      three. <strong>A program can never command outside the safety envelope, no matter how it got
+      corrupted.</strong>
+    </div>
+    <div class="callout">
+      <span class="nlbl">E-Stop — separate from all three, and hardware-critical</span>
+      Must reach safe idle within <strong>100 ms</strong>, and must be <strong>fail-safe</strong>: a
+      disconnected, broken, or unpowered E-Stop circuit reads as <em>asserted</em>, not as safe.
+      That means normally-closed, normally-energised wiring. An E-Stop wired active-high fails to
+      danger — cut the wire and the system believes everything is fine. Clearing it requires
+      <em>both</em> the physical input returning to safe <em>and</em> an explicit operator
+      acknowledgement. <strong>Software must not be the only path by which an E-Stop removes
+      power</strong> — a hardware path independent of Primary firmware is expected
+      (<code>Q-27</code>, unconfirmed).
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLK-11 ============ -->
+<section class="blk" id="b11">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-11</div>
+    <div class="blk-tt"><h2>A53 or M7? — Open Decision</h2><p>The FRD never says. This is the gap that has to close first.</p></div>
+  </div>
+  <div class="blk-body">
+    <p style="margin:0 0 16px; font-size:14px; color:var(--ink2)">
+      <code>ME-FRD-02</code> §2.2A describes the platform as <em>"Quad-core, 4 GB RAM, 32 GB,
+      Linux"</em> and is <strong>completely silent on the Cortex-M7</strong>. Every real-time
+      requirement is written as a Linux problem. So the FRD does not actually tell anyone where the
+      control path runs.
+    </p>
+    <div class="two">
+      <div class="opt opt-pick">
+        <div class="opt-h">OPTION A · All control on A53 under Linux + PREEMPT_RT &nbsp;— recommended</div>
+        <div class="opt-b">
+          <ul>
+            <li>One codebase, one language, one debugger.</li>
+            <li>Timing margin is ample — a 10 ms deadline against sub-millisecond latency.</li>
+            <li>CAN, Ethernet and storage all use mature mainline Linux drivers.</li>
+            <li>No inter-core protocol to design, version and debug.</li>
+            <li><em>Cost:</em> needs PREEMPT_RT in the vendor BSP — confirm early.</li>
+            <li><em>Cost:</em> the house rules are enforced by review, not by hardware.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="opt opt-alt">
+        <div class="opt-h">OPTION B · Control path on M7, Linux for everything else</div>
+        <div class="opt-b">
+          <ul>
+            <li>Hard physical isolation — Linux cannot preempt the control path at all.</li>
+            <li>Survives a Linux crash or OOM event still regulating safely.</li>
+            <li><em>Cost:</em> two codebases, two toolchains, two debug environments.</li>
+            <li><em>Cost:</em> must design and version an A53↔M7 protocol over the Messaging Unit.</li>
+            <li><em>Cost:</em> M7 TCM and RAM are limited — 64 pre-allocated contexts plus buffers need sizing before committing.</li>
+            <li><em>Cost:</em> a lot more integration work for margin the system does not need.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="verdict">
+      <span class="nlbl">Recommendation — for architect confirmation, not a decision made here</span>
+      <strong>Take Option A as the baseline, and reserve the M7 for a narrow safety role:</strong>
+      independent hardware watchdog supervision of the Linux control application, plus a fail-safe
+      path that can command all channels to safe idle if Linux stops responding. That captures the
+      M7's genuine benefit — surviving a Linux failure — without paying for a split control
+      architecture to buy timing margin the system already has in abundance.<br><br>
+      <strong>Cost of being wrong is low.</strong> The Critical Domain is already isolated behind
+      the BLK-02 boundary, so if measured latency later proves inadequate it can be relocated to the
+      M7 without redesigning the Best-Effort side. <strong>Confirm PREEMPT_RT availability in the
+      NXP BSP first</strong> — retrofitting it late is a well-known way to lose a month.
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLK-12 ============ -->
+<section class="blk" id="b12">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-12</div>
+    <div class="blk-tt"><h2>Timing Budget</h2><p>Every deadline in the system, drawn to scale against 100 ms</p></div>
+  </div>
+  <div class="blk-body">
+    <div class="tm">
+      <div class="tm-row"><div class="tm-n">Flow-control step<br><span style="color:var(--ink4)">T_ZERO_TIME_STEP</span></div>
+        <div class="tm-track"><div class="tm-fill" style="width:10%"></div><div class="tm-exp" style="left:0.5%"></div></div><div class="tm-v">10 ms</div></div>
+      <div class="tm-row"><div class="tm-n">Timer resolution<br><span style="color:var(--ink4)">T_TIME_RES</span></div>
+        <div class="tm-track"><div class="tm-fill" style="width:10%"></div><div class="tm-exp" style="left:0.5%"></div></div><div class="tm-v">10 ms</div></div>
+      <div class="tm-row"><div class="tm-n">Step entry → setpoint sent<br><span style="color:var(--ink4)">T_STEP_DISPATCH</span></div>
+        <div class="tm-track"><div class="tm-fill" style="width:20%"></div><div class="tm-exp" style="left:0.5%"></div></div><div class="tm-v">20 ms</div></div>
+      <div class="tm-row"><div class="tm-n">Cutoff met → action begins<br><span style="color:var(--ink4)">T_CUTOFF_LATENCY</span></div>
+        <div class="tm-track"><div class="tm-fill" style="width:50%"></div><div class="tm-exp" style="left:0.5%"></div></div><div class="tm-v">50 ms</div></div>
+      <div class="tm-row"><div class="tm-n">Limit violation → safe idle<br><span style="color:var(--ink4)">T_SAFETY_REACT</span></div>
+        <div class="tm-track"><div class="tm-fill" style="width:50%"></div><div class="tm-exp" style="left:0.5%"></div></div><div class="tm-v">50 ms</div></div>
+      <div class="tm-row"><div class="tm-n">E-Stop → power removed<br><span style="color:var(--ink4)">T_ESTOP</span></div>
+        <div class="tm-track"><div class="tm-fill" style="width:100%"></div><div class="tm-exp" style="left:0.5%"></div></div><div class="tm-v">100 ms</div></div>
+    </div>
+    <div class="tm-key">
+      <span><i style="background:var(--energized);opacity:.82"></i>Deadline the design must meet</span>
+      <span><i style="background:var(--safe);width:3px"></i>Typical PREEMPT_RT worst-case scheduling latency — the sliver at the far left, under 1 ms</span>
+    </div>
+    <div class="blk-note">
+      <span class="nlbl">What this picture is telling you</span>
+      <strong>Nothing here requires microsecond determinism.</strong> The tightest deadline is
+      10&nbsp;ms, and Linux with PREEMPT_RT typically holds worst-case scheduling latency well under
+      a millisecond on this class of SoC — roughly an order of magnitude of headroom. That is the
+      case for Option A in BLK-11. The reason the budget is so relaxed is structural: the real
+      control loop, closing current and voltage against the hardware, lives on the DC-DC board, not
+      here. The Primary sequences; the Secondary regulates.<br><br>
+      <strong>One number is still missing.</strong> <code>F_MEAS</code>, the measurement rate per
+      circuit from the DC-DC boards, is undecided (<code>Q-62</code>). It sets the control cycle
+      period, which every figure above depends on. Until it is fixed, this budget is provisional.
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLK-13 ============ -->
+<section class="blk" id="b13">
+  <div class="blk-head">
+    <div class="blk-tag">BLK-13</div>
+    <div class="blk-tt"><h2>Open Items</h2><p>Ten questions, ordered by how much rework they cause if answered late</p></div>
+  </div>
+  <div class="blk-body">
+    <table>
+      <thead><tr><th style="width:52px">ID</th><th style="width:96px">When</th><th>Question</th><th style="width:180px">Owner</th><th style="width:82px">FRD ref</th></tr></thead>
+      <tbody>
+        <tr><td><code>AQ-1</code></td><td><span class="pri pri-now">This week</span></td>
+          <td>A53-only or A53+M7 control path? Is PREEMPT_RT available in the NXP BSP?</td>
+          <td>Software architect</td><td><code>Q-41</code></td></tr>
+        <tr><td><code>AQ-2</code></td><td><span class="pri pri-now">This week</span></td>
+          <td>What is <code>F_MEAS</code> — the measurement rate per circuit from the DC-DC boards?</td>
+          <td>System architect + Secondary team</td><td><code>Q-62</code></td></tr>
+        <tr><td><code>AQ-3</code></td><td><span class="pri pri-soon">Before design</span></td>
+          <td>Is a bounded conditional auto-resume after a power blip required?</td>
+          <td>Test engineering + safety</td><td><code>Q-11</code></td></tr>
+        <tr><td><code>AQ-5</code></td><td><span class="pri pri-soon">Before design</span></td>
+          <td>Is there a hardware E-Stop path independent of Primary software?</td>
+          <td>Hardware + safety</td><td><code>Q-27</code></td></tr>
+        <tr><td><code>AQ-10</code></td><td><span class="pri pri-soon">Before design</span></td>
+          <td>No ICD has been issued. Frame layouts, CAN identifiers and scaling are all unknown.</td>
+          <td>Interface owners</td><td><code>RD-D</code></td></tr>
+        <tr><td><code>AQ-4</code></td><td><span class="pri pri-later">Before code</span></td>
+          <td>Discard-oldest or discard-newest on buffer exhaustion?</td>
+          <td>Test engineering</td><td><code>Q-26</code></td></tr>
+        <tr><td><code>AQ-6</code></td><td><span class="pri pri-later">Before code</span></td>
+          <td>Is the proposed 5-signal GPIO allocation confirmed?</td>
+          <td>Hardware</td><td><code>Q-10</code></td></tr>
+        <tr><td><code>AQ-9</code></td><td><span class="pri pri-later">Before code</span></td>
+          <td>Maximum BMS Interface Boards on CAN-FD 2 — 8 or 16?</td>
+          <td>System architect</td><td><code>Q-58</code></td></tr>
+        <tr><td><code>AQ-7</code></td><td><span class="pri pri-later">Before release</span></td>
+          <td>What is Ethernet 2 for — service network, plant network, or unused?</td>
+          <td>System architect</td><td><code>Q-08</code></td></tr>
+        <tr><td><code>AQ-8</code></td><td><span class="pri pri-later">Before release</span></td>
+          <td>Are the USB ports used at all? Affects security posture.</td>
+          <td>System architect</td><td><code>Q-09</code></td></tr>
+      </tbody>
+    </table>
+    <div class="blk-note">
+      <span class="nlbl">If you only chase two</span>
+      <strong>AQ-1 determines the entire software structure</strong> — nothing in BLK-03 to BLK-06
+      is stable until it closes. <strong>AQ-2 sets the control cycle period</strong>, which every
+      number in BLK-12 depends on.<br><br>
+      <strong>AQ-10 is worth stating plainly:</strong> no ICD exists yet, so L2 can be designed but
+      not implemented. Structure L2 so that frame layout is data-driven and isolated from L3 — then
+      a late ICD change costs a table edit rather than a redesign.
+    </div>
+  </div>
+</section>
+
+<!-- ============ NEXT ============ -->
+<section class="blk" id="next">
+  <div class="blk-head">
+    <div class="blk-tag">NEXT</div>
+    <div class="blk-tt"><h2>Shortest Path to a Reviewable Design</h2><p>Suggested order of work</p></div>
+  </div>
+  <div class="blk-body">
+    <ol class="tl">
+      <li><div class="tl-t">Close AQ-1</div>
+        <div class="tl-d">Confirm PREEMPT_RT in the NXP BSP; get the architect's call on A53 vs M7. Nothing else is stable until this settles.</div></li>
+      <li><div class="tl-t">Close AQ-2</div>
+        <div class="tl-d">Get <code>F_MEAS</code> from the Secondary team, fix the control cycle period, then redo BLK-12 with real numbers.</div></li>
+      <li><div class="tl-t">Prototype the latency measurement</div>
+        <div class="tl-d">A bare loop on the target hardware under synthetic best-effort load. About a day's work, and it either validates Option A or kills it early — which is exactly what you want from a day.</div></li>
+      <li><div class="tl-t">Define the L2 / L3 interface</div>
+        <div class="tl-d">Lets ICD work and execution-engine work proceed in parallel instead of in series.</div></li>
+      <li><div class="tl-t">Review BLK-10 with hardware</div>
+        <div class="tl-d">Especially AQ-5, the independent E-Stop path.</div></li>
+      <li><div class="tl-t">Baseline the SAD and begin the SDD</div>
+        <div class="tl-d">Per-block software design descriptions, the <code>ME-SDD-*</code> series.</div></li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <span>ME-SAD-PRI-02-G · REV 0.1 · DRAFT — NOT BASELINED</span>
+  <span>COMPANION TO ME_Primary_Software_Architecture.md</span>
+  <span>ADOR POWERTRON · 2026-08-06</span>
+</footer>
+
+</div>
+</body>
+</html>

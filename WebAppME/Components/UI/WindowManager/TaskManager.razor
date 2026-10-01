@@ -1,0 +1,297 @@
+﻿@namespace BatteryTestingSystem.Components.UI.WindowManager
+
+<div class="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center" @onclick="OnClose">
+    <div class="bg-card border border-border rounded-lg shadow-2xl w-[800px] h-[600px] flex flex-col"
+         @onclick:stopPropagation="true">
+
+        @* Title Bar *@
+        <div class="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/50">
+            <div class="flex items-center gap-2">
+                <Blazicon Svg="Lucide.Activity" class="w-5 h-5" />
+                <h2 class="text-lg font-semibold">Task Manager</h2>
+            </div>
+            <button @onclick="OnClose"
+                    class="p-1.5 hover:bg-destructive hover:text-destructive-foreground rounded transition-colors">
+                <Blazicon Svg="Lucide.X" class="w-4 h-4" />
+            </button>
+        </div>
+
+        @* Tabs *@
+        <div class="flex border-b border-border bg-muted/30">
+            <button @onclick="() => activeTab = TaskManagerTab.Processes"
+                    class="@GetTabClass(TaskManagerTab.Processes)">
+                <Blazicon Svg="Lucide.Layers" class="w-4 h-4" />
+                <span>Processes</span>
+            </button>
+            <button @onclick="() => activeTab = TaskManagerTab.Performance"
+                    class="@GetTabClass(TaskManagerTab.Performance)">
+                <Blazicon Svg="Lucide.Activity" class="w-4 h-4" />
+                <span>Performance</span>
+            </button>
+            <button @onclick="() => activeTab = TaskManagerTab.Details"
+                    class="@GetTabClass(TaskManagerTab.Details)">
+                <Blazicon Svg="Lucide.Info" class="w-4 h-4" />
+                <span>Details</span>
+            </button>
+        </div>
+
+        @* Content *@
+        <div class="flex-1 overflow-hidden">
+            @if (activeTab == TaskManagerTab.Processes)
+            {
+                <div class="h-full flex flex-col">
+                    <div class="flex-1 overflow-auto">
+                        <table class="w-full">
+                            <thead class="bg-muted/50 sticky top-0 z-10">
+                                <tr class="text-left text-sm font-medium">
+                                    <th class="px-4 py-2 border-b border-border">Name</th>
+                                    <th class="px-4 py-2 border-b border-border">Status</th>
+                                    <th class="px-4 py-2 border-b border-border">Z-Index</th>
+                                    <th class="px-4 py-2 border-b border-border w-32">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var window in Windows.OrderByDescending(w => w.ZIndex))
+                                {
+                                    <tr class="hover:bg-muted/30 border-b border-border/50">
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center gap-2">
+                                                <Blazicon Svg="@GetIconFromName(window.IconName ?? "Lucide.File")" class="w-4 h-4" />
+                                                <span class="font-medium">@window.Title</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <span class="@GetStatusBadgeClass(window.State)">
+                                                @window.State.ToString()
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-muted-foreground">
+                                            @window.ZIndex
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center gap-1">
+                                                <button @onclick="() => OnSwitchTo.InvokeAsync(window.Id)"
+                                                        class="p-1.5 hover:bg-muted rounded transition-colors"
+                                                        title="Switch To">
+                                                    <Blazicon Svg="Lucide.Eye" class="w-4 h-4" />
+                                                </button>
+                                                <button @onclick="() => OnEndTask.InvokeAsync(window.Id)"
+                                                        class="p-1.5 hover:bg-destructive hover:text-destructive-foreground rounded transition-colors"
+                                                        title="End Task">
+                                                    <Blazicon Svg="Lucide.CircleX" class="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                                @if (!Windows.Any())
+                                {
+                                    <tr>
+                                        <td colspan="4" class="px-4 py-8 text-center text-muted-foreground">
+                                            No windows open
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="px-4 py-3 border-t border-border bg-muted/30 flex items-center justify-between">
+                        <span class="text-sm text-muted-foreground">
+                            Total windows: @Windows.Count
+                        </span>
+                        <button @onclick="RefreshData"
+                                class="px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors text-sm flex items-center gap-2">
+                            <Blazicon Svg="Lucide.RefreshCw" class="w-4 h-4" />
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            }
+            else if (activeTab == TaskManagerTab.Performance)
+            {
+                <div class="h-full p-6 flex flex-col gap-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="p-4 border border-border rounded-lg">
+                            <div class="flex items-center gap-2 mb-2">
+                                <Blazicon Svg="Lucide.Layers" class="w-5 h-5 text-primary" />
+                                <h3 class="font-semibold">Active Windows</h3>
+                            </div>
+                            <div class="text-3xl font-bold">@Windows.Count(w => w.State != WindowState.Minimized)</div>
+                            <p class="text-sm text-muted-foreground mt-1">Currently visible</p>
+                        </div>
+
+                        <div class="p-4 border border-border rounded-lg">
+                            <div class="flex items-center gap-2 mb-2">
+                                <Blazicon Svg="Lucide.Minimize2" class="w-5 h-5 text-primary" />
+                                <h3 class="font-semibold">Minimized</h3>
+                            </div>
+                            <div class="text-3xl font-bold">@Windows.Count(w => w.State == WindowState.Minimized)</div>
+                            <p class="text-sm text-muted-foreground mt-1">Hidden windows</p>
+                        </div>
+
+                        <div class="p-4 border border-border rounded-lg">
+                            <div class="flex items-center gap-2 mb-2">
+                                <Blazicon Svg="Lucide.Maximize2" class="w-5 h-5 text-primary" />
+                                <h3 class="font-semibold">Maximized</h3>
+                            </div>
+                            <div class="text-3xl font-bold">@Windows.Count(w => w.State == WindowState.Maximized)</div>
+                            <p class="text-sm text-muted-foreground mt-1">Full screen</p>
+                        </div>
+
+                        <div class="p-4 border border-border rounded-lg">
+                            <div class="flex items-center gap-2 mb-2">
+                                <Blazicon Svg="Lucide.Zap" class="w-5 h-5 text-primary" />
+                                <h3 class="font-semibold">Z-Index Range</h3>
+                            </div>
+                            <div class="text-3xl font-bold">
+                                @if (Windows.Any())
+                                {
+                                    @($"{Windows.Min(w => w.ZIndex)} - {Windows.Max(w => w.ZIndex)}")
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </div>
+                            <p class="text-sm text-muted-foreground mt-1">Stacking order</p>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 border border-border rounded-lg p-4">
+                        <h3 class="font-semibold mb-4">Window Distribution</h3>
+                        <div class="space-y-3">
+                            @foreach (var window in Windows.OrderByDescending(w => w.ZIndex).Take(5))
+                            {
+                                <div class="flex items-center gap-3">
+                                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                                        <Blazicon Svg="@GetIconFromName(window.IconName ?? "Lucide.File")" class="w-4 h-4 flex-shrink-0" />
+                                        <span class="text-sm truncate">@window.Title</span>
+                                    </div>
+                                    <div class="w-32 bg-muted rounded-full h-2">
+                                        <div class="bg-primary rounded-full h-2"
+                                             style="width: @((window.ZIndex / (double)Windows.Max(w => w.ZIndex) * 100))%"></div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (activeTab == TaskManagerTab.Details)
+            {
+                <div class="h-full overflow-auto p-6">
+                    <div class="space-y-4">
+                        @foreach (var window in Windows.OrderByDescending(w => w.ZIndex))
+                        {
+                            <div class="border border-border rounded-lg p-4 hover:bg-muted/30 transition-colors">
+                                <div class="flex items-start justify-between mb-3">
+                                    <div class="flex items-center gap-2">
+                                        <Blazicon Svg="@GetIconFromName(window.IconName ?? "Lucide.File")" class="w-5 h-5" />
+                                        <h3 class="font-semibold text-lg">@window.Title</h3>
+                                    </div>
+                                    <span class="@GetStatusBadgeClass(window.State)">
+                                        @window.State.ToString()
+                                    </span>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-3 text-sm">
+                                    <div>
+                                        <span class="text-muted-foreground">Window ID:</span>
+                                        <span class="ml-2 font-mono">@window.Id.Substring(0, 8)</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted-foreground">Z-Index:</span>
+                                        <span class="ml-2">@window.ZIndex</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted-foreground">Position:</span>
+                                        <span class="ml-2">X: @((int)window.Position.X), Y: @((int)window.Position.Y)</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted-foreground">Size:</span>
+                                        <span class="ml-2">@((int)window.Size.Width) × @((int)window.Size.Height)</span>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(window.PageUrl))
+                                    {
+                                        <div class="col-span-2">
+                                            <span class="text-muted-foreground">URL:</span>
+                                            <span class="ml-2 text-primary">@window.PageUrl</span>
+                                        </div>
+                                    }
+                                    @if (window.IsDocked)
+                                    {
+                                        <div>
+                                            <span class="text-muted-foreground">Docked:</span>
+                                            <span class="ml-2">@window.DockPosition.ToString()</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (!Windows.Any())
+                        {
+                            <div class="text-center py-12 text-muted-foreground">
+                                <Blazicon Svg="Lucide.Inbox" class="w-12 h-12 mx-auto mb-2" />
+                                <p>No windows to display</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<WindowModel> Windows { get; set; } = new();
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnEndTask { get; set; }
+    [Parameter] public EventCallback<string> OnSwitchTo { get; set; }
+
+    private TaskManagerTab activeTab = TaskManagerTab.Processes;
+    private DateTime lastRefresh = DateTime.Now;
+
+    private enum TaskManagerTab { Processes, Performance, Details }
+
+    private string GetTabClass(TaskManagerTab tab)
+    {
+        var baseClass = "px-4 py-2 flex items-center gap-2 transition-colors";
+        return activeTab == tab
+            ? $"{baseClass} bg-background border-b-2 border-primary text-primary font-medium"
+            : $"{baseClass} hover:bg-muted/50 text-muted-foreground";
+    }
+
+    private string GetStatusBadgeClass(WindowState state)
+    {
+        return state switch
+        {
+            WindowState.Normal => "px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-600 dark:text-blue-400",
+            WindowState.Minimized => "px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-600 dark:text-yellow-400",
+            WindowState.Maximized => "px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-600 dark:text-green-400",
+            _ => "px-2 py-0.5 rounded text-xs bg-gray-500/20 text-gray-600 dark:text-gray-400"
+        };
+    }
+
+    private SvgIcon GetIconFromName(string iconName)
+    {
+        return iconName switch
+        {
+            "Lucide.Settings" => Lucide.Settings,
+            "Lucide.FolderTree" => Lucide.FolderTree,
+            "Lucide.ChartBar" => Lucide.ChartBar,
+            "Lucide.Settings2" => Lucide.Settings2,
+            "Lucide.File" => Lucide.File,
+            "Lucide.LayoutDashboard" => Lucide.LayoutDashboard,
+            "Lucide.Cpu" => Lucide.Cpu,
+            "Lucide.FileText" => Lucide.FileText,
+            _ => Lucide.Square
+        };
+    }
+
+    private void RefreshData()
+    {
+        lastRefresh = DateTime.Now;
+        StateHasChanged();
+    }
+}

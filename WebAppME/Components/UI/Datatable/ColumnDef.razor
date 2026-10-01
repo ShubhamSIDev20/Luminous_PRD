@@ -1,0 +1,70 @@
+@* ColumnDef.razor
+   ─────────────────────────────────────────────────────────────────────────
+   Place inside <DataTable> to define one column.
+   Produces NO HTML — it only registers a ColumnDefinition into the
+   cascading ColumnContext provided by the parent DataTable.
+
+   REQUIRED:
+     Key           — unique string id for this column
+     Header        — column header text
+
+   OPTIONAL:
+     HeaderColor       — CSS color for the header label  e.g. "#e74c3c" or "hsl(120 60% 50%)"
+     Align             — "left" | "right" | "center"   (default: "left")
+     Visible           — initial visibility              (default: true)
+     SearchSelector    — Func<TItem,string>  for client-side search
+     ExcelValueSelector— Func<TItem,string>  for Excel export cell value
+                         Falls back to SearchSelector if omitted.
+     CellTemplate      — RenderFragment<TItem> for the cell content
+
+   EXAMPLE:
+   ──────────────────────────────────────────────────────────────────────────
+   <ColumnDef TItem="Product"
+              Key="price"
+              Header="Price"
+              Align="right"
+              HeaderColor="hsl(var(--success))"
+              SearchSelector="@(r => r.Price.ToString("F2"))"
+              ExcelValueSelector="@(r => r.Price.ToString("F2"))">
+       <CellTemplate Context="row">
+           <strong>@row.Price.ToString("C")</strong>
+       </CellTemplate>
+   </ColumnDef>
+   ──────────────────────────────────────────────────────────────────────────
+*@
+@using BatteryTestingSystem.Components.UI.Datatable
+@typeparam TItem
+@implements IDisposable
+
+@code {
+    [CascadingParameter] public ColumnContext<TItem>? Ctx { get; set; }
+
+    [Parameter, EditorRequired] public string Key    { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Header { get; set; } = string.Empty;
+
+    [Parameter] public string?               HeaderColor         { get; set; }
+    [Parameter] public string                Align               { get; set; } = "left";
+    [Parameter] public bool                  Visible             { get; set; } = true;
+    [Parameter] public RenderFragment?        HeaderTemplate     { get; set; }
+    [Parameter] public RenderFragment<TItem>? CellTemplate       { get; set; }
+    [Parameter] public Func<TItem, string>?  SearchSelector      { get; set; }
+    [Parameter] public Func<TItem, string>?  ExcelValueSelector  { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Ctx?.Register(new ColumnDefinition<TItem>
+        {
+            Key               = Key,
+            Header            = Header,
+            HeaderColor       = HeaderColor,
+            Align             = Align,
+            Visible           = Visible,
+            HeaderTemplate    = HeaderTemplate,
+            CellTemplate      = CellTemplate,
+            SearchSelector    = SearchSelector,
+            ExcelValueSelector = ExcelValueSelector,
+        });
+    }
+
+    public void Dispose() { /* lifetime tied to DataTable */ }
+}

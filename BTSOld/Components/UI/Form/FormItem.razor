@@ -1,0 +1,33 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Form
+
+<CascadingValue Value="@_context">
+    <div class="@CssClass">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private FormFieldContext _context = new();
+    public string _uniqueId = Guid.NewGuid().ToString("N");
+
+    private string CssClass => $"space-y-2 {Class ?? ""}".Trim();
+
+    protected override void OnInitialized()
+    {
+        _context.FieldId = _uniqueId;
+    }
+
+    public void SetFieldContext(string fieldName, bool hasError, string? errorMessage)
+    {
+        _context.FieldName = fieldName;
+        _context.HasError = hasError;
+        _context.ErrorMessage = errorMessage;
+        StateHasChanged();
+    }
+}

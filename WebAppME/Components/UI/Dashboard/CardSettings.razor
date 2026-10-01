@@ -1,0 +1,432 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Dashboard
+@inject IJSRuntime JS
+@inject ServerSessionStorageService sessionStorage
+@implements IDisposable
+@using BatteryTestingSystem.Components.UI.Dialog
+
+<Button Variant="ButtonVariant.Outline" size="ButtonSize.Icon" Class="gap-2" @onclick="OpenDialog">
+    <Blazicon Svg="Lucide.Settings" class="h-4 w-4" />
+</Button>
+
+<Dialog @bind-Open="_dialogOpen">
+    <DialogContent Size="DialogContent.DialogSize.Large" Class="max-w-3xl">
+        <div class="flex items-center justify-between mb-2">
+            <h4 class="font-medium text-sm text-foreground">Card Configuration</h4>
+            <div class="flex items-center gap-2">
+                <Button variant="ButtonVariant.Ghost" size="ButtonSize.Small"
+                @onclick="ResetDraft"
+                class="h-7 px-2 gap-1">
+                    <Blazicon Svg="Lucide.RotateCcw" class="h-3 w-3" />
+                    Reset
+                </Button>
+                <Button variant="ButtonVariant.Default" size="ButtonSize.Small"
+                @onclick="SaveConfigAsync"
+                class="h-7 px-3 gap-1">
+                    <Blazicon Svg="Lucide.Check" class="h-3 w-3" />
+                    Save
+                </Button>
+            </div>
+        </div>
+
+        @if (!IsReady)
+        {
+            <div class="text-sm text-muted-foreground">Loading settings...</div>
+        }
+        else
+        {
+            <div class="grid grid-cols-2 gap-6">
+                <div class="space-y-4">
+                    <!-- Card Size -->
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-foreground">Card Size</label>
+                            <span class="text-xs text-muted-foreground font-mono">@_draft.CardSize px</span>
+                        </div>
+                        <input type="range"
+                        min="150"
+                        max="500"
+                        step="10"
+                        value="@_draft.CardSize"
+                        @onchange="@(e => UpdateCardSize(double.Parse(e.Value?.ToString() ?? "150")))"
+                        @onclick:stopPropagation="true"
+                        class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary" />
+                        <div class="flex justify-between text-xs text-muted-foreground">
+                            <span>150</span>
+                            <span>500</span>
+                        </div>
+                    </div>
+
+                    <!-- Font Size -->
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-foreground">Font Size</label>
+                            <span class="text-xs text-muted-foreground font-mono">@_draft.FontSize px</span>
+                        </div>
+                        <input type="range"
+                        min="8"
+                        max="25"
+                        step="0.5"
+                        value="@_draft.FontSize"
+                        @onchange="@(e => UpdateFontSize(double.Parse(e.Value?.ToString() ?? "12")))"
+                        @onclick:stopPropagation="true"
+                        class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary" />
+                        <div class="flex justify-between text-xs text-muted-foreground">
+                            <span>10</span>
+                            <span>25</span>
+                        </div>
+                    </div>
+
+                    <!-- Decimal Places -->
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-foreground">Decimal Places</label>
+                            <span class="text-xs text-muted-foreground font-mono">@_draft.ShowDecimal</span>
+                        </div>
+                        <div class="flex gap-2">
+                            @for (int i = 0; i <= 6; i++)
+                            {
+                                var value = i;
+                                <button type="button"
+                                @onclick="@(() => UpdateShowDecimal(value))"
+                                @onclick:stopPropagation="true"
+                                class="@GetDecimalButtonClass(value)">
+                                    @value
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Display Mode -->
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-foreground">Display Mode</label>
+                        <div class="flex flex-wrap gap-1.5">
+                            @foreach (DisplayMode mode in Enum.GetValues(typeof(DisplayMode)))
+                            {
+                                <button type="button"
+                                        @onclick="@(() => UpdateDisplayMode(mode))"
+                                        class="@GetDisplayModeButtonClass(mode)">
+                                    <Blazicon Svg="@GetModeIcon(mode)" class="h-3.5 w-3.5" />
+                                    @mode
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Quick Properties -->
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-foreground">Properties</label>
+                            <span class="text-xs text-muted-foreground">@_draft.VisibleProperties.Count selected</span>
+                        </div>
+                        <div class="max-h-40 overflow-y-auto border border-border rounded-md p-2 flex flex-wrap content-start gap-1.5">
+                            @foreach (var (groupName, prop) in CardPreviewData.AllPropertiesBySection())
+                            {
+                                <button type="button"
+                                        title="@groupName"
+                                        @onclick="@(() => ToggleProperty(prop.Key, !IsPropertyVisible(prop.Key)))"
+                                        class="@GetQuickToggleClass(prop.Key)">
+                                    @prop.Value.Label
+                                </button>
+                            }
+                        </div>
+                        <div class="flex gap-2">
+                            <Button variant="ButtonVariant.Outline" size="ButtonSize.Small" @onclick="SelectAllProperties" Class="flex-1 h-7 text-xs">Select All</Button>
+                            <Button variant="ButtonVariant.Outline" size="ButtonSize.Small" @onclick="ClearAllProperties" Class="flex-1 h-7 text-xs">Clear All</Button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="text-sm font-medium text-foreground">Preview</label>
+                    <div class="border border-border rounded-lg p-4 bg-muted/30 flex items-center justify-center" style="min-height: 240px;">
+                        <div style="width: @(_draft.CardSize)px;">
+                            <DeviceChannel
+                                Channel="_previewChannel"
+                                Selected="false"
+                                MaxDigit="_draft.ShowDecimal"
+                                ChartMaxDataPoints="100"
+                                Mode="_draft.DisplayMode"
+                                FontSize="_draft.FontSize"
+                                RefreshRate="_draft.RefreshRate"
+                                VisibleProperties="_draft.VisibleProperties" />
+                        </div>
+                    </div>
+                    <p class="text-xs text-muted-foreground">This is the real dashboard card, rendered with sample data.</p>
+                </div>
+            </div>
+        }
+    </DialogContent>
+</Dialog>
+
+@code
+{
+    [Parameter]
+    public CardConfig Config { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<CardConfig> ConfigChanged { get; set; }
+
+    private bool _dialogOpen = false;
+    private bool IsReady { get; set; } = false;
+    private bool _isInitialized = false;
+
+    // Working copy edited while the dialog is open. Nothing here reaches the
+    // dashboard (or localStorage) until SaveConfigAsync commits it - so changes
+    // stay purely local/preview until the user clicks Save.
+    private CardConfig _draft = new();
+
+    private static CardConfig CloneConfig(CardConfig source) => new()
+    {
+        CardSize = source.CardSize,
+        FontSize = source.FontSize,
+        RefreshRate = source.RefreshRate,
+        ShowDecimal = source.ShowDecimal,
+        DisplayMode = source.DisplayMode,
+        VisibleProperties = new List<string>(source.VisibleProperties)
+    };
+
+    private void OpenDialog()
+    {
+        _draft = CloneConfig(Config);
+        _dialogOpen = true;
+    }
+
+    private static readonly List<string> DefaultVisibleProperties = CardPreviewData.DefaultVisibleProperties;
+    private static readonly CardConfig DefaultConfig = CardPreviewData.DefaultConfig;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_isInitialized)
+        {
+            _isInitialized = true;
+
+            try
+            {
+                await Task.Delay(100);
+                await LoadConfigFromLocalStorage();
+                IsReady = true;
+                await NotifyConfigChanged();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error initializing config: {ex.Message}");
+                Config = new CardConfig
+                    {
+                        CardSize = DefaultConfig.CardSize,
+                        FontSize = DefaultConfig.FontSize,
+                        RefreshRate = DefaultConfig.RefreshRate,
+                        ShowDecimal = DefaultConfig.ShowDecimal,
+                        DisplayMode = DefaultConfig.DisplayMode,
+                        VisibleProperties = new List<string>(DefaultConfig.VisibleProperties)
+                    };
+                IsReady = true;
+                await NotifyConfigChanged();
+            }
+        }
+    }
+
+    private bool IsPropertyVisible(string propertyName)
+    {
+        return _draft.VisibleProperties.Contains(propertyName);
+    }
+
+    private void ToggleProperty(string propertyName, bool isChecked)
+    {
+        if (isChecked && !_draft.VisibleProperties.Contains(propertyName))
+        {
+            _draft.VisibleProperties.Add(propertyName);
+        }
+        else if (!isChecked && _draft.VisibleProperties.Contains(propertyName))
+        {
+            _draft.VisibleProperties.Remove(propertyName);
+        }
+    }
+
+    private void SelectAllProperties()
+    {
+        _draft.VisibleProperties.Clear();
+        _draft.VisibleProperties.AddRange(CardPreviewData.RealTimeProperties.Keys);
+        _draft.VisibleProperties.AddRange(CardPreviewData.ConfigProperties.Keys);
+        _draft.VisibleProperties.AddRange(CardPreviewData.ProgramProperties.Keys);
+    }
+
+    private void ClearAllProperties()
+    {
+        _draft.VisibleProperties.Clear();
+    }
+
+    private string GetQuickToggleClass(string key)
+    {
+        var baseClass = "px-2.5 py-1 text-xs rounded-md border transition-colors";
+        return IsPropertyVisible(key)
+            ? $"{baseClass} bg-primary text-primary-foreground border-primary"
+            : $"{baseClass} bg-muted text-muted-foreground border-border hover:bg-muted/80";
+    }
+
+    // Real DeviceChannel component instance driven by a static, no-op IChannelCommandHandler
+    // (PreviewChannelCommandHandler) - so the preview is pixel-identical to a real dashboard
+    // card instead of a hand-built approximation of it. Created once; VisibleProperties/etc.
+    // are read live off _draft by the DeviceChannel instance, not copied into the handler.
+    private readonly PreviewChannelCommandHandler _previewChannel = new();
+
+    private void UpdateCardSize(double value)
+    {
+        _draft.CardSize = value;
+    }
+
+    private void UpdateFontSize(double value)
+    {
+        _draft.FontSize = value;
+    }
+
+    private void UpdateShowDecimal(int value)
+    {
+        _draft.ShowDecimal = value;
+    }
+
+    private void UpdateDisplayMode(DisplayMode mode)
+    {
+        _draft.DisplayMode = mode;
+    }
+
+    // Resets the draft only - the dashboard keeps its current config until Save is clicked.
+    private void ResetDraft()
+    {
+        _draft.CardSize = DefaultConfig.CardSize;
+        _draft.FontSize = DefaultConfig.FontSize;
+        _draft.RefreshRate = DefaultConfig.RefreshRate;
+        _draft.ShowDecimal = DefaultConfig.ShowDecimal;
+        _draft.DisplayMode = DefaultConfig.DisplayMode;
+        _draft.VisibleProperties = new List<string>(DefaultConfig.VisibleProperties);
+    }
+
+    // Commits the draft: persists it, pushes it to the dashboard via ConfigChanged, and closes the dialog.
+    private async Task SaveConfigAsync()
+    {
+        Config.CardSize = _draft.CardSize;
+        Config.FontSize = _draft.FontSize;
+        Config.RefreshRate = _draft.RefreshRate;
+        Config.ShowDecimal = _draft.ShowDecimal;
+        Config.DisplayMode = _draft.DisplayMode;
+        Config.VisibleProperties = new List<string>(_draft.VisibleProperties);
+
+        await NotifyConfigChanged();
+        _dialogOpen = false;
+    }
+
+    private async Task NotifyConfigChanged()
+    {
+        await SaveConfigToLocalStorage();
+        await ConfigChanged.InvokeAsync(Config);
+        StateHasChanged();
+    }
+
+    private string GetDecimalButtonClass(int value)
+    {
+        var baseClass = "flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors";
+        return _draft.ShowDecimal == value
+            ? $"{baseClass} bg-primary text-primary-foreground"
+            : $"{baseClass} bg-muted text-muted-foreground hover:bg-muted/80";
+    }
+
+    private string GetDisplayModeButtonClass(DisplayMode mode)
+    {
+        var baseClass = "flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border transition-colors";
+        return _draft.DisplayMode == mode
+            ? $"{baseClass} bg-primary text-primary-foreground border-primary"
+            : $"{baseClass} bg-muted text-muted-foreground border-border hover:bg-muted/80";
+    }
+
+    private SvgIcon GetModeIcon(DisplayMode mode)
+    {
+        return mode switch
+        {
+            DisplayMode.Mini => Lucide.Minimize2,
+            DisplayMode.Compact => Lucide.Square,
+            DisplayMode.Normal => Lucide.Maximize2,
+            DisplayMode.Chart => Lucide.ChartBar,
+            DisplayMode.List => Lucide.List,
+            _ => Lucide.LayoutGrid
+        };
+    }
+
+    #region LocalStorage Operations
+
+    private async Task SaveConfigToLocalStorage()
+    {
+        if (!IsReady) return;
+
+        try
+        {
+             string key = $"{CurrentUser.UserName}_card_config";
+            // await JS.InvokeVoidAsync("localStorageHelper.set", key, Config);
+
+            if (CurrentUser.User != null)
+            {
+                sessionStorage.SetComponentState(key, Config, true);
+            }
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving config to localStorage: {ex.Message}");
+        }
+    }
+
+    private async Task LoadConfigFromLocalStorage()
+    {
+        try
+        {
+            var key = $"{CurrentUser.UserName}_card_config";
+            // var storedConfig = await JS.InvokeAsync<CardConfig?>("localStorageHelper.get", key);
+            CardConfig storedConfig = new();
+
+            if (CurrentUser.User != null)
+            {
+                storedConfig = sessionStorage.GetComponentState<CardConfig>(key);
+            }
+
+            if (storedConfig != null)
+            {
+                Config.CardSize = storedConfig.CardSize;
+                Config.FontSize = storedConfig.FontSize;
+                Config.RefreshRate = storedConfig.RefreshRate;
+                Config.ShowDecimal = storedConfig.ShowDecimal;
+                Config.DisplayMode = storedConfig.DisplayMode;
+                Config.VisibleProperties = storedConfig.VisibleProperties?.Any() == true
+                    ? storedConfig.VisibleProperties
+                    : new List<string>(DefaultVisibleProperties);
+            }
+            else
+            {
+                Config.CardSize = DefaultConfig.CardSize;
+                Config.FontSize = DefaultConfig.FontSize;
+                Config.RefreshRate = DefaultConfig.RefreshRate;
+                Config.ShowDecimal = DefaultConfig.ShowDecimal;
+                Config.DisplayMode = DefaultConfig.DisplayMode;
+                Config.VisibleProperties = new List<string>(DefaultConfig.VisibleProperties);
+                await SaveConfigToLocalStorage();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading config from localStorage: {ex.Message}");
+            Config = new CardConfig
+                {
+                    CardSize = DefaultConfig.CardSize,
+                    FontSize = DefaultConfig.FontSize,
+                    RefreshRate = DefaultConfig.RefreshRate,
+                    ShowDecimal = DefaultConfig.ShowDecimal,
+                    DisplayMode = DefaultConfig.DisplayMode,
+                    VisibleProperties = new List<string>(DefaultVisibleProperties)
+                };
+        }
+    }
+
+    #endregion
+
+    public void Dispose()
+    {
+        // Cleanup if needed
+    }
+}

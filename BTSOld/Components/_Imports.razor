@@ -1,0 +1,82 @@
+﻿@using System.Net.Http
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Microsoft.JSInterop
+@using BatteryTestingSystem
+@using BatteryTestingSystem.Components
+
+@* logger *@
+@using Serilog
+@using BatteryTestingSystem.Models.DTOs
+
+@* UI Theme *@
+@using BatteryTestingSystem.Components.UI
+@using BatteryTestingSystem.Components.UI.Accordion
+@using BatteryTestingSystem.Components.UI.Alert
+@using BatteryTestingSystem.Components.UI.Avatar
+@using BatteryTestingSystem.Components.UI.Badge
+@using BatteryTestingSystem.Components.UI.Button
+@using BatteryTestingSystem.Components.UI.Card
+@using BatteryTestingSystem.Components.UI.Checkbox
+@using BatteryTestingSystem.Components.UI.Dialog
+@using BatteryTestingSystem.Components.UI.DropdownMenu
+@using BatteryTestingSystem.Components.UI.Input
+@using BatteryTestingSystem.Components.UI.Label
+@using BatteryTestingSystem.Components.UI.Modal
+@using BatteryTestingSystem.Components.UI.Popover
+@using BatteryTestingSystem.Components.UI.Progress
+@using BatteryTestingSystem.Components.UI.ScrollArea
+@using BatteryTestingSystem.Components.UI.Select
+@using BatteryTestingSystem.Components.UI.Separator
+@using BatteryTestingSystem.Components.UI.Sheet
+@using BatteryTestingSystem.Components.UI.Skeleton
+@using BatteryTestingSystem.Components.UI.Table
+@using BatteryTestingSystem.Components.UI.Tabs
+@using BatteryTestingSystem.Components.UI.TextArea
+@using BatteryTestingSystem.Components.UI.Themes
+@using BatteryTestingSystem.Components.UI.Tooltip
+@using BatteryTestingSystem.Components.Layout
+@using BatteryTestingSystem.Components.UI.ContextMenu
+@using BatteryTestingSystem.Components.UI.Pagination
+@using BatteryTestingSystem.Components.UI.Search
+@using BatteryTestingSystem.Components.UI.Form
+@using BatteryTestingSystem.Components.UI.DynamicTable
+@using BatteryTestingSystem.Components.UI.Loading
+@using BatteryTestingSystem.Components.UI.TreeView
+@using BatteryTestingSystem.Components.UI.WindowManager
+@using static BatteryTestingSystem.Components.UI.Dialog.DialogContent
+@using static BatteryTestingSystem.Components.UI.Toaster
+@using BatteryTestingSystem.Components.UI.Calibration
+@using BatteryTestingSystem.Components.UI.TabViewer
+@using BatteryTestingSystem.Components.UI.Datatable;
+@using BatteryTestingSystem.Components.UI.PageHeader
+@using BatteryTestingSystem.Components.UI.InfiniteScroll
+
+@* Service *@
+@using BatteryTestingSystem.Services
+@using BatteryTestingSystem.Utils
+@using BatteryTestingSystem.Services.Interfaces
+@using BatteryTestingSystem.Components.UI.Switch
+
+@using Blazicons
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+
+
+
+
+
+
+
+
+
+
+
+
+
+

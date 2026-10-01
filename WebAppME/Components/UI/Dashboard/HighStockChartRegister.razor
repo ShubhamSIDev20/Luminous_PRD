@@ -1,0 +1,516 @@
+﻿@namespace BatteryTestingSystem.Components.UI.Dashboard
+@attribute [StreamRendering]
+
+@using BatteryTestingSystem.Models.DTOs
+@using BatteryTestingSystem.Models.SqliteEntities
+@inject IJSRuntime JS
+
+<!-- Data Range Controls -->
+<div class="mb-3 p-3 bg-card rounded-lg border border-border">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+        <!-- Left: Data Info & Advanced Mode & Steps -->
+        <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Data:</span>
+                <span class="font-medium text-foreground">
+                    @if (Data?.Any() == true)
+                    {
+                        @($"{Data.First().DateTime:yyyy-MM-dd HH:mm} → {Data.Last().DateTime:yyyy-MM-dd HH:mm}")
+                    }
+                    else
+                    {
+                        <text>No data</text>
+                    }
+                </span>
+            </div>
+
+            <div class="h-4 w-px bg-border"></div>
+
+            <button @onclick="ToggleAdvancedMode"
+            class="px-3 py-1 text-xs font-medium rounded transition-colors @(_isAdvancedMode ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80")">
+                @(_isAdvancedMode ? "✓" : "") Advanced
+            </button>
+
+            @if (_isAdvancedMode)
+            {
+                <select @bind="_selectedXAxis" @bind:after="OnAxisSelectionChangedAsync"
+                    class="px-2 py-1 text-xs bg-background text-foreground border border-input rounded focus:ring-1 focus:ring-ring">
+                        <option value="DateTime">X: DateTime</option>
+                        @foreach (var series in _seriesNames.Where(s => !s.Contains("Voltage", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            <option value="@series">X: @series</option>
+                        }
+                </select>
+
+                <button @onclick="ResetToDefaultAxesAsync"
+                    class="px-2 py-1 text-xs font-medium text-foreground bg-secondary rounded hover:bg-secondary/80 transition-colors">
+                        Reset Axes
+                </button>
+            }
+
+            <div class="h-4 w-px bg-border"></div>
+
+            <select @bind="_selectedStepNumber"
+            @bind:after="@LoadAllDataAsync"
+            class="px-2 py-1 text-xs bg-background text-foreground border border-input rounded focus:ring-1 focus:ring-ring">
+                <option value="">All Steps</option>
+                @foreach (var step in _availableSteps?.OrderBy(s => s.Key))
+                {
+                    <option value="@step.Key.ToString()">@step.Key-@step.Value </option>
+                }
+            </select>
+        </div>
+
+        <!-- Right: Zoom Controls & Quick Load Buttons -->
+        <div class="flex items-center gap-2">
+            <button @onclick="ZoomIn"
+            class="px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
+            title="Zoom In">
+                🔍+
+            </button>
+            <button @onclick="ZoomOut"
+            class="px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
+            title="Zoom Out">
+                🔍−
+            </button>
+            <button @onclick="ResetZoom"
+            class="px-2 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+            title="Reset Zoom">
+                ↺
+            </button>
+
+            <div class="h-4 w-px bg-border"></div>
+
+            <button @onclick="() => LoadLastRecordsAsync(500)"
+            class="px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors">
+                500
+            </button>
+            <button @onclick="() => LoadLastRecordsAsync(1000)"
+            class="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors">
+                1K
+            </button>
+            <button @onclick="() => LoadLastRecordsAsync(5000)"
+            class="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors">
+                5K
+            </button>
+            <button @onclick="LoadAllDataAsync"
+            class="px-2.5 py-1 text-xs font-medium bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors border border-border">
+                All
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <div class="absolute inset-0 flex items-center justify-center bg-background/70 z-10">
+        <div class="flex flex-col items-center gap-2">
+            <div class="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary"></div>
+            <span class="text-sm text-muted-foreground">Loading chart…</span>
+        </div>
+    </div>
+}
+
+
+<div id="@ChartId" class="w-full h-full"></div>
+
+<div class="mt-4 flex items-center justify-between text-sm flex-wrap gap-2">
+    <div class="text-muted-foreground">
+        <span class="font-medium text-foreground">@_filteredData.Count</span> of <span class="font-medium text-foreground">@(Data?.Count ?? 0)</span> records displayed
+        @if (_filteredData.Count < (Data?.Count ?? 0))
+        {
+            <span class="text-amber-600 dark:text-amber-400 ml-2">(filtered)</span>
+        }
+    </div>
+
+    @*     <div class="flex items-center gap-2">
+        <label class="text-sm text-foreground">Y-Axis Scale:</label>
+        <input type="number"
+        min="1"
+        max="10000"
+        @bind="_yAxisTickInterval"
+        @bind:event="oninput"
+        @onchange="OnTickIntervalChangedAsync"
+        class="w-24 px-2 py-1 text-sm bg-background text-foreground border border-input rounded focus:ring-2 focus:ring-ring" />
+    </div> *@
+
+    <div class="text-muted-foreground">
+        Last updated:
+        <span class="text-foreground">@(_filteredData.LastOrDefault()?.DateTime.ToString("HH:mm:ss") ?? "N/A")</span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<MeasurementData> Data { get; set; } = new();
+    [Parameter] public int? IsStepRunning { get; set; }
+
+    private DateTime? startDate => Data?.FirstOrDefault()?.DateTime;
+    private DateTime? endDate => Data?.LastOrDefault()?.DateTime;
+    private Dictionary<int, string>? _availableSteps =>
+        Data?
+            .GroupBy(d => d.StepNumber)
+            .ToDictionary(
+                g => g.Key!,
+                g => PacketAnalyzer.GetOperatorName((byte)g.First().Operator) ?? string.Empty
+            );
+
+    private string? _selectedStepNumber = null;
+    private bool IsSameDate =>
+        startDate.HasValue && endDate.HasValue &&
+        startDate.Value.Date == endDate.Value.Date;
+
+    private long? _lastLiveTimestamp;
+
+    private bool _isLoading = true;
+    private bool _chartInitialized = false;
+    private string ChartId { get; set; } = $"chart_{Guid.NewGuid():N}";
+    private List<string> _seriesNames = new();
+    private Dictionary<string, Func<MeasurementData, double>> _seriesAccessors = new();
+    private float _yAxisTickInterval = 10;
+    private bool _isAdvancedMode = false;
+    private string _selectedXAxis = "DateTime";
+
+    private List<MeasurementData> _filteredData = new();
+    private DateTime? _fromDateTime;
+    private DateTime? _toDateTime;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _isLoading = true;
+            StateHasChanged();
+
+            try
+            {
+                if (IsStepRunning.HasValue && IsStepRunning != 0)
+                     _selectedStepNumber = IsStepRunning?.ToString();
+
+                BuildSeriesAccessors();
+                await LoadLastRecordsAsync(500);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Chart initialization error: {ex.Message}");
+            }
+
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadLastRecordsAsync(int count)
+    {
+        if (Data == null || Data.Count == 0)
+        {
+            _filteredData = new();
+            return;
+        }
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _filteredData = Data.TakeLast(count).ToList();
+
+            if (!string.IsNullOrEmpty(_selectedStepNumber))
+            {
+                if (int.TryParse(_selectedStepNumber, out int stepNum))
+                {
+                    _filteredData = _filteredData
+                        .Where(d => d.StepNumber == stepNum)
+                        .ToList();
+                }
+            }
+
+            if (_filteredData.Any())
+            {
+                _fromDateTime = _filteredData.First().DateTime;
+                _toDateTime = _filteredData.Last().DateTime;
+                await RecreateChartAsync();
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadAllDataAsync()
+    {
+        if (Data == null || Data.Count == 0) return;
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+
+            _filteredData = Data.ToList();
+
+            if (!string.IsNullOrEmpty(_selectedStepNumber))
+            {
+                if (int.TryParse(_selectedStepNumber, out int stepNum))
+                {
+                    _filteredData = _filteredData
+                        .Where(d => d.StepNumber == stepNum)
+                        .ToList();
+                }
+            }
+
+            if (_filteredData.Any())
+            {
+                _fromDateTime = _filteredData.First().DateTime;
+                _toDateTime = _filteredData.Last().DateTime;
+            }
+
+            await RecreateChartAsync();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RecreateChartAsync()
+    {
+        var seriesData = BuildSeriesData();
+        var navigatorData = BuildNavigatorData();
+
+        var first = _filteredData?.FirstOrDefault();
+        var title = first is null
+            ? "Device - Circuit"
+            : $"Device {first.DeviceId} Circuit {first.ChannelId}";
+
+        // Always destroy and recreate the chart
+        await SafeInvokeAsync("highchartsHelper.destroyChart", ChartId);
+        await SafeInvokeAsync("highchartsHelper.initChart", ChartId, title, seriesData, navigatorData, "user", _isAdvancedMode, _selectedXAxis);
+
+        _chartInitialized = true;
+    }
+
+    private List<object> BuildSeriesData()
+    {
+        // Determine which series to show
+        List<string> seriesToDisplay;
+
+        if (_isAdvancedMode)
+        {
+            // Advanced mode: Only Voltage series
+            seriesToDisplay = _seriesNames
+                .Where(name => name.Contains("Voltage", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+        else
+        {
+            // Normal mode: All series
+            seriesToDisplay = _seriesNames.ToList();
+        }
+
+        var seriesData = seriesToDisplay.Select(name =>
+        {
+            List<object> dataPoints;
+
+            if (_isAdvancedMode && _selectedXAxis != "DateTime")
+            {
+                // Advanced mode with custom X-axis
+                // Use INDEX as X value with custom property stored in data point
+                dataPoints = _filteredData.Select((r, index) =>
+                {
+                    return new
+                    {
+                        x = index,
+                        y = _seriesAccessors[name](r),
+                        customX = _seriesAccessors[_selectedXAxis](r),
+                        timestamp = r.DateTime.ToUniversalTime().Subtract(new DateTime(1970, 1, 1)).TotalMilliseconds
+                    };
+                }).Cast<object>().ToList();
+            }
+            else
+            {
+                // Normal mode or advanced with DateTime X-axis
+                dataPoints = _filteredData.Select(r => new object[]
+                {
+                    r.DateTime.ToUniversalTime().Subtract(new DateTime(1970, 1, 1)).TotalMilliseconds,
+                    _seriesAccessors[name](r)
+                }).Cast<object>().ToList();
+            }
+
+            return new
+            {
+                name,
+                data = dataPoints
+            };
+        }).Cast<object>().ToList();
+
+        return seriesData;
+    }
+
+    private List<object[]> BuildNavigatorData()
+    {
+        // Navigator always uses DateTime with the first voltage series value
+        var firstVoltageSeries = _seriesNames
+            .FirstOrDefault(name => name.Contains("Voltage", StringComparison.OrdinalIgnoreCase));
+
+        if (firstVoltageSeries == null)
+        {
+            firstVoltageSeries = _seriesNames.FirstOrDefault();
+        }
+
+        if (firstVoltageSeries == null)
+        {
+            return new List<object[]>();
+        }
+
+        return _filteredData.Select(r => new object[]
+        {
+            r.DateTime.ToUniversalTime().Subtract(new DateTime(1970, 1, 1)).TotalMilliseconds,
+            _seriesAccessors[firstVoltageSeries](r)
+        }).ToList();
+    }
+
+    private async Task SafeInvokeAsync(string identifier, params object?[] args)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync(identifier, args);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task<T> SafeInvokeWithResultAsync<T>(string identifier, params object?[] args)
+    {
+        try
+        {
+            return await JS.InvokeAsync<T>(identifier, args);
+        }
+        catch (JSDisconnectedException) { return default!; }
+        catch (TaskCanceledException) { return default!; }
+    }
+
+    private void BuildSeriesAccessors()
+    {
+        _seriesAccessors.Clear();
+
+        _seriesNames = typeof(MeasurementData)
+            .GetProperties()
+            .Where(p => Attribute.IsDefined(p, typeof(UseChartAttribute)))
+            .Select(p => p.Name)
+            .ToList();
+
+        foreach (var name in _seriesNames)
+        {
+            var prop = typeof(MeasurementData).GetProperty(name);
+            if (prop == null) continue;
+
+            _seriesAccessors[name] = dto =>
+            {
+                var val = prop.GetValue(dto);
+                if (val == null) return 0.0;
+
+                var type = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+                double rawValue = 0.0;
+
+                if (type == typeof(bool))
+                {
+                    rawValue = (bool)val ? 1.0 : 0.0;
+                }
+                else if (type.IsEnum)
+                {
+                    rawValue = Convert.ToDouble(Convert.ChangeType(val, Enum.GetUnderlyingType(type)));
+                }
+                else if (type.IsPrimitive || type == typeof(decimal))
+                {
+                    try { rawValue = Convert.ToDouble(val); }
+                    catch { rawValue = 0.0; }
+                }
+
+                return Math.Round(rawValue, 4, MidpointRounding.AwayFromZero);
+            };
+        }
+    }
+
+    private async Task OnTickIntervalChangedAsync()
+    {
+        if (_chartInitialized && _yAxisTickInterval > 0)
+        {
+            await SafeInvokeAsync("highchartsHelper.updateYAxisTickInterval", ChartId, _yAxisTickInterval);
+        }
+    }
+
+    private async Task ToggleAdvancedMode()
+    {
+        _isAdvancedMode = !_isAdvancedMode;
+
+        if (!_isAdvancedMode)
+        {
+            _selectedXAxis = "DateTime";
+        }
+
+        // Destroy and recreate chart with new mode
+        await RecreateChartAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnAxisSelectionChangedAsync()
+    {
+        // Destroy and recreate chart with new axis
+        await RecreateChartAsync();
+    }
+
+    private async Task ResetToDefaultAxesAsync()
+    {
+        _selectedXAxis = "DateTime";
+        _isAdvancedMode = false;
+
+        // Destroy and recreate chart with default settings
+        await RecreateChartAsync();
+        StateHasChanged();
+    }
+
+    private async Task ZoomIn()
+    {
+        if (!_chartInitialized) return;
+        await SafeInvokeAsync("highchartsHelper.zoomChart", ChartId, 0.5);
+    }
+
+    private async Task ZoomOut()
+    {
+        if (!_chartInitialized) return;
+        await SafeInvokeAsync("highchartsHelper.zoomChart", ChartId, 2.0);
+    }
+
+    private async Task ResetZoom()
+    {
+        if (!_chartInitialized) return;
+        await SafeInvokeAsync("highchartsHelper.resetZoom", ChartId);
+    }
+
+    public void HandleLiveDataAsync(RealTimeRecordDto? realTime)
+    {
+        if (realTime != null)
+        {
+            var Measurement = new MeasurementData
+            {
+                DateTime = realTime.TimeStamp,
+                ChannelId = realTime.ChannelNumber,
+                DeviceId = realTime.DeviceID,
+                Voltage = realTime.Voltage,
+                Current = realTime.Current,
+                Temperature = realTime.Temperature,
+                StepNumber = realTime.StepNumber,
+                CircuitStatus = realTime.CircuitStatus,
+                SessionID = realTime.SessionID,
+                // Power = realTime.Capacity,
+                ProgramRunningTime = (int)realTime.RunningTime.Ticks,                
+            };
+
+            if (Measurement !=null)
+                Data.Add(Measurement);
+        }
+    }
+}

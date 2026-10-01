@@ -1,0 +1,54 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Services.Implementations.Workflow
+@using BatteryTestingSystem.Services.Interfaces
+
+@* Sub-project C3: the live decoded DBC signals for one channel, so the canvas can "watch the DBC
+   parameter session" the way the dashboard could.
+
+   Unlike node-face telemetry this DOES re-render through Blazor. That is a deliberate exception to
+   the canvas's no-re-render rule: the signal SET is not fixed (it depends on the loaded DBC file),
+   so there is no stable set of data-role slots for JS to write into. The blast radius is one open
+   dialog for one channel rather than every node on the canvas, which is what the rule exists to
+   protect. *@
+
+<div class="wf-dbc-view">
+    @if (Channel is null)
+    {
+        <p class="opacity-60">No channel selected.</p>
+    }
+    else if (_rows.Count == 0)
+    {
+        <p class="opacity-60">
+            No DBC signals decoded for this channel yet. A DBC file must be transferred to the
+            channel, and the device must have reported at least one frame.
+        </p>
+    }
+    else
+    {
+        <div class="wf-detail-rows">
+            @foreach (var row in _rows)
+            {
+                <div class="wf-detail-row" data-signal="@row.Label">
+                    <span class="wf-detail-row__label">@row.Label</span>
+                    <span class="wf-detail-row__value">@row.Value</span>
+                </div>
+            }
+        </div>
+        <p class="opacity-60 text-xs">
+            @_rows.Count signal(s) · decoded @(_decodedAt is null ? "--" : _decodedAt.Value.ToString("HH:mm:ss"))
+        </p>
+    }
+</div>
+
+@code {
+    [Parameter] public IChannelCommandHandler? Channel { get; set; }
+
+    private IReadOnlyList<DetailRow> _rows = Array.Empty<DetailRow>();
+    private DateTime? _decodedAt;
+
+    protected override void OnParametersSet()
+    {
+        _rows = WorkflowChannelDetail.Dbc(Channel?.dbcData);
+        _decodedAt = Channel?.dbcData?.CreatedDate is { } d && d != default ? d : null;
+    }
+}

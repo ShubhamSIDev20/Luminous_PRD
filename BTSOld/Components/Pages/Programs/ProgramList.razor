@@ -1,0 +1,502 @@
+@page "/program/list"
+@attribute [Authorize]
+@attribute [StreamRendering]
+
+@inject IProgramServices PService
+@inject NavigationManager nav
+@inject ToastService Toast
+@inject TabService tbService
+
+@using BatteryTestingSystem.Components.UI.Datatable;
+
+<PageHeader Title="Program Management" Description="Create, configure, and maintain testing programs.">
+    <Actions>
+        <AuthorizeView Roles="Administrator,Supervisor">
+            <Button Variant="ButtonVariant.Default" Size="ButtonSize.Small" OnClick="OpenCreateDialog">
+                <Blazicon Svg="Lucide.Plus" class="h-4 w-4 mr-2" />
+                Create Program
+            </Button>
+        </AuthorizeView>
+    </Actions>
+</PageHeader>
+
+@if (isLoading)
+{
+    <div class="flex items-center justify-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+    </div>
+}
+else
+{
+    <div class="h-[80%] flex flex-col">
+        <DataTable TItem="ProgramDTO"
+                   Title="Programs"
+                   Subtitle="All configured testing programs"
+                   Data="@programs"
+                   Search="true"
+                   ExcelExport="true"
+                   ExcelFileName="programs"
+                   ExcelSheetName="Programs"
+                   PdfExport="true"
+                   PdfFileName="programs"
+                   ExportHeaderText="Program Registry"
+                   ExportFooterText="@("Exported: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"))">
+
+            <Columns>
+
+                <ColumnDef TItem="ProgramDTO" Key="name" Header="Name"
+                           SearchSelector="@(p => p.ProgramName ?? string.Empty)"
+                           ExcelValueSelector="@(p => p.ProgramName ?? string.Empty)">
+                    <CellTemplate Context="p">
+                        <span class="font-medium">@p.ProgramName</span>
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="ProgramDTO" Key="description" Header="Description"
+                           SearchSelector="@(p => p.Description ?? string.Empty)"
+                           ExcelValueSelector="@(p => p.Description ?? string.Empty)">
+                    <CellTemplate Context="p">
+                        @if (!string.IsNullOrWhiteSpace(p.Description))
+                        {
+                            <span class="truncate max-w-xs block text-sm">@p.Description</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted-foreground italic text-xs">No description</span>
+                        }
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="ProgramDTO" Key="steps" Header="Steps"
+                           Align="center"
+                           SearchSelector="@(p => p.ProgramSteps.ToString())"
+                           ExcelValueSelector="@(p => p.ProgramSteps.ToString())">
+                    <CellTemplate Context="p">
+                        @p.ProgramSteps
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="ProgramDTO" Key="valid" Header="Valid"
+                           Align="center"
+                           SearchSelector="@(p => p.IsDeleted ? "Invalid" : "Valid")"
+                           ExcelValueSelector="@(p => p.IsDeleted ? "Invalid" : "Valid")">
+                    <CellTemplate Context="p">
+                        @if (!p.IsDeleted)
+                        {
+                            <Badge Variant="BadgeVariant.Default">
+                                <Blazicon Svg="Lucide.Check" class="h-3 w-3 mr-1" /> Valid
+                            </Badge>
+                        }
+                        else
+                        {
+                            <Badge Variant="BadgeVariant.Destructive">
+                                <Blazicon Svg="Lucide.CircleAlert" class="h-3 w-3 mr-1" /> Invalid
+                            </Badge>
+                        }
+                    </CellTemplate>
+                </ColumnDef>
+
+                <ColumnDef TItem="ProgramDTO" Key="actions" Header="Actions"
+                           Align="right"
+                           ExcelValueSelector="@(p => string.Empty)">
+                    <CellTemplate Context="p">
+                        <div class="flex items-center justify-end gap-1">
+
+                            @* Administrator & Supervisor — full access *@
+                            <AuthorizeView Roles="Administrator,Supervisor">
+
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => DuplicateProgram(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Copy" class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">Save As</TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => OpenEdit(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Pencil" class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">Rename</TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => OpenCode(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Code" class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">Program Edit</TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => OpenView(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Eye" class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">View</TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => HandleDelete(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Trash2" class="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">Delete</TooltipContent>
+                                </Tooltip>
+
+                            </AuthorizeView>
+
+                            @* Maintenance — all except Delete *@
+                            <AuthorizeView Roles="Maintenance">
+
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => OpenEdit(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Pencil" class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">Edit</TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => OpenCode(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Code" class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">Code</TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => OpenView(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Eye" class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">View</TooltipContent>
+                                </Tooltip>
+
+                            </AuthorizeView>
+
+                            @* Operator — view only *@
+                            <AuthorizeView Roles="Operator">
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Icon"
+                                                @onclick="@(() => OpenView(p.ProgramId))">
+                                            <Blazicon Svg="Lucide.Eye" class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="TooltipSide.Top">View</TooltipContent>
+                                </Tooltip>
+                            </AuthorizeView>
+
+                        </div>
+                    </CellTemplate>
+                </ColumnDef>
+
+            </Columns>
+            <ActionButtons>
+                <button class="inline-flex items-center justify-center w-6 h-6 rounded
+                       border border-border bg-background text-muted-foreground
+                       hover:bg-muted hover:text-foreground
+                       transition-colors cursor-pointer text-xs"
+                        title="Refresh data"
+                        @onclick="LoadPrograms">
+                    ↺
+                </button>
+            </ActionButtons>
+        </DataTable>
+
+    </div>
+}
+
+
+@* ── Create / Edit Dialog ── *@
+<Dialog @bind-Open="@isAddDialogOpen">
+    <DialogContent>
+        <EditForm EditContext="@_editContext" OnValidSubmit="@SaveProgramAsync">
+            <DataAnnotationsValidator />
+
+            <DialogHeader>
+                <DialogTitle>@(isEditMode ? "Edit Program" : "Add New Program")</DialogTitle>
+                <DialogDescription>
+                    @(isEditMode ? "Update program details below." : "Create a new program with the details below.")
+                </DialogDescription>
+            </DialogHeader>
+
+            <div class="space-y-4 py-4">
+
+                @* Name *@
+                <div class="flex flex-col gap-1.5">
+                    <label for="f-name" class="text-sm font-medium leading-none text-[hsl(var(--foreground))]">
+                        Program Name
+                    </label>
+                    <InputText id="f-name" @bind-Value="programModel.Name"
+                               placeholder="Enter program name"
+                               class="h-9 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-1 text-sm text-[hsl(var(--foreground))] shadow-sm outline-none transition-colors placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-50" />
+                    <ValidationMessage For="@(() => programModel.Name)"
+                                       class="text-xs text-[hsl(var(--destructive))]" />
+                </div>
+
+                @* Description *@
+                <div class="flex flex-col gap-1.5">
+                    <label for="f-desc" class="text-sm font-medium leading-none text-[hsl(var(--foreground))]">
+                        Description
+                    </label>
+                    <InputTextArea id="f-desc" @bind-Value="programModel.Description"
+                                   placeholder="Enter program description" rows="3"
+                                   class="w-full resize-none rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm text-[hsl(var(--foreground))] shadow-sm outline-none transition-colors placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-50" />
+                    <ValidationMessage For="@(() => programModel.Description)"
+                                       class="text-xs text-[hsl(var(--destructive))]" />
+                </div>
+
+                @* Max Ah *@
+                <div class="flex flex-col gap-1.5">
+                    <label for="f-maxah" class="text-sm font-medium leading-none text-[hsl(var(--foreground))]">
+                        Max Ah
+                    </label>
+                    <InputNumber id="f-maxah" @bind-Value="programModel.MaxAh"
+                                 placeholder="Enter maximum Ah"
+                                 class="h-9 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-1 text-sm text-[hsl(var(--foreground))] shadow-sm outline-none transition-colors placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-50" />
+                    <ValidationMessage For="@(() => programModel.MaxAh)"
+                                       class="text-xs text-[hsl(var(--destructive))]" />
+                </div>
+
+                @* Duration *@
+                <div class="flex flex-col gap-1.5">
+                    <label for="f-dur" class="text-sm font-medium leading-none text-[hsl(var(--foreground))]">
+                        Duration
+                        <span class="ml-1 font-normal text-[hsl(var(--muted-foreground))]">(minutes)</span>
+                    </label>
+                    <InputNumber id="f-dur" @bind-Value="_durationMinutes"
+                                 placeholder="Enter duration in minutes"
+                                 class="h-9 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-1 text-sm text-[hsl(var(--foreground))] shadow-sm outline-none transition-colors placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-50" />
+                    <ValidationMessage For="@(() => programModel.ProgramTimeTicks)"
+                                       class="text-xs text-[hsl(var(--destructive))]" />
+                </div>
+
+            </div>
+
+            <DialogFooter>
+                <Button Variant="ButtonVariant.Outline" @onclick="CloseProgramDialog">Cancel</Button>
+                <Button Type="submit">@(isEditMode ? "Update Program" : "Create Program")</Button>
+            </DialogFooter>
+
+        </EditForm>
+    </DialogContent>
+</Dialog>
+
+
+@* ── Delete Dialog ── *@
+<Dialog Open="@isDeleteOpen" OpenChanged="@((open) => isDeleteOpen = open)">
+    <DialogContent Size="DialogSize.Small">
+        <DialogHeader>
+            <DialogTitle>Delete Program</DialogTitle>
+            <DialogDescription>Are you sure you want to delete this program?</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+            <Button Variant="ButtonVariant.Outline" OnClick="@(() => isDeleteOpen = false)">Cancel</Button>
+            <Button Variant="ButtonVariant.Destructive" OnClick="@ConfirmDelete">Delete</Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+
+@* ── View Dialog ── *@
+<Dialog Open="@isViewDialogOpen" OpenChanged="@((open) => isViewDialogOpen = open)">
+    <DialogContent class="overflow-y-auto" Size="DialogSize.Full">
+        <DialogHeader>
+            <DialogTitle>@ViewProgram?.ProgramName</DialogTitle>
+            <DialogDescription>Program details</DialogDescription>
+        </DialogHeader>
+
+        <ProgramViewer InitialSteps="@ViewProgram.ProgramStepModel"
+                       InitialProgramName="@ViewProgram.ProgramName"
+                       OnEdit="@SwitchToEditMode" />
+
+        <DialogFooter>
+            <Button Variant="ButtonVariant.Outline" OnClick="@(() => isViewDialogOpen = false)">Close</Button>
+            <Button OnClick="@SwitchToEditMode">Edit Program</Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+
+@code {
+    private List<ProgramDTO> programs = new();
+    private CreateProgramRequest programModel = new();
+    private bool isEditMode;
+    private long? programToDelete;
+    private bool isLoading = true;
+    private bool isAddDialogOpen;
+    private bool isDeleteOpen;
+    private bool isViewDialogOpen;
+    private ProgramDTO ViewProgram = new();
+    private EditContext _editContext = new EditContext(new CreateProgramRequest());
+    // bridge: edit in minutes, store as ticks
+    private long? _durationMinutes
+    {
+        get => programModel.ProgramTimeTicks.HasValue
+                   ? programModel.ProgramTimeTicks.Value / TimeSpan.TicksPerMinute
+                   : null;
+        set => programModel.ProgramTimeTicks = value.HasValue
+                   ? value.Value * TimeSpan.TicksPerMinute
+                   : null;
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPrograms();
+        isLoading = false;
+    }
+
+    private async Task LoadPrograms()
+    {
+        var result = await PService.GetProgramsAsync();
+        if (result.Success) programs = result.Data ?? new();
+        else Toast.Error(result.Message ?? "Failed to load programs");
+    }
+
+    #region Create / Edit / Duplicate
+    private void OpenCreateDialog()
+    {
+        programModel = new(); 
+        _editContext = new EditContext(programModel);
+        isEditMode = false; isAddDialogOpen = true;
+    }
+
+    private void OpenCode(long programId)
+    {
+        tbService.AddTab(new NavMenuItem
+        {
+            Title = $"Editor:{programId}",
+            Icon = Lucide.Code,
+            ComponentType = typeof(ProgramEditor),
+            Parameters = new Dictionary<string, object?> { ["id"] = programId },
+            Unique = true
+        });
+    }
+
+    private void OpenEdit(long programId)
+    {
+        var p = programs.FirstOrDefault(x => x.ProgramId == programId);
+        if (p == null) return;
+        programModel = new CreateProgramRequest
+        {
+            id = p.ProgramId,
+            Name = p.ProgramName,
+            Description = p.Description,
+            MaxAh = p.MaxAh,
+            ProgramTimeTicks = p.ProgramTimeTicks
+        };
+
+        _editContext = new EditContext(programModel);
+        isEditMode = true;
+        isAddDialogOpen = true;
+    }
+
+    private async Task DuplicateProgram(long programId)
+    {
+        var p = await PService.GetProgramAsync(programId);
+        if (!p.Success) { Toast.Error(p.Message ?? "Failed to load program"); return; }
+        programModel = new CreateProgramRequest
+        {
+            id = null,                                          // new record — no source ID
+            Name = $"{p.Data.ProgramName}_Copy",               // readable default name
+            Description = p.Data.Description,
+            MaxAh = p.Data.MaxAh,
+            ProgramTimeTicks = p.Data.ProgramTimeTicks,
+            ProgramJson = p.Data.ProgramJson
+        };
+        _editContext = new EditContext(programModel);           // bind fresh context so OnValidSubmit fires
+        isEditMode = false;
+        isAddDialogOpen = true;
+    }
+
+    private async Task SaveProgramAsync()
+    {
+
+        if (isEditMode)
+        {
+            var p = await PService.GetProgramAsync(programModel.id ?? 0);
+            if (p.Success)
+            {
+                p.Data.ProgramName = programModel.Name;
+                p.Data.Description = programModel.Description;
+                p.Data.MaxAh = programModel.MaxAh;
+                p.Data.ProgramTimeTicks = programModel.ProgramTimeTicks;
+                var result = await PService.UpdateProgramAsync(p.Data);
+                if (!result.Success) { Toast.Error(result.Message ?? "Failed"); return; }
+                Toast.Success("Program updated successfully");
+                var index = programs.FindIndex(f => f.ProgramId == p.Data.ProgramId);
+                if (index != -1) programs[index] = p.Data;
+            }
+            else
+            {
+                Toast.Error(p.Message ?? "Failed to load program for update");
+            }
+        }
+        else
+        {
+            var result = await PService.CreateProgramAsync(programModel);
+            if (!result.Success) { Toast.Error(result.Message ?? "Failed"); return; }
+            programs.Add(result.Data);
+            Toast.Success("Program created successfully");
+        }
+        CloseProgramDialog();
+    }
+
+    private void CloseProgramDialog() { programModel = new(); isAddDialogOpen = false; isEditMode = false; }
+    #endregion
+
+    #region Delete
+    private void HandleDelete(long programId) { programToDelete = programId; isDeleteOpen = true; }
+
+    private async Task ConfirmDelete()
+    {
+        if (!programToDelete.HasValue) return;
+        var result = await PService.DeleteProgramAsync(programToDelete.Value);
+        if (result.Success)
+        {
+            programs.RemoveAll(p => p.ProgramId == programToDelete.Value);
+            Toast.Success("Program deleted successfully");
+            isDeleteOpen = false;
+        }
+        else Toast.Error(result.Message ?? "Failed to delete program");
+    }
+    #endregion
+
+    #region View
+    private async Task OpenView(long programId)
+    {
+        var result = await PService.GetProgramAsync(programId);
+        if (result.Success) { ViewProgram = result.Data; isViewDialogOpen = true; }
+    }
+
+    private void SwitchToEditMode()
+    {
+        tbService.AddTab(new NavMenuItem
+        {
+            Title = $"Editor:{ViewProgram.ProgramId}",
+            Icon = Lucide.Code,
+            ComponentType = typeof(ProgramEditor),
+            Parameters = new Dictionary<string, object?> { ["id"] = ViewProgram.ProgramId },
+            Unique = true
+        });
+    }
+    #endregion
+}

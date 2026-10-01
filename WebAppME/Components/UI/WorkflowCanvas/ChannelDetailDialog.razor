@@ -1,0 +1,146 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs
+@using BatteryTestingSystem.Models.DTOs.Workflow
+@using BatteryTestingSystem.Services.Implementations.Workflow
+@using BatteryTestingSystem.Services.Interfaces
+
+@inject IDeviceChannelServices DcServices
+
+@* The canvas's own channel detail dialog (sub-project C2). Deliberately NOT a reuse of the
+   dashboard card's dialog: that one is embedded in a 2,000-line DeviceChannel.razor which this
+   branch must never modify (D13). Row content comes from WorkflowChannelDetail so the field
+   lists are unit-tested against the DTOs rather than eyeballed against the other surface.
+
+   Manufacturing and Factory are fetched from the DB on open (the same
+   IDeviceChannelServices calls the dashboard uses), not pushed with telemetry — they change on
+   the order of never, so putting them in the per-tick payload would waste every tick. *@
+
+@if (Open && Channel is not null)
+{
+    <div class="wf-detail-backdrop" @onclick="Close"></div>
+    <div class="wf-detail-dialog">
+        <div class="wf-detail-dialog__head">
+            <span class="font-semibold">@Title</span>
+            <button class="wf-icon-btn" title="Close" @onclick="Close">&#10005;</button>
+        </div>
+
+        <div class="wf-detail-tabs">
+            @foreach (var tab in Tabs)
+            {
+                <button class="wf-detail-tab @(_tab == tab ? "wf-detail-tab--active" : "")"
+                        data-tab="@tab"
+                        @onclick="() => _tab = tab">@tab</button>
+            }
+        </div>
+
+        <div class="wf-detail-body" data-active-tab="@_tab">
+            @if (_tab == "DBC")
+            {
+                <DbcParameterView Channel="Channel" />
+            }
+            else
+            {
+                var rows = RowsForActiveTab();
+                var fetchedTab = _tab is "Manufacturing" or "Factory";
+
+                if (rows.Count > 0)
+                {
+                    <div class="wf-detail-rows">
+                        @foreach (var row in rows)
+                        {
+                            <div class="wf-detail-row" data-field="@row.Label">
+                                <span class="wf-detail-row__label">@row.Label</span>
+                                <span class="wf-detail-row__value">@row.Value</span>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (fetchedTab && _fetching)
+                {
+                    <p class="opacity-60">Loading…</p>
+                }
+                else if (fetchedTab)
+                {
+                    <p class="opacity-60">This device has not reported these details.</p>
+                }
+                else
+                {
+                    <p class="opacity-60">No data for this channel yet.</p>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly string[] Tabs = { "Live", "Battery", "Manufacturing", "Factory", "DBC" };
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    /// <summary>The live circuit this dialog describes. Null closes the dialog — a channel node can
+    /// be selected whose hardware is not currently reachable.</summary>
+    [Parameter] public IChannelCommandHandler? Channel { get; set; }
+
+    [Parameter] public string Title { get; set; } = "Channel";
+
+    /// <summary>The last telemetry reading for this channel, so the Live tab shows the same numbers
+    /// the node face does rather than re-reading hardware.</summary>
+    [Parameter] public ChannelTelemetry? Reading { get; set; }
+
+    private string _tab = "Live";
+    private ManufacturingDetailDTO? _manufacturing;
+    private FactoryConfigDetailDTO? _factory;
+    private bool _fetched;
+    private bool _fetching;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Open || Channel is null || _fetched || _fetching) return;
+
+        _fetching = true;
+        try
+        {
+            var m = await DcServices.GetManufacturingAsync(Channel.Channel);
+            if (m.Success) _manufacturing = m.Data;
+
+            var f = await DcServices.GetFactoryAsync(Channel.Channel);
+            if (f.Success) _factory = f.Data;
+
+            _fetched = true;
+        }
+        finally
+        {
+            _fetching = false;
+        }
+    }
+
+    private Task Close()
+    {
+        // Reset so reopening on a DIFFERENT channel refetches rather than showing the last one's
+        // manufacturing/factory data.
+        _fetched = false;
+        _manufacturing = null;
+        _factory = null;
+        _tab = "Live";
+        return OpenChanged.InvokeAsync(false);
+    }
+
+    private IReadOnlyList<DetailRow> RowsForActiveTab() => _tab switch
+    {
+        "Live" => LiveRows(),
+        "Battery" => WorkflowChannelDetail.Battery(Channel?.Battery),
+        "Manufacturing" => WorkflowChannelDetail.Manufacturing(_manufacturing),
+        "Factory" => WorkflowChannelDetail.Factory(_factory),
+        _ => Array.Empty<DetailRow>(),
+    };
+
+    /// <summary>Every canvas-available measurement, formatted by the same bridge call the node face
+    /// and properties dock use — so the three can never disagree about a value.</summary>
+    private IReadOnlyList<DetailRow> LiveRows() =>
+        Reading is null
+            ? Array.Empty<DetailRow>()
+            : WorkflowTelemetryBridge.BuildNodeProperties(Reading)
+                .Select(kv => new DetailRow(WorkflowNodeProperties.LabelWithoutUnit(kv.Key), kv.Value))
+                .ToList();
+}

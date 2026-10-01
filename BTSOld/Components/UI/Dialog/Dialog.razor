@@ -1,0 +1,29 @@
+@namespace BatteryTestingSystem.Components.UI.Dialog
+
+<CascadingValue Value="this">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    public async Task Close()
+    {
+        Open = false;
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    public async Task IsOpen()
+    {
+        Open = true;
+        await OpenChanged.InvokeAsync(true);
+    }
+
+    public async Task Toggle()
+    {
+        Open = !Open;
+        await OpenChanged.InvokeAsync(Open);
+    }
+}

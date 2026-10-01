@@ -1,0 +1,39 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using System.Globalization
+@using BatteryTestingSystem.Models.DTOs.Workflow
+@using BatteryTestingSystem.Services.Implementations.Workflow
+
+@* Overview only — not interactive in v1. It re-renders on structural change, which is exactly
+   when the node positions it draws can actually differ. *@
+
+<div class="wf-minimap" aria-hidden="true">
+    <svg width="@MapWidth" height="@MapHeight">
+        @foreach (var box in _boxes)
+        {
+            <rect x="@F(box.X)" y="@F(box.Y)" width="@F(box.Width)" height="@F(box.Height)"
+                  class="wf-minimap__node" rx="1" />
+        }
+    </svg>
+</div>
+
+@code {
+    private const double MapWidth = 180;
+    private const double MapHeight = 110;
+
+    [Parameter, EditorRequired] public WorkflowGraph Graph { get; set; } = WorkflowGraph.Empty;
+
+    /// <summary>The same selection the canvas renders. Without it the projection measures every
+    /// channel as having no properties, and the boxes drift from the real nodes.</summary>
+    [Parameter] public IReadOnlyList<string> VisibleProperties { get; set; } = Array.Empty<string>();
+
+    private IReadOnlyList<MinimapBox> _boxes = Array.Empty<MinimapBox>();
+
+    protected override void OnParametersSet()
+    {
+        var content = MinimapProjection.ContentBounds(Graph, VisibleProperties);
+        var scale = MinimapProjection.Scale(content, MapWidth, MapHeight);
+        _boxes = MinimapProjection.NodeBoxes(Graph, content, scale, VisibleProperties);
+    }
+
+    private static string F(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+}

@@ -1,0 +1,48 @@
+{
+  "server": {
+    "host": "localhost",
+    "command_port": 9999,
+    "data_view_port": 10000,
+    "data_store_port": 10001
+  },
+  "simulation": {
+    "device_count": 10,
+    "circuit_count_per_device": 1,
+    "packet_interval_ms": 10,
+    "enable_random_data": true,
+    "enable_error_simulation": false,
+    "error_rate_percent": 0.1
+  },
+  "device_defaults": {
+    "device_name_prefix": "SIM_DEVICE_",
+    "ip_address": "192.168.1.100",
+    "mac_address": "00:11:22:33:44:55",
+    "serial_number": 12345678
+  },
+  "data_ranges": {
+    "current_min": 0.5,
+    "current_max": 50.0,
+    "voltage_min": 2.0,
+    "voltage_max": 15.0,
+    "temperature_min": 20.0,
+    "temperature_max": 80.0,
+    "capacity_min": 10.0,
+    "capacity_max": 5000.0,
+    "power_min": 1.0,
+    "power_max": 750.0
+  },
+  "program": {
+    "enabled": true,
+    "steps": [
+      {"operator": "CC", "value": 5.0, "limit": "=10A", "duration_seconds": 60},
+      {"operator": "CV", "value": 12.0, "limit": "=5A", "duration_seconds": 120},
+      {"operator": "DC", "value": 10.0, "limit": "=3.0V", "duration_seconds": 180},
+      {"operator": "STO", "value": null, "limit": null, "duration_seconds": 0}
+    ]
+  },
+  "logging": {
+    "level": "INFO",
+    "log_file": "simulator.log",
+    "console_output": true
+  }
+}

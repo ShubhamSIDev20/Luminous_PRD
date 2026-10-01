@@ -1,0 +1,187 @@
+@page "/settings/notifications"
+@using BatteryTestingSystem.Models.Entities
+@using BatteryTestingSystem.Models.Enums
+@using BatteryTestingSystem.Models.ViewModels
+@using BatteryTestingSystem.Repositories.Interfaces
+@using BatteryTestingSystem.Services.Alarms
+@using BatteryTestingSystem.Services.Interfaces
+@using Microsoft.Extensions.Options
+@inject IAlarmService AlarmSvc
+@inject IAlarmRepository AlarmRepo
+@inject IOptions<AlarmOptions> AlarmCfg
+
+<div class="h-full bg-background text-foreground p-6 flex flex-col gap-4 overflow-y-auto">
+
+    <div>
+        <h1 class="text-xl font-semibold">Alarm Settings</h1>
+        <p class="text-sm text-muted-foreground">Control how alarms interrupt you, and review alarm history.</p>
+    </div>
+
+    @* Escalation *@
+    <div class="rounded-lg border border-border bg-card p-4">
+        <h2 class="text-sm font-semibold mb-3">Escalation</h2>
+        <div class="grid gap-3 sm:grid-cols-3">
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" @bind="_toastEnabled" class="h-4 w-4 rounded border-border" />
+                Show toast for Error and Critical
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" @bind="_soundEnabled" class="h-4 w-4 rounded border-border" />
+                Play sound
+            </label>
+            <div class="text-sm text-muted-foreground">
+                Cooldown: <span class="font-medium text-foreground">@AlarmCfg.Value.EscalationCooldownSec s</span>
+                per alarm
+            </div>
+        </div>
+        <p class="text-xs text-muted-foreground mt-3">
+            Browsers block audio until you have interacted with the page - the first beep after a
+            fresh page load may be silent.
+        </p>
+    </div>
+
+    @* Mute *@
+    <div class="rounded-lg border border-border bg-card p-4">
+        <h2 class="text-sm font-semibold mb-3">Mute</h2>
+        <div class="flex flex-wrap items-center gap-2">
+            <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small" OnClick="@(() => Mute(15))">Mute 15 min</Button>
+            <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small" OnClick="@(() => Mute(60))">Mute 1 hour</Button>
+            <Button Variant="ButtonVariant.Outline" Size="ButtonSize.Small" OnClick="@(() => Mute(60 * 24 * 3650))">Until restart</Button>
+            <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Small" OnClick="@Unmute">Unmute</Button>
+            <span class="text-xs @(IsMuted ? "text-amber-500 font-medium" : "text-muted-foreground")">
+                @(IsMuted ? "Muted — alarms are still recorded, you just are not interrupted." : "Not muted")
+            </span>
+        </div>
+    </div>
+
+    @* Retention *@
+    <div class="rounded-lg border border-border bg-card p-4">
+        <h2 class="text-sm font-semibold mb-1">Retention</h2>
+        <p class="text-sm text-muted-foreground">
+            Alarms are kept for <span class="font-medium text-foreground">@AlarmCfg.Value.RetentionDays days</span>.
+            Alarms that are still unacknowledged are never deleted, however old they are.
+        </p>
+    </div>
+
+    @* History *@
+    <div class="rounded-lg border border-border bg-card p-4 flex-1 min-h-0 flex flex-col">
+        <div class="flex flex-wrap items-end gap-3 mb-3">
+            <div class="flex flex-col gap-1">
+                <label class="text-xs font-medium text-muted-foreground">Severity</label>
+                <select class="h-9 w-[140px] rounded-md border border-border bg-background px-2 text-sm"
+                        @bind="_severityFilter">
+                    <option value="">All</option>
+                    <option value="@SeverityLevel.CRITICAL">Critical</option>
+                    <option value="@SeverityLevel.ERROR">Error</option>
+                    <option value="@SeverityLevel.WARNING">Warning</option>
+                    <option value="@SeverityLevel.INFO">Info</option>
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-xs font-medium text-muted-foreground">Source</label>
+                <select class="h-9 w-[150px] rounded-md border border-border bg-background px-2 text-sm"
+                        @bind="_sourceFilter">
+                    <option value="">All</option>
+                    <option value="@AlarmSource.Comms">Comms</option>
+                    <option value="@AlarmSource.ChannelError">Channel error</option>
+                    <option value="@AlarmSource.DataStore">Data store</option>
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-xs font-medium text-muted-foreground">Device</label>
+                <input class="h-9 w-[120px] rounded-md border border-border bg-background px-3 text-sm"
+                       @bind="_deviceFilter" placeholder="Device id" />
+            </div>
+            <label class="flex items-center gap-2 text-sm h-9">
+                <input type="checkbox" @bind="_onlyUnacked" class="h-4 w-4 rounded border-border" />
+                Unacknowledged only
+            </label>
+            <Button Variant="ButtonVariant.Default" Size="ButtonSize.Small" OnClick="@LoadHistory">Apply</Button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto rounded-md border border-border">
+            <table class="w-full text-sm">
+                <thead class="sticky top-0 bg-muted/50 text-xs uppercase text-muted-foreground">
+                    <tr>
+                        <th class="text-left px-3 py-2 font-medium">Severity</th>
+                        <th class="text-left px-3 py-2 font-medium">Title</th>
+                        <th class="text-left px-3 py-2 font-medium">Device</th>
+                        <th class="text-right px-3 py-2 font-medium">Count</th>
+                        <th class="text-left px-3 py-2 font-medium">Last seen</th>
+                        <th class="text-left px-3 py-2 font-medium">Acknowledged</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_history.Count == 0)
+                    {
+                        <tr><td colspan="6" class="px-3 py-8 text-center text-muted-foreground">No alarms found</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var row in _history)
+                        {
+                            <tr class="border-t border-border/50 hover:bg-accent/40">
+                                <td class="px-3 py-2">@row.Severity</td>
+                                <td class="px-3 py-2">
+                                    <div class="font-medium">@row.Title</div>
+                                    <div class="text-xs text-muted-foreground line-clamp-1">@row.Message</div>
+                                </td>
+                                <td class="px-3 py-2">@row.DeviceId</td>
+                                <td class="px-3 py-2 text-right">@row.OccurrenceCount</td>
+                                <td class="px-3 py-2">@row.LastSeenUtc.ToLocalTime().ToString("g")</td>
+                                <td class="px-3 py-2">
+                                    @if (row.AcknowledgedAtUtc != null)
+                                    {
+                                        <span class="text-xs">@row.AcknowledgedBy — @row.AcknowledgedAtUtc.Value.ToLocalTime().ToString("g")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs text-muted-foreground">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _toastEnabled = true;
+    private bool _soundEnabled = true;
+
+    private string _severityFilter = string.Empty;
+    private string _sourceFilter = string.Empty;
+    private string _deviceFilter = string.Empty;
+    private bool _onlyUnacked;
+
+    private List<AlarmLog> _history = new();
+
+    private bool IsMuted => AlarmSvc.Policy.IsMuted(null, DateTime.UtcNow);
+
+    protected override async Task OnInitializedAsync() => await LoadHistory();
+
+    private void Mute(int minutes) => AlarmSvc.Policy.MuteAll(DateTime.UtcNow.AddMinutes(minutes));
+
+    private void Unmute() => AlarmSvc.Policy.Unmute();
+
+    private async Task LoadHistory()
+    {
+        var query = new AlarmQueryParameters
+        {
+            DeviceId = string.IsNullOrWhiteSpace(_deviceFilter) ? null : _deviceFilter.Trim(),
+            OnlyUnacknowledged = _onlyUnacked
+        };
+
+        if (Enum.TryParse<SeverityLevel>(_severityFilter, out var severity))
+            query.Severity = severity;
+
+        if (Enum.TryParse<AlarmSource>(_sourceFilter, out var source))
+            query.Source = source;
+
+        var result = await AlarmRepo.QueryAsync(query);
+        _history = result.Success && result.Data != null ? result.Data : new List<AlarmLog>();
+    }
+}

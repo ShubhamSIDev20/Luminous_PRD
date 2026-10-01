@@ -1,0 +1,42 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Models.DTOs.Workflow
+
+@* The online count is LIVE data and is written by workflow-canvas.js into data-role="online",
+   never passed as a Blazor parameter. This node previously declared an IsOnline parameter that
+   CanvasSurface never supplied, so it read "offline" forever; wiring that parameter would have
+   fixed the display but re-rendered every node on the canvas on each hardware event.
+
+   Boards are not their own rendered nodes (D18-revised) - each is a small pin dot right on this
+   card, in the same order EdgeLayer attaches channel edges to (WorkflowGraphBuilder.BoardsForDevice),
+   so a pin and the edges leaving it always agree on position. Online/offline color per pin is
+   written by JS the same no-rerender way every other live value on this canvas already is. *@
+
+@* A header click here selects every channel under this device - handled entirely in
+   WorkflowCanvasPage.OnHeaderClick (JS-dispatched; see CanvasNode.razor's comment on why the
+   header carries no Blazor click handler), so no callback parameter is needed on this component. *@
+<CanvasNode Node="@Node" Title="@Title" IsSelected="@IsSelected" IsStale="@IsStale"
+            ShowInPort="false" ShowOutPort="false">
+    <div class="flex items-center justify-between">
+        <span class="opacity-60">Device</span>
+        <span data-role="online">-- online</span>
+    </div>
+    <div class="opacity-60">@BoardCount board(s)</div>
+    @for (var i = 0; i < Boards.Count; i++)
+    {
+        var board = Boards[i];
+        var topPercent = (i + 0.5) / Boards.Count * 100;
+        <div class="wf-pin" style="top: @(topPercent.ToString(System.Globalization.CultureInfo.InvariantCulture))%;"
+             data-board-node-id="@board.Id"
+             title="@LabelFor(board)"></div>
+    }
+</CanvasNode>
+
+@code {
+    [Parameter, EditorRequired] public WorkflowNode Node { get; set; } = default!;
+    [Parameter] public string Title { get; set; } = "Device";
+    [Parameter] public bool IsSelected { get; set; }
+    [Parameter] public bool IsStale { get; set; }
+    [Parameter] public int BoardCount { get; set; }
+    [Parameter] public IReadOnlyList<WorkflowNode> Boards { get; set; } = Array.Empty<WorkflowNode>();
+    [Parameter] public Func<WorkflowNode, string> LabelFor { get; set; } = n => n.Id;
+}

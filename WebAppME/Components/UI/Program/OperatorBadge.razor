@@ -1,0 +1,35 @@
+@namespace BatteryTestingSystem.Components.UI
+
+
+<span class="operator-badge border whitespace-nowrap @GetColorClass()">
+    @GetOperatorName()
+</span>
+
+@code {
+    [Parameter] public byte OperatorCode { get; set; }
+
+    private string GetOperatorName()
+    {
+        var op = OperatorConstants.Operators.FirstOrDefault(o => o.Code == OperatorCode);
+        return op?.Name ?? "Unknown";
+    }
+
+    private string GetColorClass()
+    {
+        var op = OperatorConstants.Operators.FirstOrDefault(o => o.Code == OperatorCode);
+        var color = op?.Color ?? "control";
+        
+        return color switch
+        {
+            "set" => "bg-blue-500/20 text-blue-500 border-blue-500/30",
+            "sto" => "bg-red-500/20 text-red-500 border-red-500/30",
+            "charge" => "bg-green-500/20 text-green-500 border-green-500/30",
+            "discharge" => "bg-orange-500/20 text-orange-500 border-orange-500/30",
+            "pause" => "bg-purple-500/20 text-purple-500 border-purple-500/30",
+            "goto" => "bg-cyan-500/20 text-cyan-500 border-cyan-500/30",
+            "lock" => "bg-fuchsia-500/20 text-fuchsia-500 border-fuchsia-500/30",
+            "control" => "bg-gray-500/20 text-gray-500 border-gray-500/30",
+            _ => "bg-gray-500/20 text-gray-500 border-gray-500/30"
+        };
+    }
+}

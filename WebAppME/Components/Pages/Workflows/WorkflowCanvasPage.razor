@@ -1,0 +1,1162 @@
+﻿@page "/workflows"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using BatteryTestingSystem.Models.DTOs.Workflow
+@using BatteryTestingSystem.Services.Interfaces
+@using BatteryTestingSystem.Services.Implementations
+@using BatteryTestingSystem.Services.Implementations.Workflow
+@using BatteryTestingSystem.Utils
+@using BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Components.UI
+@using BatteryTestingSystem.Components.UI.Dashboard
+@using BatteryTestingSystem.Components.UI.DataViewer
+@using BatteryTestingSystem.Components.UI.Loading
+@using Microsoft.JSInterop
+
+@inject IWorkflowLayoutService LayoutService
+@inject IWorkflowTopologyProvider TopologyProvider
+@inject ToastService Toast
+@inject IJSRuntime JS
+@inject ChannelManager CM
+@inject ServerSessionStorageService SessionStorage
+@inject TabService tbService
+
+<PageTitle>Workflows</PageTitle>
+
+<div class="wf-shell">
+    <StatusFilterBar ActiveStatusFilter="@_statusFilter"
+                     OnStatusFilterChanged="SetStatusFilter"
+                     StatusColors="_nodeConfig.StatusColors" />
+
+    <div class="wf-body">
+        <div class="wf-dock @(_dockOpen ? "" : "wf-dock--collapsed")">
+            <button class="wf-collapse" title="@(_dockOpen ? "Collapse" : "Expand") properties"
+                    @onclick="() => _dockOpen = !_dockOpen">@(_dockOpen ? "‹" : "›")</button>
+            @if (_dockOpen)
+            {
+                <PropertiesDock Node="SelectedNode"
+                                Catalog="_catalog"
+                                IsStale="@(_primarySelectedNodeId is not null && _staleNodeIds.Contains(_primarySelectedNodeId))"
+                                OnAttachmentChanged="HandleAttachmentChanged"
+                                OnDeleteNode="HandleDeleteNode"
+                                OnOpenDetails="OpenChannelDetails" />
+            }
+        </div>
+        <div class="wf-canvas-host" @ref="_canvasHost">
+            @* One stable .wf-world for the lifetime of the page: workflow-canvas.js caches it
+               at init, so it must never be swapped out by a conditional render. *@
+            <div class="wf-world">
+                @if (_loading)
+                {
+                    <p class="opacity-60 p-4">Loading…</p>
+                }
+                else
+                {
+                    <CanvasSurface Graph="ViewGraph"
+                                   StaleNodeIds="_staleNodeIds"
+                                   SelectedNodeIds="_selectedNodeIds"
+                                   LabelFor="LabelFor"
+                                   ProgramLabel="ProgramLabel"
+                                   DbcLabel="DbcLabel"
+                                   ChildCountFor="ChildCountFor"
+                                   OnOpenDataViewer="OpenDataViewer"
+                                   SelectedProperties="_nodeConfig.VisibleProperties" />
+                }
+            </div>
+            <Minimap Graph="ViewGraph" VisibleProperties="_nodeConfig.VisibleProperties" />
+            <CanvasToolbar OnFit="FitToContent"
+                           OnReArrange="ReArrange"
+                           PanMode="_panMode"
+                           OnTogglePanMode="TogglePanMode"
+                           Layouts="_layouts" CurrentLayoutId="_currentLayoutId" IsDirty="_dirty"
+                           OnLoadLayout="HandleLoad" OnSaveLayout="HandleSave"
+                           OnSaveLayoutAs="HandleSaveAs" OnDeleteLayout="HandleDelete"
+                           RefreshRateMs="_nodeConfig.RefreshRateMs"
+                           OnRefreshRateChanged="@(ms => HandleNodeConfigChanged(_nodeConfig with { RefreshRateMs = ms }))"
+                           StatusColors="_nodeConfig.StatusColors"
+                           OnStatusColorChanged="HandleStatusColorChanged">
+                <NodeFieldsContent>
+                    <NodePropertyPicker Config="_nodeConfig" ConfigChanged="HandleNodeConfigChanged" />
+                </NodeFieldsContent>
+            </CanvasToolbar>
+            @if (_selectedNodeIds.Count > 0)
+            {
+                <SelectionActionBar SelectedCount="_selectedNodeIds.Count"
+                                    IsActionEnabled="CanRunAction"
+                                    OnAction="HandleSelectionAction" />
+            }
+        </div>
+        <div class="wf-palette @(_paletteOpen ? "" : "wf-palette--collapsed")">
+            <button class="wf-collapse" title="@(_paletteOpen ? "Collapse" : "Expand") palette"
+                    @onclick="() => _paletteOpen = !_paletteOpen">@(_paletteOpen ? "›" : "‹")</button>
+            @if (_paletteOpen)
+            {
+                <PalettePanel Topology="_topology" Catalog="_catalog" Graph="_graph"
+                              OnPlaceDevice="HandlePlaceDevice"
+                              OnPlaceBattery="HandlePlaceBattery"
+                              ClaimedChannels="_claimedChannels" />
+            }
+        </div>
+    </div>
+
+    <Processing IsLoading="_actionInProgress" ActionName="_actionName"
+                Completed="_actionCompleted" Total="_actionTotal" />
+    <TransferDialog @bind-Open="_openTransferDialog" selectedCircuits="SelectedCircuitsForTransfer()"
+                    OnTransferCompleted="@(_ => Toast.Success("Transfer complete."))" />
+    <ChannelDetailDialog @bind-Open="_detailDialogOpen"
+                         Channel="_detailChannel"
+                         Title="@_detailTitle"
+                         Reading="_detailReading" />
+</div>
+
+@code {
+    private IReadOnlyList<LayoutSummary> _layouts = Array.Empty<LayoutSummary>();
+    private TopologySnapshot _topology = TopologySnapshot.Empty;
+    private string _userId = string.Empty;
+    private bool _loading = true;
+
+    private WorkflowGraph _graph = WorkflowGraph.Empty;
+    private IReadOnlyList<string> _staleNodeIds = Array.Empty<string>();
+    private readonly HashSet<string> _selectedNodeIds = new();
+
+    /// <summary>The dock still shows one node's full detail; anything else (0 or >1 selected)
+    /// falls back to its placeholder / the SelectionActionBar (Task 6).</summary>
+    private string? _primarySelectedNodeId => _selectedNodeIds.Count == 1 ? _selectedNodeIds.Single() : null;
+
+    private Dictionary<string, ChannelTelemetry> _selectedReadings = new();
+
+    private readonly ChannelActionExecutor _actionExecutor = new();
+    private bool _actionInProgress;
+    private string _actionName = string.Empty;
+    private int _actionCompleted;
+    private int _actionTotal;
+    private bool _openTransferDialog;
+
+    private PaletteCatalog _catalog = PaletteCatalog.Empty;
+    // Both default CLOSED so the canvas gets the full view on load. Each has its own "‹"/"›"
+    // toggle already; opening on demand costs one click, whereas showing an empty "Select a node
+    // to see its properties" panel and a rarely-used device palette by default cost real canvas
+    // width on every load.
+    private bool _dockOpen;
+    private bool _paletteOpen;
+    private readonly HashSet<string> _collapsedBoardIds = new();
+    private string? _statusFilter;
+
+    /// <summary>Left-drag pans by default. Phase 3 made a plain left-drag a marquee and left
+    /// panning on middle-button / Space+drag only, which read as a canvas that could not be
+    /// moved.</summary>
+    private bool _panMode = true;
+
+    private async Task TogglePanMode()
+    {
+        _panMode = !_panMode;
+        if (_jsReady)
+            await JS.InvokeVoidAsync("workflowCanvas.setMode", _canvasHost, _panMode ? "pan" : "select");
+    }
+
+    private async Task SetStatusFilter(string? statusName)
+    {
+        _statusFilter = statusName;
+        if (_jsReady) await JS.InvokeVoidAsync("workflowCanvas.setStatusFilter", _canvasHost, statusName);
+    }
+
+    private WorkflowNodeConfig _nodeConfig = WorkflowNodeConfig.Default;
+    private IReadOnlyDictionary<long, string> _claimedChannels = new Dictionary<long, string>();
+
+    private async Task RefreshClaimedChannelsAsync()
+    {
+        _claimedChannels = await LayoutService.GetClaimedChannelsAsync(_userId, _currentLayoutId);
+    }
+    private const string NodeConfigKeySuffix = "_canvas_node_config";
+
+    /// <summary>
+    /// Re-runs the lane layout over everything already on the canvas, on demand.
+    ///
+    /// RowHeight tracks the CURRENTLY selected property list (see WorkflowAutoLayout.RowHeight),
+    /// so this is also called automatically whenever that selection itself changes (see
+    /// HandleNodeConfigChanged) - a user no longer has to remember to click this after adding or
+    /// removing a field. It is kept as an explicit button too, for a layout that has drifted for
+    /// some other reason (hand-dragged nodes, a layout saved before this auto-repack existed).
+    /// </summary>
+    private async Task ReArrange()
+    {
+        _graph = WorkflowAutoLayout.Apply(_graph, _nodeConfig.VisibleProperties);
+        _dirty = true;
+
+        RefreshChannelKeyLookup();
+        RefreshSubscription(forcePaint: false);
+        _repaintAfterRender = true;
+
+        await InvokeAsync(StateHasChanged);
+        await FitToContent();
+        Toast.Success("Nodes re-arranged.");
+    }
+
+    private async Task FitToContent()
+    {
+        if (_jsReady) await JS.InvokeVoidAsync("workflowCanvas.fitToContent", _canvasHost);
+    }
+
+    private WorkflowNode? SelectedNode =>
+        _primarySelectedNodeId is null ? null : _graph.Nodes.FirstOrDefault(n => n.Id == _primarySelectedNodeId);
+
+    /// <summary>Render from this; SAVE from _graph. Never confuse the two — collapsing a board
+    /// is a view-only filter and must never delete its channels from the saved layout.</summary>
+    private WorkflowGraph ViewGraph =>
+        WorkflowGraphMutations.HideCollapsedBoards(_graph, _collapsedBoardIds);
+
+
+    private ElementReference _canvasHost;
+    private DotNetObjectReference<WorkflowCanvasPage>? _selfRef;
+    private bool _jsReady;
+    private CanvasViewport _viewport = CanvasViewport.Default;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = CurrentUser.UserId ?? CurrentUser.UserName;
+
+        _nodeConfig = SessionStorage.GetComponentState<WorkflowNodeConfig>(_userId + NodeConfigKeySuffix)
+            ?? WorkflowNodeConfig.Default;
+
+        // A config saved before RefreshRateMs existed deserializes that missing field as the CLR
+        // default (0), not the record's declared default (250) - JSON deserialization does not
+        // honour C# optional-parameter defaults for an absent property. 0 would otherwise disable
+        // throttling entirely for every pre-existing user, silently and without their choosing.
+        if (_nodeConfig.RefreshRateMs <= 0)
+            _nodeConfig = _nodeConfig with { RefreshRateMs = WorkflowNodeConfig.Default.RefreshRateMs };
+
+        // Sequential, never Task.WhenAll: both calls share the circuit's single AppDbContext,
+        // and running them concurrently reproduces the "second operation" bug from ADR-6.
+        _topology = await TopologyProvider.GetSnapshotAsync();
+        _catalog = await TopologyProvider.GetCatalogAsync();
+        _layouts = await LayoutService.ListAsync(_userId);
+        await RefreshClaimedChannelsAsync();
+
+        // Restore whichever layout was open last, so a browser refresh returns to the same
+        // canvas instead of a blank one - a refresh must not act like closing the workspace. Only
+        // restored if it still exists: a layout deleted from another tab/session must not be
+        // silently reloaded here.
+        var savedLayoutId = SessionStorage
+            .GetComponentState<CurrentLayoutState>(_userId + CurrentLayoutKeySuffix)?.LayoutId;
+        if (savedLayoutId is { } layoutId && _layouts.Any(l => l.Id == layoutId))
+            await HandleLoad(layoutId);
+
+        _loading = false;
+    }
+
+    /// <summary>Set when the node-face slot SET changed, so the repaint must wait for the DOM.</summary>
+    private bool _repaintAfterRender;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            // Node-face values are written by JS into data-role="prop-{key}" slots whose text
+            // Blazor does not track. When the selected property set changes, Blazor rewrites those
+            // data-role attributes and the previously-written text stays put — leaving values
+            // against the WRONG labels ("Program ID" showing a battery name).
+            //
+            // The repaint therefore cannot be fired from the change handler: awaiting
+            // InvokeAsync(StateHasChanged) only queues a render batch over SignalR, it does not
+            // wait for the browser to apply it, so the JS write would race ahead and land on the
+            // OLD attributes. OnAfterRenderAsync is the first point where the new slots actually
+            // exist in the DOM.
+            if (_repaintAfterRender)
+            {
+                _repaintAfterRender = false;
+                await PushTelemetryAsync(force: true);
+
+                // Card heights change with the selected property count, and at a reduced
+                // level-of-detail tier CSS collapses them further than any server-side formula
+                // can know. Re-derive the edge paths from the measured DOM.
+                if (_jsReady) await JS.InvokeVoidAsync("workflowCanvas.refreshEdges", _canvasHost);
+            }
+            return;
+        }
+
+        _selfRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("workflowCanvas.init", _canvasHost, _selfRef,
+            new { snap = 24, minZoom = 0.2, maxZoom = 2.5 });
+        _jsReady = true;
+
+        // If a layout auto-restored during OnInitializedAsync (before _jsReady existed), its
+        // viewport never reached the JS canvas: HandleLoad's own setViewport call is gated on
+        // _jsReady, which was false at that point, so it silently no-opped. Nodes still restored
+        // correctly (Blazor renders their X/Y directly), but the pan/zoom transform stayed at
+        // its default - which is exactly why a refresh kept snapping the VIEW back even though
+        // the graph itself was correctly back. Apply it now that the canvas actually exists.
+        if (_currentLayoutId is not null)
+        {
+            await JS.InvokeVoidAsync("workflowCanvas.setViewport", _canvasHost,
+                _graph.Viewport.PanX, _graph.Viewport.PanY, _graph.Viewport.Zoom);
+        }
+
+        RefreshChannelKeyLookup();
+        RefreshSubscription();
+        CM.HardwareManagerChanged += OnHardwareChanged;
+        StartTelemetryTimer();
+    }
+
+    // ============================================================ Live telemetry (Task 15)
+    //
+    // ChannelManager already coalesces hardware events at its own flush interval before
+    // raising HardwareManagerChanged, so this runner only needs to serialise overlapping
+    // invocations of THIS handler — the same shape DashboardView uses for the same reason
+    // (ADR-6): the circuit's AppDbContext-adjacent state must never be touched concurrently.
+
+    private readonly CoalescingRunner _telemetryRunner = new();
+    private HashSet<long> _subscribedChannelIds = new();
+
+    /// <summary>Circuits whose OnChannelChanged we currently hold a handler on. Tracked so the set
+    /// can be detached on every resubscribe and on dispose — at 640 channels a leaked handler per
+    /// layout load would keep dead pages alive.</summary>
+    private readonly List<IChannelCommandHandler> _hookedCircuits = new();
+    private WorkflowNodeLabeller _labeller = new(TopologySnapshot.Empty);
+    private DateTime _lastTelemetryPushAt;
+
+    private void OnHardwareChanged() =>
+        _telemetryRunner.Request(
+            () => InvokeAsync(() => PushTelemetryAsync()),
+            ex => Log.Error(ex, "Workflow telemetry push failed"));
+
+    // ---- the refresh-rate clock -------------------------------------------------
+    //
+    // Live values have to keep arriving whether or not a program is running: a bench sitting idle
+    // still reports voltage, temperature and status, and the dashboard shows those moving.
+    //
+    // Events alone cannot deliver that. HardwareManagerChanged fires on registration / accept /
+    // link-drop / command-send, and OnChannelChanged only when a circuit decides something
+    // changed, so on a quiet bench nothing fires and the canvas froze until the page was
+    // reloaded. RefreshRateMs made this worse rather than better: it was only ever a throttle
+    // CEILING on event-driven pushes, so setting it could never cause an update - the control
+    // looked broken because it had nothing to drive.
+    //
+    // This timer is what makes the number mean what it says: a push every RefreshRateMs.
+
+    private System.Threading.Timer? _telemetryTimer;
+
+    private void StartTelemetryTimer()
+    {
+        var period = Math.Max(50, _nodeConfig.RefreshRateMs);
+        _telemetryTimer ??= new System.Threading.Timer(_ => OnTelemetryTick(), null, period, period);
+    }
+
+    private void RetimeTelemetryTimer()
+    {
+        var period = Math.Max(50, _nodeConfig.RefreshRateMs);
+        _telemetryTimer?.Change(period, period);
+    }
+
+    /// <summary>force:true because the timer IS the rate limiter — running it through the
+    /// ShouldThrottle window as well would drop ticks to timer jitter.</summary>
+    private void OnTelemetryTick() =>
+        _telemetryRunner.Request(
+            () => InvokeAsync(() => PushTelemetryAsync(force: true)),
+            ex => Log.Error(ex, "Workflow telemetry tick failed"));
+
+    /// <summary>force:true bypasses the refresh-rate throttle for a repaint the user explicitly
+    /// asked for (e.g. recolouring a status), which must not wait for the next hardware event.</summary>
+    private async Task PushTelemetryAsync(bool force = false)
+    {
+        if (!_jsReady || _subscribedChannelIds.Count == 0) return;
+
+        var now = DateTime.UtcNow;
+        if (!force
+            && WorkflowTelemetryBridge.ShouldThrottle(_lastTelemetryPushAt, now, _nodeConfig.RefreshRateMs))
+            return;
+        _lastTelemetryPushAt = now;
+
+        // Built once per tick rather than once per channel: O(circuits) instead of
+        // O(circuits * subscribed channels).
+        var byKey = CM._devices.Values.ToDictionary(
+            c => (c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber));
+
+        var readings = new Dictionary<long, ChannelTelemetry>();
+        foreach (var channelId in _subscribedChannelIds)
+        {
+            if (!_labeller.TryGetChannelKey(channelId, out var key)) continue;
+            if (!byKey.TryGetValue(key, out var circuit)) continue;
+
+            var record = circuit.RealTime.RealTimeRecord;
+
+            // SoC is DERIVED: no percentage exists anywhere in this schema (RealTimeRecord tracks
+            // capacity in Ah), which is why this passed a hardcoded 0.0 and every battery fill
+            // rendered empty in live mode. Net coulomb count against the battery's rated
+            // capacity; null when there is no battery or its NominalCapacity is unusable, which
+            // the cell renders as an explicit unknown rather than as flat.
+            readings[channelId] = new ChannelTelemetry(
+                record.CircuitStatus,
+                StateOfChargeEstimator.Estimate(
+                    record.ChargeCapacity, record.DischargeCapacity, circuit.Battery?.NominalCapacity),
+                record.Voltage, record.Current,
+                Power: record.Power,
+                Temperature: record.Temperature,
+                AccumulatedCapacity: record.AccumulatedCapacity,
+                ChargeCapacity: record.ChargeCapacity,
+                DischargeCapacity: record.DischargeCapacity,
+                StepCapacity: record.StepCapacity,
+                AccumulatedEnergy: record.AccumulatedEnergy,
+                ChargeEnergy: record.ChargeEnergy,
+                DischargeEnergy: record.DischargeEnergy,
+                StepEnergy: record.StepEnergy,
+                CycleNumber: record.CycleNumber,
+                TableStepNumber: record.TableStepNumber,
+                TableTotalRowNumber: record.TableTotalRowNumber,
+                RunningTime: record.RunningTime,
+                StepRunningTime: record.StepRunningTime,
+                ErrorId: record.ErrorId,
+                SystemErrorId: record.SystemErrorId,
+                ProgramStatus: record.ProgramStatus,
+                TimeStamp: record.TimeStamp,
+                IsConnected: circuit.IsConnected,
+
+                // Sub-project C1. Resolved HERE rather than in the bridge because only this loop
+                // holds the IChannelCommandHandler — the bridge stays a pure formatter.
+                StepNumber: record.StepNumber,
+                CycleStatus: record.CycleStatus,
+                CycleRunIteration: record.CycleRunIteration,
+                StoredRecordCount: circuit.Session?.Storerecordcount ?? 0,
+                UnstoredRecordCount: circuit.Session?.Unstorerecordcount ?? 0,
+                OperatorName: ResolveOperatorName(circuit, record.StepNumber),
+                BatteryName: circuit.Battery?.Name,
+                ProgramName: circuit.Program?.ProgramName,
+                SessionId: circuit.Session?.SessionID.ToString(),
+
+                // Same circuit.Battery reference the BatteryName above already uses, so this adds
+                // no query. Feeds the cell's spec line; NominalCapacity also feeds the SoC
+                // derivation at the top of this call.
+                NominalCapacity: circuit.Battery?.NominalCapacity,
+                NominalVoltage: circuit.Battery?.NominalVoltage,
+                NumberOfCells: circuit.Battery?.NumberOfCells);
+        }
+
+        _selectedReadings = readings.ToDictionary(
+            kv => WorkflowGraphBuilder.ChannelNodeId(kv.Key), kv => kv.Value);
+
+        var entries = WorkflowTelemetryBridge.BuildEntries(
+            _graph, readings, ErrorMessages.Errors, ErrorMessages.Messages, _nodeConfig.StatusColors);
+        var rollups = WorkflowTelemetryBridge.BuildRollups(
+            _graph, readings, _labeller.ChannelIdsForNodeEntity);
+
+        // Note the guard covers BOTH lists: returning early on empty entries alone would
+        // suppress device/board rollups on a canvas holding only device nodes.
+        if (entries.Count == 0 && rollups.Count == 0) return;
+
+        // ONE interop call for the whole batch, and no StateHasChanged anywhere in this method.
+        await JS.InvokeVoidAsync("workflowCanvas.applyTelemetry", _canvasHost, entries, rollups);
+    }
+
+    /// <summary>Rebuilds the topology index the labels and telemetry both read. One index, not
+    /// two: the labeller already holds channelId -> (device, board, channel), which is exactly
+    /// what telemetry needs to find a live circuit without a database round trip.</summary>
+    private void RefreshChannelKeyLookup() => _labeller = new WorkflowNodeLabeller(_topology);
+
+    /// <summary>Call after every structural graph change. The subscribed id set is the entire
+    /// cost-control mechanism for the canvas — it must always match what is actually placed.
+    ///
+    /// forcePaint exists because telemetry is written straight into the DOM by JS: a paint is
+    /// only useful once the nodes it targets actually EXIST in the DOM. A caller that is about to
+    /// add nodes via StateHasChanged must pass false and paint itself afterwards, or the write
+    /// lands on a DOM that has not rendered them yet and every value stays a placeholder until
+    /// the next hardware event — which, on an idle bench, may never come.</summary>
+    private void RefreshSubscription(bool forcePaint = true)
+    {
+        _subscribedChannelIds = WorkflowTelemetryBridge.OnCanvasChannelIds(_graph, _staleNodeIds);
+        HookCircuitTelemetry();
+
+        if (forcePaint && _jsReady) OnHardwareChanged();
+    }
+
+    /// <summary>
+    /// Subscribes to the per-circuit OnChannelChanged of every channel currently on the canvas.
+    ///
+    /// ChannelManager.HardwareManagerChanged is NOT enough on its own: it is raised only by
+    /// registration, TCP accept, link-drop and command-send — never by an incoming realtime
+    /// telemetry packet. Listening to it alone meant node faces refreshed whenever the user
+    /// happened to place a node or send a command, but froze during a steady program run, which is
+    /// exactly when live values matter. OnChannelChanged is the event the dashboard's cards use,
+    /// and ChannelCommandHandler already self-throttles it to once per 2s per channel.
+    ///
+    /// Both events funnel into the same coalescing runner and the same RefreshRateMs throttle, so
+    /// adding this source cannot increase the push rate beyond what the user configured.
+    /// </summary>
+    private void HookCircuitTelemetry()
+    {
+        foreach (var circuit in _hookedCircuits) circuit.OnChannelChanged -= OnHardwareChanged;
+        _hookedCircuits.Clear();
+
+        if (_subscribedChannelIds.Count == 0) return;
+
+        var byKey = CM._devices.Values.ToDictionary(
+            c => (c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber));
+
+        foreach (var channelId in _subscribedChannelIds)
+        {
+            if (!_labeller.TryGetChannelKey(channelId, out var key)) continue;
+            if (!byKey.TryGetValue(key, out var circuit)) continue;
+
+            circuit.OnChannelChanged += OnHardwareChanged;
+            _hookedCircuits.Add(circuit);
+        }
+    }
+
+    private const string ViewportKeyPrefix = "_canvas_viewport_";
+
+    /// <summary>The per-layout viewport key. Scoped by layout id, not just by user, because
+    /// switching between two saved layouts should restore each one's OWN last-viewed pan/zoom,
+    /// not share one across every layout.</summary>
+    private string ViewportKey(long layoutId) => $"{_userId}{ViewportKeyPrefix}{layoutId}";
+
+    [JSInvokable]
+    public Task OnViewportChanged(double panX, double panY, double zoom)
+    {
+        // Stored, not rendered: the viewport is saved with the layout but changing it must never
+        // cause a re-render, or panning would round-trip to the server on every frame.
+        _viewport = new CanvasViewport(panX, panY, zoom);
+
+        // The viewport IS part of the saved document, so a pan alone should make Save available.
+        // Deliberately no StateHasChanged here — the Save button's enabled state will reflect
+        // this on the next render triggered by anything else (a click, a selection), which is
+        // an acceptable trade-off against re-rendering on every pan/zoom tick.
+        _dirty = true;
+
+        // Auto-saved independently of the explicit Save button, the same way _nodeConfig and
+        // _currentLayoutId already are: the user reported that panning/zooming, then refreshing
+        // or switching layouts and coming back, lost the view - because until now nothing
+        // persisted it outside the layout's own saved document, which only Save writes to.
+        // notifyViewport (the JS caller) fires once per pan release and once per debounced wheel
+        // zoom - not per frame - so writing on every call here is cheap.
+        if (_currentLayoutId is { } id)
+            SessionStorage.SetComponentState(ViewportKey(id), _viewport, Permanent: true);
+
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnNodeMoved(string nodeId, double x, double y)
+    {
+        // JS already snapped and already painted the node at this position. This only records
+        // it so the next Save and the next structural re-render agree with what is on screen.
+        _graph = WorkflowGraphMutations.MoveNode(_graph, nodeId, x, y);
+        _dirty = true;
+        return Task.CompletedTask;          // deliberately no StateHasChanged
+    }
+
+    /// <summary>
+    /// The group-drag counterpart of OnNodeMoved: dragging any node that is part of a
+    /// multi-selection moves every selected node together (workflow-canvas.js decides which
+    /// nodes belong to the drag; this only records the resulting positions). Before this, a
+    /// multi-select drag on the canvas moved just the one node the pointer happened to be on —
+    /// the rest stayed put, so the only way to reposition a group was one node at a time.
+    /// Parallel arrays rather than a DTO, matching how the JS call site already builds them.
+    /// </summary>
+    [JSInvokable]
+    public Task OnNodesMoved(string[] nodeIds, double[] xs, double[] ys)
+    {
+        for (var i = 0; i < nodeIds.Length; i++)
+            _graph = WorkflowGraphMutations.MoveNode(_graph, nodeIds[i], xs[i], ys[i]);
+
+        _dirty = true;
+        return Task.CompletedTask;          // deliberately no StateHasChanged, same as OnNodeMoved
+    }
+
+    [JSInvokable]
+    public async Task OnConnect(string fromNodeId, string toNodeId)
+    {
+        var check = WorkflowGraphValidator.CanConnect(_graph, fromNodeId, toNodeId, _topology);
+        if (!check.IsValid)
+        {
+            Toast.Error(check.Error!);
+            return;
+        }
+
+        var from = _graph.Nodes.First(n => n.Id == fromNodeId);
+        var to = _graph.Nodes.First(n => n.Id == toNodeId);
+
+        _graph = WorkflowGraphMutations.AddEdge(
+            _graph, fromNodeId, toNodeId, WorkflowGraphMutations.EdgeKindFor(from.Kind, to.Kind));
+        _dirty = true;
+
+        await InvokeAsync(StateHasChanged);   // structural change: re-render is correct here
+    }
+
+    [JSInvokable]
+    public async Task OnSelect(string? nodeId, bool additive)
+    {
+        if (nodeId is null)
+        {
+            if (additive) return;   // ctrl/shift-clicking empty space is a no-op, not a clear
+            _selectedNodeIds.Clear();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await SelectSingleNode(nodeId, additive);
+    }
+
+    /// <summary>
+    /// The click-on-a-node-header path, reached from a real mouse drag gesture that turned out to
+    /// have no movement (workflow-canvas.js's endNodeDrag). Every node kind's header is also its
+    /// drag handle, and setPointerCapture (taken so the drag can track the pointer) diverts the
+    /// browser's native click synthesis away from the header element - a Blazor @onclick bound
+    /// there never fires with a real mouse, only with a scripted .click() that bypasses pointer
+    /// capture entirely (the exact trap session 36 found for the toolbar). So this is dispatched
+    /// directly from JS instead of depending on a click event ever reaching Razor markup.
+    ///
+    /// A Device's header selects every channel underneath it (the canvas's only bulk-placement
+    /// shortcut); every other kind just selects that one node, identically to clicking its body.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnHeaderClick(string nodeId, bool additive)
+    {
+        var node = _graph.Nodes.FirstOrDefault(n => n.Id == nodeId);
+        if (node?.Kind == NodeKind.Device)
+        {
+            await OnSelectNodeChildren(nodeId);
+            return;
+        }
+
+        await SelectSingleNode(nodeId, additive);
+    }
+
+    /// <summary>
+    /// Selects exactly one node, replacing (non-additive) or toggling into (additive) the current
+    /// selection. Channel nodes go through WorkflowSelectionLogic's telemetry-eligibility check —
+    /// the same "online, and matching the anchor's state" rule bulk actions rely on. Device/Board/
+    /// Battery nodes have no such concept: no bulk action ever runs on them, and _selectedReadings
+    /// (keyed by CHANNEL node id only) never contains their id at all, so routing them through that
+    /// check unconditionally rejected them — every attempt to select a device, however it was
+    /// clicked, resolved through CanAdd's "no reading found" branch and produced a misleading
+    /// "That channel cannot be selected (offline)" toast for a node that was never a channel.
+    /// </summary>
+    private async Task SelectSingleNode(string nodeId, bool additive)
+    {
+        var isChannel = _graph.Nodes.FirstOrDefault(n => n.Id == nodeId)?.Kind == NodeKind.Channel;
+
+        if (!additive)
+        {
+            _selectedNodeIds.Clear();
+            if (isChannel)
+            {
+                var result = WorkflowSelectionLogic.ApplyBulk(new[] { nodeId }, _selectedReadings, _selectedNodeIds);
+                if (result.Outcome == SelectionOutcome.NothingEligible)
+                    Toast.Warning(_selectedReadings.Count == 0
+                        ? "Still waiting for the first telemetry update — try again in a moment."
+                        : "That channel cannot be selected (offline).");
+            }
+            else
+            {
+                _selectedNodeIds.Add(nodeId);
+            }
+        }
+        else if (_selectedNodeIds.Contains(nodeId))
+        {
+            _selectedNodeIds.Remove(nodeId);
+        }
+        else if (isChannel)
+        {
+            var result = WorkflowSelectionLogic.ApplyBulk(new[] { nodeId }, _selectedReadings, _selectedNodeIds);
+            if (result.Outcome == SelectionOutcome.NothingEligible)
+                Toast.Warning(_selectedReadings.Count == 0
+                    ? "Still waiting for the first telemetry update — try again in a moment."
+                    : "Cannot add that channel — it is offline or does not match the current selection.");
+        }
+        else
+        {
+            _selectedNodeIds.Add(nodeId);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnMarqueeSelect(string[] nodeIds, bool additive)
+    {
+        if (!additive) _selectedNodeIds.Clear();
+
+        var result = WorkflowSelectionLogic.ApplyBulk(nodeIds, _selectedReadings, _selectedNodeIds);
+
+        if (result.Skipped > 0) Toast.Warning(SkipMessage(result));
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Double-click on a channel — opens the same realtime chart DeviceChannel.razor's own
+    /// double-click opens on the dashboard (BmsDashboard, in a TabViewer tab keyed by
+    /// "DeviceID-Board-Channel", Unique so re-double-clicking the same channel focuses the
+    /// existing tab rather than opening a duplicate). Deliberately the exact same
+    /// AddTab call the dashboard makes, not a new dialog, so the two surfaces can never drift
+    /// into showing different things for what is meant to be the same view.
+    /// </summary>
+    private void OpenDataViewer(string nodeId)
+    {
+        var node = _graph.Nodes.FirstOrDefault(n => n.Id == nodeId);
+        if (node?.EntityId is not { } channelId) return;
+        if (!_labeller.TryGetChannelKey(channelId, out var key)) return;
+
+        var circuit = CM._devices.Values.FirstOrDefault(c =>
+            c.Channel.DeviceID == key.DeviceId
+            && c.Channel.SecondaryBoardNumber == key.BoardNumber
+            && c.Channel.ChannelNumber == key.ChannelNumber);
+        if (circuit is null) return;
+
+        tbService.AddTab(new NavMenuItem
+        {
+            Title = $"Realtime: {key.DeviceId}-{key.BoardNumber}-{key.ChannelNumber}",
+            Icon = Lucide.ChartLine,
+            ComponentType = typeof(BmsDashboard),
+            Parameters = new Dictionary<string, object?>
+            {
+                ["SQLFilePath"] = circuit.Session?.SessionFilePath ?? string.Empty,
+                ["Key"] = $"{key.DeviceId}-{key.BoardNumber}-{key.ChannelNumber}"
+            },
+            Unique = true,
+            keepAlive = true
+        });
+    }
+
+    private async Task OnSelectNodeChildren(string parentNodeId)
+    {
+        var parent = _graph.Nodes.FirstOrDefault(n => n.Id == parentNodeId);
+        if (parent is null || parent.EntityId is not { } entityId) return;
+
+        var childChannelIds = _labeller.ChannelIdsForNodeEntity(parent.Kind, entityId)
+            .Select(WorkflowGraphBuilder.ChannelNodeId)
+            .ToArray();
+
+        _selectedNodeIds.Clear();
+        var result = WorkflowSelectionLogic.ApplyBulk(childChannelIds, _selectedReadings, _selectedNodeIds);
+
+        if (result.Skipped > 0) Toast.Warning(SkipMessage(result));
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// A skip means CanAdd could not verify the channel is safe to include - either it has no
+    /// reading yet, or it is genuinely offline/in a different state. The two are different
+    /// problems for the user: "wait a moment" versus "that channel is actually offline". A user
+    /// live-testing this found every channel reported as offline when they clicked a device
+    /// immediately after a page load - they were all connected; _selectedReadings (the current
+    /// telemetry snapshot) simply had not received its first tick yet. This distinguishes the two
+    /// causes instead of always blaming "offline".
+    /// </summary>
+    private string SkipMessage(SelectionResult result) => _selectedReadings.Count == 0
+        ? "Telemetry hasn't loaded yet — try again in a moment."
+        : $"{result.Added} selected, {result.Skipped} skipped (offline or a different state).";
+
+    private bool _dirty;
+    private long? _currentLayoutId;
+
+    private const string CurrentLayoutKeySuffix = "_canvas_current_layout";
+
+    /// <summary>Wraps the id because GetComponentState/SetComponentState require a reference
+    /// type - long? alone does not satisfy the "where T : class" constraint.</summary>
+    private sealed record CurrentLayoutState(long? LayoutId);
+
+    /// <summary>
+    /// Saves which layout is open, the same way _nodeConfig is saved, so a browser refresh lands
+    /// back on the last-viewed canvas instead of blank. Before this, only the property-picker
+    /// selection survived a refresh; which layout was loaded did not, and the user had to
+    /// reopen it from the Layouts dropdown every time.
+    /// </summary>
+    private void PersistCurrentLayoutId() => SessionStorage.SetComponentState(
+        _userId + CurrentLayoutKeySuffix, new CurrentLayoutState(_currentLayoutId), Permanent: true);
+
+    private async Task HandleLoad(long id)
+    {
+        var result = await LayoutService.LoadAsync(id, _userId, _topology);
+
+        if (!result.Ok)
+        {
+            Toast.Error(result.Error!);
+            return;
+        }
+
+        _graph = result.Graph!;
+        _staleNodeIds = result.StaleNodeIds;
+        _currentLayoutId = id;
+        PersistCurrentLayoutId();
+
+        // A pan/zoom is auto-saved on every change (OnViewportChanged) - it takes priority over
+        // whatever viewport is baked into the layout's own saved document, which only reflects
+        // the position at the last explicit Save. Without this, panning around and refreshing (or
+        // switching layouts and coming back) reverted the view every time.
+        if (SessionStorage.GetComponentState<CanvasViewport>(ViewportKey(id)) is { } savedViewport)
+        {
+            _viewport = savedViewport;
+            _graph = _graph with { Viewport = savedViewport };
+        }
+
+        _selectedNodeIds.Clear();
+        _dirty = false;
+        _collapsedBoardIds.Clear();
+        await RefreshClaimedChannelsAsync();
+
+        RefreshChannelKeyLookup();
+        RefreshSubscription(forcePaint: false);   // nodes do not exist in the DOM yet
+
+        if (result.StaleNodeIds.Count > 0)
+        {
+            Toast.Warning(
+                $"{result.StaleNodeIds.Count} node(s) refer to hardware that no longer exists. "
+              + "They are shown dimmed and receive no live data.");
+        }
+
+        await InvokeAsync(StateHasChanged);
+
+        // Restore the saved viewport after the DOM exists, or fitToContent-style measurement
+        // would find nothing.
+        if (_jsReady)
+        {
+            await JS.InvokeVoidAsync("workflowCanvas.setViewport", _canvasHost,
+                _graph.Viewport.PanX, _graph.Viewport.PanY, _graph.Viewport.Zoom);
+
+            // Now that the loaded nodes are rendered, paint their current values.
+            OnHardwareChanged();
+        }
+    }
+
+    private async Task HandleSave()
+    {
+        if (_currentLayoutId is not { } id) return;
+
+        var name = _layouts.FirstOrDefault(l => l.Id == id)?.Name ?? "Layout";
+        await PersistAsync(id, name);
+    }
+
+    private async Task HandleSaveAs(string name) => await PersistAsync(null, name);
+
+    private async Task PersistAsync(long? id, string name)
+    {
+        // The viewport lives in JS while the operator pans, so pull the current value rather
+        // than trusting the copy in _graph.
+        var viewport = _viewport;
+
+        var savedId = await LayoutService.SaveAsync(
+            id, name, null, _graph with { Viewport = viewport }, _userId);
+
+        _currentLayoutId = savedId;
+        PersistCurrentLayoutId();
+        _dirty = false;
+        _layouts = await LayoutService.ListAsync(_userId);
+        await RefreshClaimedChannelsAsync();
+
+        Toast.Success($"Saved '{name}'.");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleDelete(long id)
+    {
+        if (!await LayoutService.DeleteAsync(id, _userId)) return;
+
+        if (_currentLayoutId == id)
+        {
+            _currentLayoutId = null;
+            PersistCurrentLayoutId();
+            _graph = WorkflowGraph.Empty;
+            _staleNodeIds = Array.Empty<string>();
+            _selectedNodeIds.Clear();
+            _collapsedBoardIds.Clear();
+            await RefreshClaimedChannelsAsync();
+            RefreshSubscription();
+        }
+
+        _layouts = await LayoutService.ListAsync(_userId);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string LabelFor(WorkflowNode node) => _labeller.Label(node);
+
+    private async Task HandlePlaceDevice(
+        (TopologyDevice Device, IReadOnlyCollection<long>? Channels) placement)
+    {
+        var requested = placement.Channels
+            ?? placement.Device.Boards.SelectMany(b => b.Channels).Select(c => c.ChannelId).ToList();
+
+        var allowed = requested.Where(id => !_claimedChannels.ContainsKey(id)).ToList();
+
+        if (allowed.Count < requested.Count)
+        {
+            Toast.Warning(
+                $"{requested.Count - allowed.Count} channel(s) skipped — already placed in another workflow.");
+        }
+
+        if (allowed.Count == 0) return;
+
+        // A device already on the canvas keeps its own lane's existing origin, so channels added
+        // to it later land beside their already-placed siblings - WorkflowAutoLayout.Apply always
+        // positions the device node itself at LOCAL (0,0), so its current X/Y on the graph IS
+        // that origin. Only a device never seen on this canvas before gets a fresh lane below
+        // everything else (NextFreeLaneY). Using NextFreeLaneY unconditionally here used to send
+        // every later addition to an already-placed device to a brand new lane at the bottom of
+        // the whole canvas instead of continuing its own board's row.
+        var deviceNodeId = WorkflowGraphBuilder.DeviceNodeId(placement.Device.DeviceId);
+        var existingDevice = _graph.Nodes.FirstOrDefault(n => n.Id == deviceNodeId);
+
+        var (originX, originY) = existingDevice is not null
+            ? (existingDevice.X, existingDevice.Y)
+            : (0, WorkflowPlacement.NextFreeLaneY(_graph, _nodeConfig.VisibleProperties));
+
+        _graph = WorkflowPlacement.PlaceDevice(
+            _graph, placement.Device, allowed, originX, originY, _nodeConfig.VisibleProperties);
+
+        _dirty = true;
+        RefreshSubscription();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandlePlaceBattery(int batteryTypeId)
+    {
+        var x = WorkflowPlacement.BatteryRailX;
+        var y = WorkflowPlacement.NextFreeRow(_graph, NodeKind.Battery, _nodeConfig.VisibleProperties);
+
+        _graph = WorkflowPlacement.PlaceBattery(_graph, batteryTypeId, x, y);
+        _dirty = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// The operator running on the channel's CURRENT step, resolved the same way the dashboard
+    /// card resolves it: find the step whose StepNumber matches the live reading, preferring the
+    /// expanded (loop-unrolled) step list over the raw program, then name its OperatorCode.
+    /// Returns null when no program is loaded, which BuildNodeProperties renders as "--".
+    /// </summary>
+    private static string? ResolveOperatorName(IChannelCommandHandler circuit, int stepNumber)
+    {
+        var steps = circuit.ExpandedProgramSteps?.Count > 0
+            ? circuit.ExpandedProgramSteps
+            : circuit.Program?.ProgramStepModel;
+
+        var code = steps?.FirstOrDefault(s => s.StepNumber == stepNumber)?.OperatorCode;
+        return code is null ? null : OperatorConstants.ToName(code);
+    }
+
+    private bool _detailDialogOpen;
+    private IChannelCommandHandler? _detailChannel;
+    private string _detailTitle = "Channel";
+    private ChannelTelemetry? _detailReading;
+
+    /// <summary>
+    /// Opens the multi-tab detail dialog (C2/C3) for one channel node. Resolves the live circuit
+    /// through the same (DeviceID, board, channel) tuple every other action path uses — never the
+    /// database id, which does not identify a circuit.
+    /// </summary>
+    private async Task OpenChannelDetails(string nodeId)
+    {
+        var node = _graph.Nodes.FirstOrDefault(n => n.Id == nodeId);
+        if (node?.EntityId is not { } channelId) return;
+
+        _detailChannel = null;
+        if (_labeller.TryGetChannelKey(channelId, out var key))
+        {
+            _detailChannel = CM._devices.Values.FirstOrDefault(c =>
+                c.Channel.DeviceID == key.DeviceId
+                && c.Channel.SecondaryBoardNumber == key.BoardNumber
+                && c.Channel.ChannelNumber == key.ChannelNumber);
+        }
+
+        if (_detailChannel is null)
+        {
+            Toast.Error("That channel is not reachable right now.");
+            return;
+        }
+
+        _detailTitle = LabelFor(node);
+        _selectedReadings.TryGetValue(nodeId, out var reading);
+        _detailReading = reading;
+        _detailDialogOpen = true;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task HandleStatusColorChanged((string StatusName, string Hsl) change) =>
+        HandleNodeConfigChanged(_nodeConfig.WithStatusColor(change.StatusName, change.Hsl));
+
+    /// <summary>
+    /// Persists the config and repaints immediately. The forced push is NOT optional: node-face
+    /// values are written by JS into data-role="prop-{key}" slots that Blazor does not know the
+    /// text of, so when the selection changes Blazor rewrites the slots' data-role attributes and
+    /// leaves the previously-written text sitting against the wrong keys — "Battery ID" showing an
+    /// Ah reading, and newly-added slots stuck on "--". Only a push re-writes every slot by key.
+    ///
+    /// Waiting for the next hardware event is not good enough: HardwareManagerChanged fires on
+    /// state CHANGE, so on a steady bench the stale values can persist indefinitely. Same reason
+    /// recolouring a status forces a push.
+    /// </summary>
+    private async Task HandleNodeConfigChanged(WorkflowNodeConfig config)
+    {
+        // The row height every board/channel was spaced against tracks exactly this list (see
+        // WorkflowAutoLayout.RowHeight) - so adding or removing a field must repack the whole
+        // canvas right now, or the gap between rows only ever matches whatever was selected at
+        // the last placement/re-arrange, not what is actually visible any more. Compared BEFORE
+        // _nodeConfig is overwritten below, and skipped when nothing but e.g. the refresh rate
+        // changed, so an unrelated config edit can't move nodes the operator dragged by hand.
+        if (!config.VisibleProperties.SequenceEqual(_nodeConfig.VisibleProperties))
+        {
+            _graph = WorkflowAutoLayout.Apply(_graph, config.VisibleProperties);
+            _dirty = true;
+        }
+
+        _nodeConfig = config;
+        SessionStorage.SetComponentState(_userId + NodeConfigKeySuffix, _nodeConfig, Permanent: true);
+
+        // A new refresh rate must take effect now, not on the next page load.
+        RetimeTelemetryTimer();
+
+        // Deferred to OnAfterRenderAsync — see the comment there for why pushing from here races
+        // the render and reproduces the shifted-values bug this is meant to fix.
+        _repaintAfterRender = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleAttachmentChanged(NodeAttachment? attachment)
+    {
+        if (_primarySelectedNodeId is null) return;
+
+        // Re-check server-side rather than trusting that the UI only offered this for a channel.
+        var check = WorkflowGraphValidator.CanAttach(_graph, _primarySelectedNodeId);
+        if (!check.IsValid)
+        {
+            Toast.Error(check.Error!);
+            return;
+        }
+
+        _graph = WorkflowGraphMutations.SetAttachment(_graph, _primarySelectedNodeId, attachment);
+        _dirty = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleDeleteNode(string nodeId)
+    {
+        _graph = WorkflowGraphMutations.RemoveNode(_graph, nodeId);
+        _selectedNodeIds.Remove(nodeId);
+        _dirty = true;
+        RefreshSubscription();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Delete/Backspace on the canvas — removing a node was reachable only through the dock's
+    /// "Remove from canvas" button (the opposite panel from where a node is ADDED, the palette),
+    /// and both panels now default collapsed, so it took real hunting to find. This puts removal
+    /// on the canvas itself, symmetric with placement, and works for the whole selection at once
+    /// rather than one node at a time.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnDeleteSelected()
+    {
+        if (_selectedNodeIds.Count == 0) return;
+
+        foreach (var nodeId in _selectedNodeIds)
+            _graph = WorkflowGraphMutations.RemoveNode(_graph, nodeId);
+
+        _selectedNodeIds.Clear();
+        _dirty = true;
+        RefreshSubscription();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool CanRunAction(string action) =>
+        _selectedNodeIds.Count > 0
+        && _selectedNodeIds.All(id => _selectedReadings.TryGetValue(id, out var r) && WorkflowActionRules.CanPerform(r, action));
+
+    private async Task HandleSelectionAction(string action)
+    {
+        if (action == "transfer")
+        {
+            _openTransferDialog = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var circuits = SelectedCircuitsForTransfer();
+
+        if (circuits.Count == 0)
+        {
+            Toast.Error("None of the selected channels are reachable right now.");
+            return;
+        }
+
+        _actionInProgress = true;
+        _actionName = action;
+        _actionCompleted = 0;
+        _actionTotal = circuits.Count;
+        await InvokeAsync(StateHasChanged);
+
+        var results = await _actionExecutor.ExecuteAsync(
+            action, circuits,
+            onStepCompleted: () => { Interlocked.Increment(ref _actionCompleted); InvokeAsync(StateHasChanged); });
+
+        _actionInProgress = false;
+
+        var failures = results.Where(r => !r.Success).ToList();
+        if (failures.Count > 0)
+        {
+            Toast.Error($"{failures.Count} of {results.Count} failed",
+                string.Join("; ", failures.Select(f => $"{f.DeviceId}-{f.SecondaryBoardNumber}-{f.ChannelNumber}: {f.Message}")));
+        }
+        else
+        {
+            Toast.Success($"{action} succeeded on {results.Count} channel(s).");
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private List<IChannelCommandHandler> SelectedCircuitsForTransfer()
+    {
+        var byKey = CM._devices.Values.ToDictionary(
+            c => (c.Channel.DeviceID, c.Channel.SecondaryBoardNumber, c.Channel.ChannelNumber));
+
+        var circuits = new List<IChannelCommandHandler>();
+        foreach (var nodeId in _selectedNodeIds)
+        {
+            var node = _graph.Nodes.FirstOrDefault(n => n.Id == nodeId);
+            if (node?.EntityId is not { } channelId) continue;
+            if (!_labeller.TryGetChannelKey(channelId, out var key)) continue;
+            if (byKey.TryGetValue(key, out var circuit)) circuits.Add(circuit);
+        }
+        return circuits;
+    }
+
+    private string ProgramLabel(int id) =>
+        _catalog.Programs.FirstOrDefault(p => p.Id == id)?.Name ?? $"Program {id}";
+
+    private string DbcLabel(int id) =>
+        _catalog.DbcFiles.FirstOrDefault(d => d.Id == id)?.Name ?? $"DBC {id}";
+
+    private int ChildCountFor(string nodeId) =>
+        _graph.Edges.Count(e => e.FromNodeId == nodeId && e.Kind == EdgeKind.Topology);
+
+    private async Task ToggleBoardCollapse(string boardNodeId)
+    {
+        if (!_collapsedBoardIds.Add(boardNodeId)) _collapsedBoardIds.Remove(boardNodeId);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        CM.HardwareManagerChanged -= OnHardwareChanged;
+
+        // Before the circuit teardown below: a tick landing mid-dispose would try to InvokeAsync
+        // on a dead renderer.
+        if (_telemetryTimer is not null) await _telemetryTimer.DisposeAsync();
+        _telemetryTimer = null;
+
+        // Circuits outlive this page (ChannelManager is a singleton), so a handler left attached
+        // here would keep the disposed page reachable for the process lifetime.
+        foreach (var circuit in _hookedCircuits) circuit.OnChannelChanged -= OnHardwareChanged;
+        _hookedCircuits.Clear();
+
+        if (_jsReady)
+        {
+            try { await JS.InvokeVoidAsync("workflowCanvas.dispose", _canvasHost); }
+            catch (JSDisconnectedException) { /* circuit already gone */ }
+        }
+        _selfRef?.Dispose();
+    }
+}

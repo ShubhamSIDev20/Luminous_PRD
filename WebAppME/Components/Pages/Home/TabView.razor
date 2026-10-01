@@ -1,0 +1,40 @@
+﻿@page "/"
+@page "/TabViewer"
+
+@attribute [Authorize]
+@attribute [StreamRendering]
+
+@using BatteryTestingSystem.Components.Pages.Batteries
+@using BatteryTestingSystem.Components.Pages.Home
+@using BatteryTestingSystem.Components.Pages.Programs
+
+@inject TabService TabService
+
+<TabViewer/>
+
+@code
+{
+
+    protected override async Task OnInitializedAsync()
+    {
+      
+        // TabService.AddTab(
+        //    title: $"Program #3",
+        //   componentType: typeof(ProgramEditor),
+        //     parameters: new Dictionary<string, dynamic>
+        //     {
+        //         { "id", (long)3 }
+        //     },
+        //   icon: Lucide.BrainCircuit,
+        //   keepAlive: true
+        // );
+
+        // TabService.AddTab(
+        //     title: $"Battery",
+        //     componentType: typeof(BatteriesList),
+        //     parameters: null,
+        //     icon: Lucide.BrainCircuit
+        // );
+    }
+   
+}

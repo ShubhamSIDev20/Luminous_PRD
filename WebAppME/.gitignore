@@ -1,0 +1,79 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Visual Studio
+.vs/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+## Rider / JetBrains
+.idea/
+
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+## Test results
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+## Local machine-specific settings
+.claude/settings.local.json
+
+## Misc
+*.tmp
+*.tmp-*
+*.bak
+*.swp
+*~
+Thumbs.db
+.DS_Store
+
+## Python (HardwareSimulator)
+__pycache__/
+*.pyc
+*.log
+
+## Office lock files
+~$*.xlsx
+~$*.docx
+~$*.pptx
+
+## Debug snapshots / scratch dumps
+dashboard_snapshot.txt
+scratchpad/
+
+## Docs not meant for the repo (manuals / bug trackers kept locally)
+docs/BM_Manual_eng.pdf
+docs/UATBUG.xlsx
+
+# Superpowers brainstorming companion output
+.superpowers/

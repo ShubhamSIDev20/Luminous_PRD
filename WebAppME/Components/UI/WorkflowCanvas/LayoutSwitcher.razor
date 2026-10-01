@@ -1,0 +1,57 @@
+@namespace BatteryTestingSystem.Components.UI.WorkflowCanvas
+@using BatteryTestingSystem.Services.Interfaces
+
+<div class="wf-switcher">
+    <select class="wf-select" value="@(CurrentId?.ToString() ?? "")" @onchange="HandleSelect">
+        <option value="">(unsaved layout)</option>
+        @foreach (var saved in Layouts)
+        {
+            <option value="@saved.Id">@saved.Name</option>
+        }
+    </select>
+
+    <button class="wf-btn" disabled="@(!IsDirty || CurrentId is null)" @onclick="() => OnSave.InvokeAsync()">
+        Save@(IsDirty ? " *" : "")
+    </button>
+
+    @if (_naming)
+    {
+        <input class="wf-input" placeholder="Layout name" @bind="_newName" @bind:event="oninput" />
+        <button class="wf-btn" disabled="@string.IsNullOrWhiteSpace(_newName)" @onclick="ConfirmSaveAs">Create</button>
+        <button class="wf-btn" @onclick="() => _naming = false">Cancel</button>
+    }
+    else
+    {
+        <button class="wf-btn" @onclick="() => { _naming = true; _newName = string.Empty; }">Save as…</button>
+    }
+
+    @if (CurrentId is { } id)
+    {
+        <button class="wf-btn wf-btn--danger" @onclick="() => OnDelete.InvokeAsync(id)">Delete</button>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<LayoutSummary> Layouts { get; set; } = Array.Empty<LayoutSummary>();
+    [Parameter] public long? CurrentId { get; set; }
+    [Parameter] public bool IsDirty { get; set; }
+    [Parameter] public EventCallback<long> OnLoad { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback<string> OnSaveAs { get; set; }
+    [Parameter] public EventCallback<long> OnDelete { get; set; }
+
+    private bool _naming;
+    private string _newName = string.Empty;
+
+    private Task HandleSelect(ChangeEventArgs e) =>
+        long.TryParse(e.Value?.ToString(), out var id) ? OnLoad.InvokeAsync(id) : Task.CompletedTask;
+
+    private async Task ConfirmSaveAs()
+    {
+        var name = _newName.Trim();
+        if (name.Length == 0) return;
+
+        _naming = false;
+        await OnSaveAs.InvokeAsync(name);
+    }
+}

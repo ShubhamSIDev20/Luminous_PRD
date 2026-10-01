@@ -1,0 +1,112 @@
+@namespace BatteryTestingSystem.Components.UI.Dashboard
+@using BatteryTestingSystem.Components.UI.Dialog
+@using BatteryTestingSystem.Components.UI.Input
+@using BatteryTestingSystem.Services
+@using BatteryTestingSystem.Services.Interfaces
+@using BatteryTestingSystem.Utils
+@inject ToastService Toast
+
+<Dialog Open="@IsOpen" OpenChanged="@IsOpenChanged">
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>Jump to Step</DialogTitle>
+            <DialogDescription>
+                @if (Circuit != null)
+                {
+                    <text>
+                        Circuit @(Circuit.Channel.DeviceID)-@(Circuit.Channel.SecondaryBoardNumber)-@(Circuit.Channel.ChannelNumber)
+                        is currently on step @(Circuit.RealTime?.RealTimeRecord?.StepNumber ?? 0).
+                        Execution ends the current step and resumes from the step you enter — the loaded
+                        program itself is not changed.
+                    </text>
+                }
+            </DialogDescription>
+        </DialogHeader>
+
+        <div class="py-2">
+            <label class="text-sm font-medium mb-1 block">Target step number</label>
+            <INumber TValue="int?" @bind-Value="_stepInput" Min="1" Placeholder="e.g. 20" Disabled="@_submitting" />
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <p class="text-sm text-destructive mt-2">@_errorMessage</p>
+            }
+        </div>
+
+        <DialogFooter>
+            <Button variant="ButtonVariant.Outline" Disabled="@_submitting" OnClick="Cancel">
+                Cancel
+            </Button>
+
+            <Button Disabled="@_submitting" OnClick="Submit">
+                @(_submitting ? "Jumping..." : "Jump")
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    /// <summary>The circuit to jump — set by the caller right before opening the dialog.</summary>
+    [Parameter] public IChannelCommandHandler? Circuit { get; set; }
+
+    private int? _stepInput;
+    private string? _errorMessage;
+    private bool _submitting;
+
+    protected override void OnParametersSet()
+    {
+        // Fresh state every time the dialog is (re)opened for a circuit — a stale value or error
+        // from the previous jump must never leak into the next one.
+        if (IsOpen)
+        {
+            _stepInput = null;
+            _errorMessage = null;
+            _submitting = false;
+        }
+    }
+
+    private async Task Cancel()
+    {
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task Submit()
+    {
+        if (Circuit == null || _submitting)
+            return;
+
+        // Client-side validation first — no network round-trip for something we already know is wrong.
+        // Same check ChannelCommandHandler.JumpToStepAsync repeats server-side (JumpStepValidator is
+        // the single source of truth for both, so they can't drift apart).
+        if (!JumpStepValidator.IsValid(_stepInput, Circuit.Program?.ProgramSteps))
+        {
+            _errorMessage = JumpStepValidator.InvalidMessage;
+            return;
+        }
+
+        _errorMessage = null;
+        _submitting = true;
+        StateHasChanged();
+
+        var response = await Circuit.JumpToStepAsync(_stepInput.Value);
+
+        _submitting = false;
+
+        if (response.Success)
+        {
+            Toast.Success(response.Message);
+            await IsOpenChanged.InvokeAsync(false);
+        }
+        else
+        {
+            // Hardware-side rejection (paused, no such step, a jump already in flight, ...) — keep the
+            // dialog open so the operator can see why and retry without re-opening it.
+            _errorMessage = response.Message;
+        }
+
+        StateHasChanged();
+    }
+}
